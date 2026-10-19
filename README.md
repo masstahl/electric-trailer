@@ -59,8 +59,10 @@ color, always paired with a word.**
   status word carry the state, not the buttons.
 - **Smoked glass:** the floating dock and the Home stat/filter bar are the
   only glass surfaces, tinted ~88% (blur 30px + sheen kept) so labels stay
-  readable over scrolling photos. The dock deliberately stays at its
-  compact 2/3 size (content-sized pill, 16px icons) — only its tint changed.
+  readable over scrolling photos. After hands-on testing, the dock is
+  sized at 4/5 (21px icons, .75rem labels, 26px corners) — its tint is
+  unchanged. Home cards are slightly shorter, and tapping a quantity
+  numeral opens a shared numeric-keypad editor.
 - Search + stat bar form one sticky glass block; tapping **low / out**
   filters the grid to low stock, worst first.
 - Every quantity change — card steppers, item sheet, bin sheet, Count

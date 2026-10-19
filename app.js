@@ -236,6 +236,83 @@
     if ($('view-sync').classList.contains('active')) renderQueue();
   }
 
+  /* ---------- shared numeric qty editor ----------
+   * One editor for the item sheet, Home cards, bin rows and Count Mode.
+   * It summons the phone's numeric pad, starts with the value selected,
+   * and treats an empty/invalid entry as a cancel — never as zero. */
+  var qtyEditState = null;
+  function qtyEditFocusTarget(state) {
+    if (!state) return null;
+    if (state.returnSelector) {
+      var bySelector = document.querySelector(state.returnSelector);
+      if (bySelector) return bySelector;
+    }
+    if (state.returnAttr) {
+      var found = null;
+      document.querySelectorAll('[' + state.returnAttr + ']').forEach(function (el) {
+        if (el.getAttribute(state.returnAttr) === state.returnValue) found = el;
+      });
+      if (found) return found;
+    }
+    if (state.returnElement && state.returnElement.isConnected) return state.returnElement;
+    return null;
+  }
+  function restoreQtyEditFocus(state) {
+    var el = qtyEditFocusTarget(state);
+    if (el) { try { el.focus({ preventScroll: true }); } catch (e) { el.focus(); } }
+  }
+  function updateQtyEditSetLabel() {
+    if (!qtyEditState) return;
+    var raw = $('qtyEditInput').value.trim();
+    $('qtyEditSet').textContent = /^\d+$/.test(raw) ? 'Set to ' + Math.min(9999, parseInt(raw, 10)) : 'Set';
+  }
+  function closeQtyEditor(commit) {
+    if (!qtyEditState) return;
+    var state = qtyEditState;
+    var raw = $('qtyEditInput').value.trim();
+    qtyEditState = null;
+    $('qtyEditOverlay').classList.add('hidden');
+    if (commit && /^\d+$/.test(raw)) {
+      var qty = Math.min(9999, parseInt(raw, 10));
+      if (qty !== state.value && state.onCommit) state.onCommit(qty);
+    }
+    restoreQtyEditFocus(state);
+  }
+  function openQtyEditor(opts) {
+    qtyEditState = {
+      value: opts.value,
+      onCommit: opts.onCommit,
+      returnElement: opts.returnElement || null,
+      returnSelector: opts.returnSelector || '',
+      returnAttr: opts.returnAttr || '',
+      returnValue: opts.returnValue || ''
+    };
+    $('qtyEditLabel').textContent = opts.counted ? 'Counted quantity' : 'Quantity';
+    $('qtyEditTitle').textContent = opts.itemName;
+    var input = $('qtyEditInput');
+    input.setAttribute('aria-label', (opts.counted ? 'New counted quantity for ' : 'New quantity for ') + opts.itemName);
+    input.value = opts.value;
+    $('qtyEditOverlay').classList.remove('hidden');
+    updateQtyEditSetLabel();
+    input.focus(); input.select();
+  }
+  $('qtyEditSet').addEventListener('click', function () { closeQtyEditor(true); });
+  $('qtyEditCancel').addEventListener('click', function () { closeQtyEditor(false); });
+  $('qtyEditClose').addEventListener('click', function () { closeQtyEditor(false); });
+  $('qtyEditOverlay').addEventListener('click', function (e) { if (e.target === $('qtyEditOverlay')) closeQtyEditor(false); });
+  $('qtyEditInput').addEventListener('input', function () {
+    var clean = this.value.replace(/\D/g, '').slice(0, 4);
+    if (this.value !== clean) this.value = clean;
+    updateQtyEditSetLabel();
+  });
+  $('qtyEditInput').addEventListener('keydown', function (e) {
+    if (e.key === 'Enter') { e.preventDefault(); closeQtyEditor(true); }
+    else if (e.key === 'Escape') { e.preventDefault(); closeQtyEditor(false); }
+  });
+  document.addEventListener('keydown', function (e) {
+    if (e.key === 'Escape' && qtyEditState) closeQtyEditor(false);
+  });
+
   /* The sticky search+stat block docks right under the app header. */
   function fitSticky() {
     var h = document.querySelector('.app-header');
@@ -248,7 +325,9 @@
     document.querySelectorAll('.view').forEach(function (v) { v.classList.remove('active'); });
     var el = $('view-' + name); if (el) el.classList.add('active');
     document.querySelectorAll('.tab').forEach(function (t) {
-      t.classList.toggle('active', t.getAttribute('data-view') === name);
+      var on = t.getAttribute('data-view') === name;
+      t.classList.toggle('active', on);
+      if (on) t.setAttribute('aria-current', 'page'); else t.removeAttribute('aria-current');
     });
     if (name === 'home') renderHome();
     if (name === 'map') renderMap();
@@ -290,7 +369,7 @@
         pill +
         '<div class="stepper-strip">' +
           '<button type="button" data-dec="' + esc(i.id) + '" aria-label="Remove one from ' + esc(i.name) + '">−</button>' +
-          '<span class="ss-qty">' + i.qty + '</span>' +
+          '<button type="button" class="ss-qty" data-qty-btn="' + esc(i.id) + '" aria-label="Quantity ' + i.qty + ' for ' + esc(i.name) + ' — tap to type a new quantity">' + i.qty + '</button>' +
           '<button type="button" data-inc="' + esc(i.id) + '" aria-label="Add one to ' + esc(i.name) + '">+</button>' +
         '</div></div>';
     }).join('');
@@ -314,6 +393,18 @@
     grid.querySelectorAll('[data-inc]').forEach(function (b) {
       b.addEventListener('click', function () { changeQty(b.getAttribute('data-inc'), 1); });
     });
+    grid.querySelectorAll('[data-qty-btn]').forEach(function (b) {
+      b.addEventListener('click', function () {
+        var id = b.getAttribute('data-qty-btn');
+        var item = D.getItem(id);
+        if (!item) return;
+        openQtyEditor({
+          value: item.qty, itemName: item.name,
+          returnAttr: 'data-qty-btn', returnValue: id,
+          onCommit: function (qty) { setQtyWithUndo(id, qty); }
+        });
+      });
+    });
     refreshChrome();
   }
   $('searchInput').addEventListener('input', renderHome);
@@ -333,7 +424,6 @@
     $('dBinChip').textContent = 'BIN ' + item.bin;
     $('dCost').textContent = money(item.cost) + ' each';
     $('dStickerLink').value = D.stickerUrl(item.id);
-    $('qtyEditor').classList.add('hidden');
     syncSheetQty();
     $('itemOverlay').classList.remove('hidden');
     var sheet = $('itemOverlay').querySelector('.sheet');
@@ -345,6 +435,7 @@
     var item = D.getItem(currentItemId);
     if (!item) return;
     $('dQty').textContent = item.qty;
+    $('dQtyBtn').setAttribute('aria-label', 'Quantity ' + item.qty + ' for ' + item.name + ' — tap to type a new quantity');
     $('dQtyState').textContent = qtyStateWord(item.qty);
     var pill = $('dStatus');
     pill.className = 'qty-pill ' + qtyClass(item.qty);
@@ -352,7 +443,7 @@
     $('dCost').textContent = money(item.cost) + ' each';
     $('dUpdated').textContent = 'Last updated ' + fmtTime(item.updated) + (navigator.onLine ? '' : ' · queued (offline)');
   }
-  function closeItem() { $('itemOverlay').classList.add('hidden'); $('qtyEditor').classList.add('hidden'); currentItemId = null; renderHome(); }
+  function closeItem() { $('itemOverlay').classList.add('hidden'); currentItemId = null; renderHome(); }
   $('closeDetail').addEventListener('click', closeItem);
   $('doneDetail').addEventListener('click', closeItem);
   $('itemOverlay').addEventListener('click', function (e) { if (e.target === $('itemOverlay')) closeItem(); });
@@ -381,20 +472,17 @@
   }
   attachHold($('qtyPlus5'), function () { bump(5); });
   attachHold($('qtyMinus5'), function () { bump(-5); });
-  /* Exact count: tap the giant numeral, type the number, Set. */
+  /* Exact count: tap the giant numeral to summon the numeric pad. */
   $('dQtyBtn').addEventListener('click', function () {
     if (!currentItemId) return;
-    var item = D.getItem(currentItemId);
-    $('qtySetInput').value = item ? item.qty : 0;
-    $('qtyEditor').classList.remove('hidden');
-    $('qtySetInput').focus(); $('qtySetInput').select();
+    var id = currentItemId;
+    var item = D.getItem(id);
+    if (!item) return;
+    openQtyEditor({
+      value: item.qty, itemName: item.name, returnElement: $('dQtyBtn'),
+      onCommit: function (qty) { setQtyWithUndo(id, qty); }
+    });
   });
-  $('qtySetBtn').addEventListener('click', function () {
-    if (!currentItemId) return;
-    setQtyWithUndo(currentItemId, parseInt($('qtySetInput').value, 10) || 0);
-    $('qtyEditor').classList.add('hidden');
-  });
-  $('qtySetCancel').addEventListener('click', function () { $('qtyEditor').classList.add('hidden'); });
 
   function copyText(inputEl, msg) {
     inputEl.select(); inputEl.setSelectionRange(0, 9999);
@@ -652,7 +740,7 @@
         '<span class="li-sub">' + esc(i.sku) + ' · ' + esc(i.supplier) + '</span></button>' +
         '<span class="row-stepper">' +
           '<button type="button" data-bdec="' + esc(i.id) + '" aria-label="Remove one from ' + esc(i.name) + '">−</button>' +
-          '<b>' + i.qty + '</b>' +
+          '<button type="button" class="row-qty-btn" data-bin-qty-btn="' + esc(i.id) + '" aria-label="Quantity ' + i.qty + ' for ' + esc(i.name) + ' — tap to type a new quantity">' + i.qty + '</button>' +
           '<button type="button" data-binc="' + esc(i.id) + '" aria-label="Add one to ' + esc(i.name) + '">+</button>' +
         '</span></div>';
     }).join('') : '<p class="muted">Nothing stored in this bin yet.</p>';
@@ -665,6 +753,18 @@
     });
     box.querySelectorAll('[data-binc]').forEach(function (b) {
       b.addEventListener('click', function () { changeQty(b.getAttribute('data-binc'), 1); });
+    });
+    box.querySelectorAll('[data-bin-qty-btn]').forEach(function (b) {
+      b.addEventListener('click', function () {
+        var id = b.getAttribute('data-bin-qty-btn');
+        var item = D.getItem(id);
+        if (!item) return;
+        openQtyEditor({
+          value: item.qty, itemName: item.name,
+          returnAttr: 'data-bin-qty-btn', returnValue: id,
+          onCommit: function (qty) { setQtyWithUndo(id, qty); }
+        });
+      });
     });
   }
   $('closeBin').addEventListener('click', closeBinSheet);
@@ -703,19 +803,36 @@
     $('cName').textContent = item.name;
     $('cMeta').textContent = 'Bin ' + item.bin + ' · system qty ' + en.system;
     $('cQty').textContent = en.counted;
+    $('cQtyBtn').setAttribute('aria-label', 'Counted quantity ' + en.counted + ' for ' + item.name + ' — tap to type a new counted quantity');
     $('cBack').textContent = countSession.idx === 0 ? 'Cancel' : 'Back';
     $('cNext').textContent = countSession.idx === countSession.entries.length - 1 ? 'Finish' : 'Next';
   }
   function closeCount() { $('countOverlay').classList.add('hidden'); countSession = null; }
+  $('cQtyBtn').addEventListener('click', function () {
+    if (!countSession) return;
+    var en = countSession.entries[countSession.idx];
+    var item = D.getItem(en.id);
+    if (!item) return;
+    openQtyEditor({
+      value: en.counted, itemName: item.name, counted: true, returnSelector: '#cQtyBtn',
+      onCommit: function (qty) {
+        en.counted = qty;
+        $('cQty').textContent = qty;
+        $('cQtyBtn').setAttribute('aria-label', 'Counted quantity ' + qty + ' for ' + item.name + ' — tap to type a new counted quantity');
+      }
+    });
+  });
   $('cPlus').addEventListener('click', function () {
     if (!countSession) return;
     var en = countSession.entries[countSession.idx];
     en.counted++; $('cQty').textContent = en.counted;
+    var itemUp = D.getItem(en.id); if (itemUp) $('cQtyBtn').setAttribute('aria-label', 'Counted quantity ' + en.counted + ' for ' + itemUp.name + ' — tap to type a new counted quantity');
   });
   $('cMinus').addEventListener('click', function () {
     if (!countSession) return;
     var en = countSession.entries[countSession.idx];
     en.counted = Math.max(0, en.counted - 1); $('cQty').textContent = en.counted;
+    var itemDown = D.getItem(en.id); if (itemDown) $('cQtyBtn').setAttribute('aria-label', 'Counted quantity ' + en.counted + ' for ' + itemDown.name + ' — tap to type a new counted quantity');
   });
   $('cBack').addEventListener('click', function () {
     if (!countSession) return;

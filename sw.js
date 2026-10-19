@@ -3,7 +3,7 @@
  * AppSheet API calls are never cached — they always go to the network,
  * and edits made offline are queued by the app instead.
  */
-var CACHE = 'electric-trailer-v13';
+var CACHE = 'electric-trailer-v14';
 var SHELL = [
   './',
   'index.html',
