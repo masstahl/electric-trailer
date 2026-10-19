@@ -1,0 +1,177 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0f172a">
+<meta name="description" content="Electric Trailer — fast AppSheet-backed inventory front-end with NFC stickers. Photo grid, bin map, offline-first, supplier hub.">
+<title>Electric Trailer — Inventory</title>
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="stylesheet" href="styles.css">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🚐</text></svg>">
+</head>
+<body>
+
+<header class="app-header">
+  <div class="header-inner">
+    <div class="brand"><span class="brand-icon">🚐</span><div><strong>Electric Trailer</strong><small>Inventory</small></div></div>
+    <div class="header-status">
+      <span id="modeBadge" class="badge badge-demo">Demo mode</span>
+      <span id="netBadge" class="badge badge-online">● Online</span>
+      <span id="queueBadge" class="badge badge-queue hidden">0 pending</span>
+    </div>
+  </div>
+</header>
+
+<main id="appMain">
+
+  <!-- ============ HOME · #08 Photo-First Grid ============ -->
+  <section id="view-home" class="view active">
+    <div class="search-wrap">
+      <input id="searchInput" type="search" placeholder="Search parts, SKU, bin, supplier…" autocomplete="off">
+    </div>
+    <div class="stat-row">
+      <div class="stat"><strong id="statItems">–</strong><span>items</span></div>
+      <div class="stat"><strong id="statUnits">–</strong><span>units</span></div>
+      <div class="stat"><strong id="statValue">–</strong><span>stock value</span></div>
+      <div class="stat warn"><strong id="statLow">–</strong><span>low / out</span></div>
+    </div>
+    <div id="photoGrid" class="photo-grid"></div>
+    <p id="gridEmpty" class="empty hidden">No items match your search.</p>
+  </section>
+
+  <!-- ============ MAP · #03 Warehouse / Bin Map ============ -->
+  <section id="view-map" class="view">
+    <h2>Warehouse / Bin Map</h2>
+    <p class="muted">Aisles A–D, bins 1–6. Color shows total quantity in the bin. Tap a bin to see what's in it.</p>
+    <div id="binMap" class="bin-map"></div>
+    <div class="legend"><span><i class="dot dot-ok"></i>Stocked</span><span><i class="dot dot-low"></i>Low</span><span><i class="dot dot-out"></i>Empty / out</span></div>
+    <h3 id="binListTitle">Select a bin</h3>
+    <div id="binList" class="list"></div>
+  </section>
+
+  <!-- ============ SUPPLIERS · #19 Supplier Hub ============ -->
+  <section id="view-suppliers" class="view">
+    <h2>Supplier Hub</h2>
+    <p class="muted">Tap a supplier to see its items, lead time and contact.</p>
+    <div id="supplierList" class="list"></div>
+    <h3 id="supplierItemsTitle"></h3>
+    <div id="supplierItems" class="list"></div>
+  </section>
+
+  <!-- ============ ADD · #22 Quick Add ============ -->
+  <section id="view-add" class="view">
+    <h2>Quick Add New Item</h2>
+    <form id="addForm" class="card form">
+      <label>Item name<input id="addName" required placeholder="e.g. Brake Controller"></label>
+      <div class="form-row">
+        <label>Quantity<input id="addQty" type="number" min="0" value="1" required></label>
+        <label>Cost $<input id="addCost" type="number" min="0" step="0.01" value="0"></label>
+      </div>
+      <div class="form-row">
+        <label>Bin<select id="addBin"></select></label>
+        <label>Supplier<select id="addSupplier"></select></label>
+      </div>
+      <label>Photo icon</label>
+      <div id="iconPicker" class="icon-picker"></div>
+      <button type="submit" class="btn btn-primary btn-big">Add item</button>
+    </form>
+    <div id="addSuccess" class="card success hidden">
+      <h3>✅ Item added</h3>
+      <p id="addSuccessText"></p>
+      <label class="small-label">NFC sticker link for this item</label>
+      <div class="copy-row"><input id="addStickerLink" readonly><button type="button" id="addCopyBtn" class="btn">Copy</button></div>
+      <button type="button" id="addWriteNfcBtn" class="btn btn-primary hidden">Write to sticker (Web NFC)</button>
+      <p class="muted small">iPhone: open the free <strong>NFC Tools</strong> app → Write → Add a record → URL → paste the link above → Write → hold the sticker to the top of the phone.</p>
+      <button type="button" id="addAnotherBtn" class="btn">Add another</button>
+    </div>
+  </section>
+
+  <!-- ============ QUEUE · #16 Offline-First ============ -->
+  <section id="view-queue" class="view">
+    <h2>Offline-First · Sync Queue</h2>
+    <div class="card">
+      <p>Connection: <strong id="queueNetStatus">–</strong></p>
+      <p>Pending changes: <strong id="queuePendingCount">0</strong> · Last sync: <span id="queueLastSync">never</span></p>
+      <p class="muted">Edits made with no signal are saved on this device and queued here — nothing is lost. They send when you're back online.</p>
+      <button id="syncNowBtn" class="btn btn-primary btn-big">Sync now</button>
+      <p id="syncResult" class="result"></p>
+    </div>
+    <h3>Queued changes</h3>
+    <div id="queueList" class="list"></div>
+  </section>
+
+  <!-- ============ SYNC · #24 Sync Health & Settings ============ -->
+  <section id="view-sync" class="view">
+    <h2>AppSheet Sync Health &amp; Settings</h2>
+    <div class="card stats-card">
+      <div class="kv"><span>Connection mode</span><strong id="healthMode">Demo</strong></div>
+      <div class="kv"><span>Item rows on this device</span><strong id="healthRows">–</strong></div>
+      <div class="kv"><span>Pending queue</span><strong id="healthQueue">–</strong></div>
+      <div class="kv"><span>Last sync</span><strong id="healthLastSync">never</strong></div>
+      <div class="kv"><span>Last error</span><strong id="healthError" class="error-text">none</strong></div>
+    </div>
+    <form id="settingsForm" class="card form">
+      <label>AppSheet App ID<input id="setAppId" value="bd77482b-d437-4804-a3ef-fc2815feff2e"></label>
+      <label>Table name<input id="setTable" value="Inventory"></label>
+      <label>Access Key<input id="setAccessKey" type="password" placeholder="Paste Access Key (stays on this device)" autocomplete="off"></label>
+      <p class="muted small">🔒 Settings — including the Access Key — are stored <strong>only in this device's browser (localStorage)</strong>. They are never in the code or the GitHub repo. Get the key in AppSheet: Manage → Integrations → “IN: from cloud services to your app” → AppSheet API.</p>
+      <button type="submit" class="btn btn-primary">Save settings</button>
+      <button type="button" id="testConnBtn" class="btn">Test connection</button>
+      <p id="testResult" class="result"></p>
+    </form>
+    <div class="card">
+      <h3>⚠️ App status note</h3>
+      <p class="muted">This AppSheet app is currently in <strong>test mode / blocked</strong> (“plan upgrade needed”). Live sync will fail until the app creator runs a deployment check in AppSheet and the account plan enables the API. Until then, Demo mode works fully offline. See <strong>SETUP.md</strong> in the repo.</p>
+      <button type="button" id="resetDemoBtn" class="btn btn-danger">Reset demo data</button>
+    </div>
+  </section>
+</main>
+
+<!-- ============ ITEM DETAIL · #02 NFC Tap-to-Open ============ -->
+<div id="itemOverlay" class="overlay hidden" role="dialog" aria-modal="true">
+  <div class="sheet">
+    <button id="closeDetail" class="close-btn" aria-label="Close">✕</button>
+    <div class="detail-icon" id="dIcon">📦</div>
+    <h2 id="dName">Item</h2>
+    <p class="muted" id="dMeta">SKU · Bin · Supplier</p>
+    <div class="qty-display"><span id="dQty">0</span><small>in stock</small></div>
+    <div class="qty-controls">
+      <button id="qtyMinus" class="qty-btn minus" aria-label="Remove one">−</button>
+      <button id="qtyPlus" class="qty-btn plus" aria-label="Add one">+</button>
+    </div>
+    <div class="qty-controls small-controls">
+      <button id="qtyMinus5" class="qty-btn-sm">−5</button>
+      <button id="qtyPlus5" class="qty-btn-sm">+5</button>
+    </div>
+    <p id="dCost" class="detail-cost"></p>
+    <p id="dUpdated" class="muted small"></p>
+    <button id="scanNfcBtn" class="btn btn-primary btn-big">📡 Scan NFC sticker</button>
+    <p id="nfcMsg" class="result"></p>
+    <label class="small-label">NFC sticker link (write this URL to a sticker)</label>
+    <div class="copy-row"><input id="dStickerLink" readonly><button id="dCopyBtn" class="btn">Copy</button></div>
+  </div>
+</div>
+
+<div id="toast" class="toast hidden"></div>
+
+<nav class="tabbar" aria-label="Main">
+  <button class="tab active" data-view="home"><span>🏠</span>Home</button>
+  <button class="tab" data-view="map"><span>🗺️</span>Map</button>
+  <button class="tab" data-view="suppliers"><span>🏭</span>Suppliers</button>
+  <button class="tab tab-add" data-view="add"><span>＋</span>Add</button>
+  <button class="tab" data-view="queue"><span>🔄</span>Queue<em id="tabQueueCount" class="tab-count hidden">0</em></button>
+  <button class="tab" data-view="sync"><span>⚙️</span>Sync</button>
+</nav>
+
+<script src="appsheet.js"></script>
+<script src="app.js"></script>
+<script>
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', function () {
+    navigator.serviceWorker.register('sw.js').catch(function () { /* offline shell is a bonus, not required */ });
+  });
+}
+</script>
+</body>
+</html>

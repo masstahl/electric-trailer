@@ -1,0 +1,8 @@
+# Electric Trailer — nothing secret belongs in this repo.
+# AppSheet Access Keys are entered on-device in the Sync tab and stored
+# only in that device's localStorage. Never commit a key here.
+*.muse-github-snapshot-sync.json
+*.muse-github-snapshot-sync.json.tmp-*
+.DS_Store
+Thumbs.db
+*.log
