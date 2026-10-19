@@ -120,11 +120,9 @@
     var q = ($('searchInput').value || '').trim().toLowerCase();
     var items = D.getItems();
     var totalUnits = items.reduce(function (s, i) { return s + i.qty; }, 0);
-    var totalValue = items.reduce(function (s, i) { return s + i.qty * i.cost; }, 0);
     var low = items.filter(function (i) { return i.qty <= 5; }).length;
     $('statItems').textContent = items.length;
     $('statUnits').textContent = totalUnits;
-    $('statValue').textContent = money(totalValue).replace('.00', '');
     $('statLow').textContent = low;
     var filtered = items.filter(function (i) {
       if (!q) return true;
@@ -154,7 +152,7 @@
     $('dName').textContent = item.name;
     $('dMeta').textContent = item.sku + ' · Bin ' + item.bin + ' · ' + item.supplier;
     $('dQty').textContent = item.qty;
-    $('dCost').textContent = money(item.cost) + ' each · ' + money(item.cost * item.qty) + ' on hand';
+    $('dCost').textContent = money(item.cost) + ' each';
     $('dUpdated').textContent = 'Last updated ' + fmtTime(item.updated);
     $('dStickerLink').value = D.stickerUrl(item.id);
     $('nfcMsg').textContent = ''; $('nfcMsg').className = 'result';
@@ -169,7 +167,7 @@
     var item = D.updateQty(currentItemId, delta);
     if (item) {
       $('dQty').textContent = item.qty;
-      $('dCost').textContent = money(item.cost) + ' each · ' + money(item.cost * item.qty) + ' on hand';
+      $('dCost').textContent = money(item.cost) + ' each';
       $('dUpdated').textContent = 'Last updated ' + fmtTime(item.updated) + (navigator.onLine ? '' : ' · queued (offline)');
       toast(item.name + ' → ' + item.qty + (navigator.onLine ? '' : ' (queued)'));
       refreshChrome();
@@ -281,10 +279,9 @@
     var items = D.getItems();
     $('supplierList').innerHTML = D.getSuppliers().map(function (s) {
       var mine = items.filter(function (i) { return i.supplier === s.name; });
-      var value = mine.reduce(function (sum, i) { return sum + i.qty * i.cost; }, 0);
       return '<button class="list-item" data-supplier="' + esc(s.name) + '"><span class="li-icon">🏭</span>' +
         '<span class="li-main"><span class="li-name">' + esc(s.name) + '</span><br>' +
-        '<span class="li-sub">' + mine.length + ' items · ' + money(value).replace('.00', '') + ' stock · lead ' + esc(s.leadTime) + '<br>' +
+        '<span class="li-sub">' + mine.length + ' items · lead ' + esc(s.leadTime) + '<br>' +
         esc(s.contact) + ' · ' + esc(s.phone) + ' · ' + esc(s.email) + '</span></span></button>';
     }).join('');
     $('supplierList').querySelectorAll('[data-supplier]').forEach(function (el) {

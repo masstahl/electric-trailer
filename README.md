@@ -47,7 +47,7 @@ Bottom tab bar: **Home · Map · Suppliers · Add · Queue · Sync**
 | 02 | **NFC Tap-to-Open Item Card** | Item detail with giant + / − buttons (gloved-hands friendly, plus ±5), qty, bin, supplier, cost, SKU. “Scan NFC” uses Web NFC where available; sticker taps via `?item=<id>` open the item directly. Includes a copyable sticker link. |
 | 03 | **Warehouse / Bin Map** | Aisles A–D × bins 1–6 as a visual grid. Each bin shows item count and total units, colored by stock level. Tap a bin to list its items. |
 | 16 | **Offline-First Field Mode** (Queue tab) | Online/offline status, a pending-changes queue in localStorage, and “Sync now”. Every edit made offline queues instead of failing and flushes through the data layer when back online. |
-| 19 | **Supplier Hub** | Supplier cards with item count, total stock value, lead time, and contact. Tap a supplier to list its items. |
+| 19 | **Supplier Hub** | Supplier cards with item count, lead time, and contact. Tap a supplier to list its items. |
 | 22 | **Quick Add New Item** | Fast form (name, qty, bin, supplier, cost, photo-icon picker). On save it shows the new item's NFC sticker link, a copy button, a Web NFC “write to sticker” button where supported, and iPhone NFC Tools instructions. |
 | 24 | **AppSheet Sync Health & Settings** | Demo/Live mode, last sync, row count, pending queue count, last error, and the AppSheet connection settings with a real “Test connection” (AppSheet `Find` action). |
 
