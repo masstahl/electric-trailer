@@ -6,6 +6,15 @@
 <meta name="theme-color" content="#0f172a">
 <meta name="description" content="Electric Trailer — fast AppSheet-backed inventory front-end with NFC stickers. Photo grid, bin map, offline-first, supplier hub.">
 <title>Electric Trailer — Inventory</title>
+<script>
+/* Apply the saved theme before first paint (no flash). Key: 'et-theme'. */
+(function () {
+  var t = 'midnight';
+  try { t = localStorage.getItem('et-theme') || 'midnight'; } catch (e) { /* storage blocked */ }
+  if (['midnight', 'warehouse', 'electric', 'hivis', 'paper', 'workshop'].indexOf(t) === -1) t = 'midnight';
+  document.documentElement.dataset.theme = t;
+})();
+</script>
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="stylesheet" href="styles.css">
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🚐</text></svg>">
@@ -104,6 +113,45 @@
   <!-- ============ SYNC · #24 Sync Health & Settings ============ -->
   <section id="view-sync" class="view">
     <h2>AppSheet Sync Health &amp; Settings</h2>
+
+    <!-- Appearance: 6 switchable looks, saved on this device -->
+    <div class="card">
+      <h3 style="margin-top:0">🎨 Appearance</h3>
+      <p class="muted small">Pick a look — it applies instantly and is saved on this device.</p>
+      <div class="theme-grid" id="themeGrid">
+        <button type="button" class="theme-card" data-theme-pick="midnight">
+          <span class="theme-swatches"><span class="theme-swatch" style="background:#0f172a"></span><span class="theme-swatch" style="background:#d97706"></span><span class="theme-swatch" style="background:#ffffff"></span><span class="theme-swatch" style="background:#eef2f6"></span></span>
+          <span class="theme-name">Midnight Industrial</span>
+          <span class="theme-feel">Dark slate + amber · the original</span>
+        </button>
+        <button type="button" class="theme-card" data-theme-pick="warehouse">
+          <span class="theme-swatches"><span class="theme-swatch" style="background:#ffffff"></span><span class="theme-swatch" style="background:#1d4ed8"></span><span class="theme-swatch" style="background:#eef2f7"></span><span class="theme-swatch" style="background:#17233b"></span></span>
+          <span class="theme-name">Clean Warehouse</span>
+          <span class="theme-feel">Light + royal blue · clean and bright</span>
+        </button>
+        <button type="button" class="theme-card" data-theme-pick="electric">
+          <span class="theme-swatches"><span class="theme-swatch" style="background:#050914"></span><span class="theme-swatch" style="background:#38bdf8"></span><span class="theme-swatch" style="background:#8b5cf6"></span><span class="theme-swatch" style="background:#0d1526"></span></span>
+          <span class="theme-name">Electric</span>
+          <span class="theme-feel">Dark navy + electric blue · glowing accents</span>
+        </button>
+        <button type="button" class="theme-card" data-theme-pick="hivis">
+          <span class="theme-swatches"><span class="theme-swatch" style="background:#000000"></span><span class="theme-swatch" style="background:#ffd500"></span><span class="theme-swatch" style="background:#141414"></span><span class="theme-swatch" style="background:#ffffff"></span></span>
+          <span class="theme-name">Hi-Vis Safety</span>
+          <span class="theme-feel">Black + safety yellow · maximum contrast</span>
+        </button>
+        <button type="button" class="theme-card" data-theme-pick="paper">
+          <span class="theme-swatches"><span class="theme-swatch" style="background:#faf7f2"></span><span class="theme-swatch" style="background:#b4552d"></span><span class="theme-swatch" style="background:#fffcf5"></span><span class="theme-swatch" style="background:#292524"></span></span>
+          <span class="theme-name">Paper Minimal</span>
+          <span class="theme-feel">Warm off-white + terracotta · flat and calm</span>
+        </button>
+        <button type="button" class="theme-card" data-theme-pick="workshop">
+          <span class="theme-swatches"><span class="theme-swatch" style="background:#1b4332"></span><span class="theme-swatch" style="background:#2d6a4f"></span><span class="theme-swatch" style="background:#f7f4ea"></span><span class="theme-swatch" style="background:#fffdf4"></span></span>
+          <span class="theme-name">Workshop Green</span>
+          <span class="theme-feel">Deep green + cream · warm workshop feel</span>
+        </button>
+      </div>
+    </div>
+
     <div class="card stats-card">
       <div class="kv"><span>Connection mode</span><strong id="healthMode">Demo</strong></div>
       <div class="kv"><span>Item rows on this device</span><strong id="healthRows">–</strong></div>
@@ -122,7 +170,7 @@
     </form>
     <div class="card">
       <h3>⚠️ App status note</h3>
-      <p class="muted">This AppSheet app is currently in <strong>test mode / blocked</strong> (“plan upgrade needed”). Live sync will fail until the app creator runs a deployment check in AppSheet and the account plan enables the API. Until then, Demo mode works fully offline. See <strong>SETUP.md</strong> in the repo.</p>
+      <p class="muted">This AppSheet app is currently in <strong>test mode / blocked</strong> (“plan upgrade needed”). Live sync will fail until a deployment check has been run in AppSheet and the account plan enables the API. Until then, Demo mode works fully offline. See <strong>SETUP.md</strong> in the repo.</p>
       <button type="button" id="resetDemoBtn" class="btn btn-danger">Reset demo data</button>
     </div>
   </section>

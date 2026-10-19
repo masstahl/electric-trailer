@@ -20,8 +20,22 @@ https://masstahl.github.io/electric-trailer/
 > ⚠️ **Current AppSheet status:** the linked AppSheet app
 > (`bd77482b-d437-4804-a3ef-fc2815feff2e`) is in **test mode and blocked**
 > (“plan upgrade needed”), so its real tables cannot be read yet. Live sync
-> will fail until the app creator runs a deployment check in AppSheet and
+> will fail until a deployment check is run in AppSheet and
 > the account plan enables the API. Step-by-step fix: **SETUP.md**.
+
+## Appearance
+
+6 switchable looks, applied instantly and saved per device. Switch in the
+**Sync** tab → **Appearance**:
+
+| Theme | Feel |
+|---|---|
+| **Midnight Industrial** (default) | Dark slate header, amber accent — the original look |
+| **Clean Warehouse** | Light theme, white cards, grey-blue background, royal blue accent |
+| **Electric** | Very dark navy, electric blue + violet accents, subtle glows, gradient header |
+| **Hi-Vis Safety** | Black, safety yellow, extra-bold type, highest contrast, thicker borders |
+| **Paper Minimal** | Warm off-white, cream cards, charcoal text, flat — no shadows, muted terracotta accent |
+| **Workshop Green** | Deep green + cream, warm cards |
 
 ## The 7 screens
 

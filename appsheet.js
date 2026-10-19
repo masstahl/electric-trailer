@@ -187,7 +187,7 @@
       })
       .catch(function (err) {
         setMeta({ lastError: String(err.message || err) });
-        return { ok: false, mode: 'live', message: String(err.message || err) + ' — If AppSheet says the app is not deployed / plan upgrade needed, the app creator must run a deployment check in AppSheet first (see SETUP.md).' };
+        return { ok: false, mode: 'live', message: String(err.message || err) + ' — If AppSheet says the app is not deployed / plan upgrade needed, a deployment check needs to be run in AppSheet first (see SETUP.md).' };
       });
   }
 

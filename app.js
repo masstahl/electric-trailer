@@ -38,6 +38,48 @@
     try { return new Date(iso).toLocaleString(); } catch (e) { return iso; }
   }
 
+  /* ---------- appearance / themes ---------- */
+  var THEMES = {
+    midnight:  { themeColor: '#0f172a' },
+    warehouse: { themeColor: '#ffffff' },
+    electric:  { themeColor: '#0a1230' },
+    hivis:     { themeColor: '#000000' },
+    paper:     { themeColor: '#fffaf0' },
+    workshop:  { themeColor: '#1b4332' }
+  };
+  function savedTheme() {
+    var t = 'midnight';
+    try { t = localStorage.getItem('et-theme') || 'midnight'; } catch (e) { /* storage blocked */ }
+    return THEMES[t] ? t : 'midnight';
+  }
+  function markThemeCards(name) {
+    document.querySelectorAll('[data-theme-pick]').forEach(function (card) {
+      var on = card.getAttribute('data-theme-pick') === name;
+      card.classList.toggle('sel', on);
+      card.setAttribute('aria-pressed', on ? 'true' : 'false');
+    });
+  }
+  function applyTheme(name, save) {
+    if (!THEMES[name]) name = 'midnight';
+    document.documentElement.dataset.theme = name;
+    if (save) { try { localStorage.setItem('et-theme', name); } catch (e) { /* storage blocked */ } }
+    var meta = document.querySelector('meta[name="theme-color"]');
+    if (meta) meta.setAttribute('content', THEMES[name].themeColor);
+    markThemeCards(name);
+  }
+  function initTheme() {
+    // The <head> script in index.html already set data-theme pre-paint;
+    // here we just sync the picker UI + browser chrome color to it.
+    applyTheme(document.documentElement.dataset.theme || savedTheme(), false);
+    document.querySelectorAll('[data-theme-pick]').forEach(function (card) {
+      card.addEventListener('click', function () {
+        var name = card.getAttribute('data-theme-pick');
+        applyTheme(name, true);
+        toast('Look: ' + card.querySelector('.theme-name').textContent);
+      });
+    });
+  }
+
   /* ---------- header / global status ---------- */
   function refreshChrome() {
     var pending = D.getQueue().filter(function (c) { return !c.synced; }).length;
@@ -368,6 +410,7 @@
   });
 
   /* ---------- init ---------- */
+  initTheme();
   initAddForm();
   renderHome();
   renderSync();

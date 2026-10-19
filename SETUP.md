@@ -1,7 +1,7 @@
 # SETUP — Going live with Electric Trailer
 
-For the sheet/app owner (the brother). About 10 minutes once AppSheet is
-unblocked. Work through the steps in order.
+Going live takes about 10 minutes once AppSheet is unblocked.
+Work through the steps in order.
 
 The app runs in **Demo mode** until step 4 is done — safe to share the
 link and try everything before then.
@@ -27,7 +27,7 @@ needed”)** — while it is, its API cannot be used at all, by any app.
 App: https://www.appsheet.com/start/bd77482b-d437-4804-a3ef-fc2815feff2e
 App ID: `bd77482b-d437-4804-a3ef-fc2815feff2e`
 
-1. Sign in to https://www.appsheet.com as the app creator.
+1. Sign in to https://www.appsheet.com with an account that can edit the app.
 2. Open the app → **Manage → Deploy → Deployment Check → Run deployment
    check**, and fix anything it flags.
 3. Deploy the app (Manage → Deploy). If it still says a plan upgrade is
@@ -67,7 +67,7 @@ App ID: `bd77482b-d437-4804-a3ef-fc2815feff2e`
 ## Step 5 — Match your table's columns
 
 The front-end expects these columns (names are what it sends/expects —
-rename your AppSheet columns to match, or ask Matthew to adjust the
+rename your AppSheet columns to match, or adjust the
 mapping in `appsheet.js`):
 
 | Column   | Type    | Notes                                  |
