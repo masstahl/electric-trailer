@@ -231,7 +231,6 @@
     $('dCost').textContent = money(item.cost) + ' each';
     $('dUpdated').textContent = 'Last updated ' + fmtTime(item.updated);
     $('dStickerLink').value = D.stickerUrl(item.id);
-    $('nfcMsg').textContent = ''; $('nfcMsg').className = 'result';
     $('itemOverlay').classList.remove('hidden');
   }
   function closeItem() { $('itemOverlay').classList.add('hidden'); currentItemId = null; renderHome(); }
@@ -420,22 +419,8 @@
     }
   }
 
-  /* Item detail: the old one-shot Scan button now just turns NFC Live on —
-   * the same shared handleTag() opens whatever sticker is presented. */
-  $('scanNfcBtn').addEventListener('click', function () {
-    var msg = $('nfcMsg');
-    if (!NFC_SUPPORTED) {
-      msg.className = 'result';
-      msg.textContent = 'Web NFC scanning needs Chrome on Android. On iPhone, close this and just tap the sticker to the top of the phone — it opens this item automatically.';
-      return;
-    }
-    msg.textContent = 'Turning NFC Live on — hold any sticker near the back of the phone…';
-    startNfcLive().then(function (ok) {
-      msg.textContent = ok
-        ? 'NFC Live is on — every sticker tap now opens its item while the app is open.'
-        : 'NFC could not start yet. Tap the NFC chip in the header, allow the permission, then tap a sticker.';
-    });
-  });
+  /* No Scan button in the item detail: NFC Live (header chip) listens
+   * globally while the app is open and opens items via handleTag(). */
 
   /* Sticker taps: ?item=<id> opens that item directly on load. */
   function openFromUrl() {

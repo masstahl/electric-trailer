@@ -163,17 +163,17 @@ main{max-width:960px;margin:0 auto;padding:1rem}
 .stat.warn strong{color:var(--red)}
 
 /* #08 Photo grid */
-.photo-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(158px,1fr));gap:.7rem}
+.photo-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:.55rem}
 .photo-card{
   background:var(--surface);border:var(--bw) solid var(--border);border-radius:var(--radius);
-  padding:.9rem .7rem .75rem;text-align:center;cursor:pointer;position:relative;
+  padding:.6rem .4rem .55rem;text-align:center;cursor:pointer;position:relative;
   box-shadow:var(--card-shadow);transition:transform .08s ease;
 }
 .photo-card:active{transform:scale(.97)}
 .photo-card .pc-icon{font-size:3rem;line-height:1.15;display:block}
-.photo-card .pc-name{font-weight:700;font-size:.95rem;margin:.35rem 0 .15rem;min-height:2.3em}
-.photo-card .pc-bin{color:var(--muted);font-size:.78rem}
-.qty-pill{display:inline-block;margin-top:.45rem;font-weight:800;font-size:.85rem;padding:.28rem .7rem;border-radius:999px}
+.photo-card .pc-name{font-weight:700;font-size:.8rem;line-height:1.2;margin:.3rem 0 .1rem;min-height:2.4em}
+.photo-card .pc-bin{color:var(--muted);font-size:.7rem}
+.qty-pill{display:inline-block;margin-top:.35rem;font-weight:800;font-size:.78rem;padding:.22rem .55rem;border-radius:999px}
 .qty-ok{background:var(--ok-bg);color:var(--ok-text)}
 .qty-low{background:var(--low-bg);color:var(--low-text)}
 .qty-out{background:var(--out-bg);color:var(--out-text)}
@@ -332,11 +332,11 @@ main{max-width:960px;margin:0 auto;padding:1rem}
 .tab .icon-svg{width:16px;height:16px;display:block;margin:0 auto}
 .tab-add .icon-svg{width:18px;height:18px}
 .photo-card .pc-icon{
-  display:flex;align-items:center;justify-content:center;width:86px;height:68px;margin:0 auto;
+  display:flex;align-items:center;justify-content:center;width:100%;height:56px;margin:0 auto;
   color:var(--accent);background:var(--surface2);font-size:1rem;line-height:1;
   clip-path:polygon(14% 0,100% 0,100% 86%,86% 100%,0 100%,0 14%);
 }
-.photo-card .pc-icon .icon-svg{width:50px;height:50px}
+.photo-card .pc-icon .icon-svg{width:36px;height:36px}
 .list-item .li-icon{
   font-size:1rem;color:var(--muted);background:var(--surface2);flex:none;
   width:44px;height:44px;display:inline-flex;align-items:center;justify-content:center;
