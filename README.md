@@ -15,7 +15,7 @@ https://masstahl.github.io/electric-trailer/
   instantly and works offline.
 - Ships in **Demo mode** with sample trailer-parts data so it can be tried
   immediately; switch to **Live mode** by entering an AppSheet Access Key
-  in the Sync tab (stored only on that device, never in this repo).
+  in the Settings tab (stored only on that device, never in this repo).
 
 > ⚠️ **Current AppSheet status:** the linked AppSheet app
 > (`bd77482b-d437-4804-a3ef-fc2815feff2e`) is in **test mode and blocked**
@@ -54,7 +54,7 @@ Bottom tab bar: **Home · Map · Suppliers · Add · Queue · Sync**
 | 08 | **Photo-First Grid** (Home) | Big photo/icon cards instead of spreadsheet rows. Name, bin, and a color-coded quantity pill (green OK, amber ≤5, red ≤2 / out). Live search filters instantly. Tap a card to open the item. |
 | 02 | **NFC Tap-to-Open Item Card** | Item detail with giant + / − buttons (gloved-hands friendly, plus ±5), qty, bin, supplier, cost, SKU. “Scan NFC” uses Web NFC where available; sticker taps via `?item=<id>` open the item directly. Includes a copyable sticker link. |
 | 03 | **Warehouse / Bin Map** | Aisles A–D × bins 1–6 as a visual grid. Each bin shows item count and total units, colored by stock level. Tap a bin to list its items. |
-| 16 | **Offline-First Field Mode** (Queue tab) | Online/offline status, a pending-changes queue in localStorage, and “Sync now”. Every edit made offline queues instead of failing and flushes through the data layer when back online. |
+| 16 | **Offline-First Field Mode** (Settings → Sync Queue) | Online/offline status, a pending-changes queue in localStorage, and “Sync now”. Every edit made offline queues instead of failing and flushes through the data layer when back online. |
 | 19 | **Supplier Hub** | Supplier cards with item count, lead time, and contact. Tap a supplier to list its items. |
 | 22 | **Quick Add New Item** | Fast form (name, qty, bin, supplier, cost, photo-icon picker). On save it shows the new item's NFC sticker link, a copy button, a Web NFC “write to sticker” button where supported, and iPhone NFC Tools instructions. |
 | 24 | **AppSheet Sync Health & Settings** | Demo/Live mode, last sync, row count, pending queue count, last error, and the AppSheet connection settings with a real “Test connection” (AppSheet `Find` action). |
@@ -125,5 +125,5 @@ electric-trailer/
 1. Enable GitHub Pages (SETUP.md, step 1) and open the site on a phone.
 2. “Add to Home Screen” to install it like an app.
 3. Try it in Demo mode: search, tap an item, + / − the quantity, go
-   offline (airplane mode) and watch changes land in the Queue tab.
+   offline (airplane mode) and watch changes land in Settings → Sync Queue.
 4. When AppSheet is unblocked and deployed, follow SETUP.md to go live.

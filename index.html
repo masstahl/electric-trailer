@@ -104,10 +104,13 @@
     </div>
   </section>
 
-  <!-- ============ QUEUE · #16 Offline-First ============ -->
-  <section id="view-queue" class="view">
-    <h2>Offline-First · Sync Queue</h2>
+  <!-- ============ SETTINGS · Queue (#16) + Sync Health (#24) + Appearance ============ -->
+  <section id="view-sync" class="view">
+    <h2>Settings</h2>
+
+    <!-- Sync Queue (moved here from its own tab) -->
     <div class="card">
+      <h3 style="margin-top:0">Sync Queue</h3>
       <p>Connection: <strong id="queueNetStatus">–</strong></p>
       <p>Pending changes: <strong id="queuePendingCount">0</strong> · Last sync: <span id="queueLastSync">never</span></p>
       <p class="muted">Edits made with no signal are saved on this device and queued here — nothing is lost. They send when you're back online.</p>
@@ -116,11 +119,6 @@
     </div>
     <h3>Queued changes</h3>
     <div id="queueList" class="list"></div>
-  </section>
-
-  <!-- ============ SYNC · #24 Sync Health & Settings ============ -->
-  <section id="view-sync" class="view">
-    <h2>AppSheet Sync Health &amp; Settings</h2>
 
     <!-- Appearance: 6 switchable looks, saved on this device -->
     <div class="card">
@@ -227,8 +225,7 @@
   <button class="tab" data-view="map"><span><svg class="icon-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="miter" stroke-linecap="square" aria-hidden="true" focusable="false"><path d="M12 21.5 L5 13.8 V6.8 L12 2.8 L19 6.8 V13.8 Z"/><path d="M12 12.5 L9.3 9.8 L12 7.2 L14.7 9.8 Z"/></svg></span>Map</button>
   <button class="tab" data-view="suppliers"><span><svg class="icon-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="miter" stroke-linecap="square" aria-hidden="true" focusable="false"><path d="M3 21 V10 L9 13.2 V10 L15 13.2 V5.5 H21 V21"/><path d="M2.5 21 H21.5"/></svg></span>Suppliers</button>
   <button class="tab tab-add" data-view="add"><span><svg class="icon-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="miter" stroke-linecap="square" aria-hidden="true" focusable="false"><path d="M8 3.5 H16 L20.5 8 V16 L16 20.5 H8 L3.5 16 V8 Z"/><path d="M12 8 V16 M8 12 H16"/></svg></span>Add</button>
-  <button class="tab" data-view="queue"><span><svg class="icon-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="miter" stroke-linecap="square" aria-hidden="true" focusable="false"><path d="M4 9.5 H15.5 L12 5"/><path d="M20 14.5 H8.5 L12 19"/></svg></span>Queue<em id="tabQueueCount" class="tab-count hidden">0</em></button>
-  <button class="tab" data-view="sync"><span><svg class="icon-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="miter" stroke-linecap="square" aria-hidden="true" focusable="false"><path d="M12 2.8 L20 7.4 V16.6 L12 21.2 L4 16.6 V7.4 Z"/><path d="M12 15.8 L8.3 9.4 H15.7 Z"/></svg></span>Sync</button>
+  <button class="tab" data-view="sync"><span><svg class="icon-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="miter" stroke-linecap="square" aria-hidden="true" focusable="false"><path d="M12 2.8 L20 7.4 V16.6 L12 21.2 L4 16.6 V7.4 Z"/><path d="M12 15.8 L8.3 9.4 H15.7 Z"/></svg></span>Settings<em id="tabQueueCount" class="tab-count hidden">0</em></button>
 </nav>
 
 <script src="appsheet.js"></script>

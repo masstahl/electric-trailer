@@ -184,8 +184,7 @@
     if (name === 'home') renderHome();
     if (name === 'map') renderMap();
     if (name === 'suppliers') renderSuppliers();
-    if (name === 'queue') renderQueue();
-    if (name === 'sync') renderSync();
+    if (name === 'sync') { renderQueue(); renderSync(); }
     window.scrollTo(0, 0);
   }
   document.querySelectorAll('.tab').forEach(function (t) {

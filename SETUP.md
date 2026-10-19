@@ -108,11 +108,11 @@ both platforms, and the Android listener reads the URL records too.
 - **App opens but shows demo items** → no Access Key saved on this device
   yet (Demo mode). Keys don't sync between phones on purpose.
 - **Changes made offline didn't appear in AppSheet** → open the **Queue**
-  tab and tap **Sync now** while online; the Sync tab shows the last
+  tab and tap **Sync now** while online; the Settings tab shows the last
   error if AppSheet rejected anything.
 - **NFC chip shows "Paused" on Android** → tap the chip (or tap anywhere in the app) to resume listening; NFC Live needs one tap to (re)start after the app is reopened.
 - **Sticker tap opens the site but not the item** → the sticker URL must
   end with `?item=ITEM_ID` using the item's exact Id (copy it from the
   item card — don't type it by hand).
-- **Start over locally** → Sync tab → **Reset demo data** (device only;
+- **Start over locally** → Settings tab → **Reset demo data** (device only;
   doesn't touch AppSheet).
