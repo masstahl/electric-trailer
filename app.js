@@ -114,12 +114,13 @@
     electric:  { themeColor: '#0a1230' },
     hivis:     { themeColor: '#000000' },
     paper:     { themeColor: '#fffaf0' },
-    workshop:  { themeColor: '#1b4332' }
+    workshop:  { themeColor: '#1b4332' },
+    milwaukee: { themeColor: '#8f0112' }
   };
   function savedTheme() {
-    var t = 'electric';
-    try { t = localStorage.getItem('et-theme') || 'electric'; } catch (e) { /* storage blocked */ }
-    return THEMES[t] ? t : 'electric';
+    var t = 'milwaukee';
+    try { t = localStorage.getItem('et-theme') || 'milwaukee'; } catch (e) { /* storage blocked */ }
+    return THEMES[t] ? t : 'milwaukee';
   }
   function markThemeCards(name) {
     document.querySelectorAll('[data-theme-pick]').forEach(function (card) {
@@ -129,7 +130,7 @@
     });
   }
   function applyTheme(name, save) {
-    if (!THEMES[name]) name = 'electric';
+    if (!THEMES[name]) name = 'milwaukee';
     document.documentElement.dataset.theme = name;
     if (save) { try { localStorage.setItem('et-theme', name); } catch (e) { /* storage blocked */ } }
     var meta = document.querySelector('meta[name="theme-color"]');

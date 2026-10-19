@@ -3,21 +3,21 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<meta name="theme-color" content="#0a1230">
+<meta name="theme-color" content="#8f0112">
 <meta name="description" content="Electric Trailer — fast AppSheet-backed inventory front-end with NFC stickers. Photo grid, bin map, offline-first, supplier hub.">
 <title>Electric Trailer — Inventory</title>
 <script>
 /* Apply the saved theme before first paint (no flash). Key: 'et-theme'. */
 (function () {
-  var t = 'electric';
-  try { t = localStorage.getItem('et-theme') || 'electric'; } catch (e) { /* storage blocked */ }
-  if (['midnight', 'warehouse', 'electric', 'hivis', 'paper', 'workshop'].indexOf(t) === -1) t = 'electric';
+  var t = 'milwaukee';
+  try { t = localStorage.getItem('et-theme') || 'milwaukee'; } catch (e) { /* storage blocked */ }
+  if (['midnight', 'warehouse', 'electric', 'hivis', 'paper', 'workshop', 'milwaukee'].indexOf(t) === -1) t = 'milwaukee';
   document.documentElement.dataset.theme = t;
 })();
 </script>
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="stylesheet" href="styles.css">
-<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Crect width='24' height='24' fill='%230a1230'/%3E%3Cpath d='M13.2 2.2 L4.8 13.6 H10.8 L9.2 21.8 L19.2 9.6 H12.8 Z' fill='%2338bdf8'/%3E%3C/svg%3E">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Crect width='24' height='24' fill='%23141414'/%3E%3Cpath d='M13.2 2.2 L4.8 13.6 H10.8 L9.2 21.8 L19.2 9.6 H12.8 Z' fill='%23db011c'/%3E%3C/svg%3E">
 </head>
 <body>
 
@@ -132,7 +132,12 @@
         <button type="button" class="theme-card" data-theme-pick="electric">
           <span class="theme-swatches"><span class="theme-swatch" style="background:#050914"></span><span class="theme-swatch" style="background:#38bdf8"></span><span class="theme-swatch" style="background:#8b5cf6"></span><span class="theme-swatch" style="background:#0d1526"></span></span>
           <span class="theme-name">Electric</span>
-          <span class="theme-feel">Dark navy + electric blue · glowing accents · default</span>
+          <span class="theme-feel">Dark navy + electric blue · glowing accents</span>
+        </button>
+        <button type="button" class="theme-card" data-theme-pick="milwaukee">
+          <span class="theme-swatches"><span class="theme-swatch" style="background:#db011c"></span><span class="theme-swatch" style="background:#101011"></span><span class="theme-swatch" style="background:#1a1a1c"></span><span class="theme-swatch" style="background:#ffffff"></span></span>
+          <span class="theme-name">Milwaukee Red</span>
+          <span class="theme-feel">Milwaukee red + black · tool-case industrial · default</span>
         </button>
         <button type="button" class="theme-card" data-theme-pick="hivis">
           <span class="theme-swatches"><span class="theme-swatch" style="background:#000000"></span><span class="theme-swatch" style="background:#ffd500"></span><span class="theme-swatch" style="background:#141414"></span><span class="theme-swatch" style="background:#ffffff"></span></span>

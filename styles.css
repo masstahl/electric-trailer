@@ -38,7 +38,7 @@
   --badge-bg:#eef2f7; --badge-text:#334155; --badge-border:#cbd5e1;
 }
 
-/* ---------- THEME 3 · Electric (default) ---------- */
+/* ---------- THEME 3 · Electric ---------- */
 [data-theme="electric"]{
   --bg:#050914; --surface:#0d1526; --surface2:#131f3a;
   --text:#e6edf7; --muted:#8ea0bd; --border:#22345a;
@@ -93,6 +93,23 @@
   --tabbar-bg:#fffdf4; --tabbar-text:#5f7163; --tabbar-active:#1b4332;
   --input-bg:#ffffff; --overlay:rgba(27,67,50,.45);
   --badge-bg:#2d4a3a; --badge-text:#d8f3dc; --badge-border:#40916c;
+}
+
+/* ---------- THEME 7 · Milwaukee Red (default) ---------- */
+[data-theme="milwaukee"]{
+  --bg:#101011; --surface:#1a1a1c; --surface2:#242426;
+  --text:#f5f5f4; --muted:#a3a3a3; --border:#333335;
+  --header-bg:linear-gradient(90deg,#8f0112,#db011c); --header-text:#ffffff; --header-muted:#fecdd3;
+  --accent:#db011c; --accent-text:#ffffff; --accent-soft:#3d050d;
+  --tabbar-bg:#161617; --tabbar-text:#a3a3a3; --tabbar-active:#ff3b47;
+  --input-bg:#242426; --overlay:rgba(0,0,0,.72);
+  --badge-bg:#242426; --badge-text:#fda4af; --badge-border:#db011c;
+  --card-shadow:0 1px 6px rgba(0,0,0,.5);
+  --glow:0 0 16px rgba(219,1,28,.45);
+  --ok-bg:#052e1b; --ok-text:#4ade80;
+  --low-bg:#3a2a05; --low-text:#fbbf24;
+  --out-bg:#450a0a; --out-text:#fca5a5;
+  --green:#22c55e; --red:#ef4444; --amber:#f59e0b;
 }
 
 *{box-sizing:border-box}

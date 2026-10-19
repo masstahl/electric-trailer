@@ -25,14 +25,15 @@ https://masstahl.github.io/electric-trailer/
 
 ## Appearance
 
-6 switchable looks, applied instantly and saved per device. Switch in the
+7 switchable looks, applied instantly and saved per device. Switch in the
 **Sync** tab → **Appearance**:
 
 | Theme | Feel |
 |---|---|
 | **Midnight Industrial** | Dark slate header, amber accent — the original look |
 | **Clean Warehouse** | Light theme, white cards, grey-blue background, royal blue accent |
-| **Electric** (default) | Very dark navy, electric blue + violet accents, subtle glows, gradient header |
+| **Electric** | Very dark navy, electric blue + violet accents, subtle glows, gradient header |
+| **Milwaukee Red** (default) | Milwaukee red (#DB011C) + black tool-case body, red gradient header, white type |
 | **Hi-Vis Safety** | Black, safety yellow, extra-bold type, highest contrast, thicker borders |
 | **Paper Minimal** | Warm off-white, cream cards, charcoal text, flat — no shadows, muted terracotta accent |
 | **Workshop Green** | Deep green + cream, warm cards |
