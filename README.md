@@ -37,6 +37,13 @@ https://masstahl.github.io/electric-trailer/
 | **Paper Minimal** | Warm off-white, cream cards, charcoal text, flat — no shadows, muted terracotta accent |
 | **Workshop Green** | Deep green + cream, warm cards |
 
+**Icons:** all iconography is a Cybertruck-style angular system — flat
+geometric inline-SVG line icons built from straight segments with clipped /
+chamfered corners, stroked in `currentColor` so every theme tints them. No
+emoji anywhere in the UI. Items store an icon **key** (e.g. `bolt`, `tire`,
+`battery`, `box`); older inventories saved with emoji values are mapped to
+the matching key automatically at render time, so nothing needs migrating.
+
 ## The 7 screens
 
 Bottom tab bar: **Home · Map · Suppliers · Add · Queue · Sync**

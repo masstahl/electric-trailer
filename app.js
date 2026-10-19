@@ -15,11 +15,80 @@
   var AISLES = ['A', 'B', 'C', 'D'];
   var BINS = [];
   AISLES.forEach(function (a) { for (var i = 1; i <= 6; i++) BINS.push(a + i); });
-  var ICONS = ['📦', '🔌', '💡', '🛞', '⚙️', '🔗', '🔋', '☀️', '⚡', '🪝', '🧰', '🚨'];
+  /* ---------- Angular icon system (Cybertruck clipped geometry) ----------
+   * Flat geometric line icons: straight segments, chamfered/clipped shapes,
+   * stroke=currentColor so every theme tints them. Items store an icon KEY
+   * (e.g. 'bolt'); legacy emoji values are mapped in EMOJI_TO_KEY so saved
+   * inventories keep rendering with no data rewrite. */
+  var ICON_PATHS = {
+    home: '<path d="M3 11 L12 3 L21 11"/><path d="M6 9.5 V21 H18 V9.5"/><path d="M10 21 V14 H14 V21"/>',
+    map: '<path d="M12 21.5 L5 13.8 V6.8 L12 2.8 L19 6.8 V13.8 Z"/><path d="M12 12.5 L9.3 9.8 L12 7.2 L14.7 9.8 Z"/>',
+    factory: '<path d="M3 21 V10 L9 13.2 V10 L15 13.2 V5.5 H21 V21"/><path d="M2.5 21 H21.5"/>',
+    plus: '<path d="M8 3.5 H16 L20.5 8 V16 L16 20.5 H8 L3.5 16 V8 Z"/><path d="M12 8 V16 M8 12 H16"/>',
+    sync: '<path d="M4 9.5 H15.5 L12 5"/><path d="M20 14.5 H8.5 L12 19"/>',
+    hex: '<path d="M12 2.8 L20 7.4 V16.6 L12 21.2 L4 16.6 V7.4 Z"/><path d="M12 15.8 L8.3 9.4 H15.7 Z"/>',
+    scan: '<path d="M3 7.5 V3.5 H7.5"/><path d="M16.5 3.5 H21 V7.5"/><path d="M21 16.5 V20.5 H16.5"/><path d="M7.5 20.5 H3 V16.5"/><path d="M6.5 12 H17.5"/>',
+    check: '<path d="M3.5 12.5 L9.5 18.5 L20.5 5.5"/>',
+    box: '<path d="M12 2.8 L21 7.4 V16.6 L12 21.2 L3 16.6 V7.4 Z"/><path d="M3 7.4 L12 12 L21 7.4"/><path d="M12 12 V21.2"/>',
+    plug: '<path d="M8.5 2.8 V8 M15.5 2.8 V8"/><path d="M5 8 H19 V12.8 L12 16.8 L5 12.8 Z"/><path d="M12 16.8 V21.2"/>',
+    light: '<path d="M12 2.8 L17.2 8.2 L14.6 14 H9.4 L6.8 8.2 Z"/><path d="M9.4 17.2 H14.6"/><path d="M10.2 20.4 H13.8"/>',
+    tire: '<path d="M8.2 3 H15.8 L21 8.2 V15.8 L15.8 21 H8.2 L3 15.8 V8.2 Z"/><circle cx="12" cy="12" r="2.4"/><path d="M12 3.2 V9.2 M12 14.8 V20.8 M3.2 12 H9.2 M14.8 12 H20.8"/>',
+    axle: '<path d="M1.8 12 H22.2"/><path d="M3.8 8.6 L8 8.6 L8 15.4 L3.8 15.4 Z"/><path d="M16 8.6 L20.2 8.6 L20.2 15.4 L16 15.4 Z"/>',
+    link: '<path d="M10.2 13.8 L5 8.6 L8 5.6 L13.2 10.8"/><path d="M13.8 10.2 L19 15.4 L16 18.4 L10.8 13.2"/>',
+    chain: '<path d="M2.8 12 L6.8 7.8 L11 12 L6.8 16.2 Z"/><path d="M13 12 L17.2 7.8 L21.2 12 L17.2 16.2 Z"/><path d="M11 12 H13"/>',
+    jack: '<path d="M12 3 L20.5 21 H16.8 L12 10.8 L7.2 21 H3.5 Z"/><path d="M8.8 16.5 H15.2"/>',
+    battery: '<path d="M2.8 8 H18.2 V16.2 H2.8 Z"/><path d="M21.2 10.4 V13.8"/><path d="M13.2 9.3 L9.4 13.2 H11.8 L10.4 15.4 L14.8 11.2 H12.3 Z" fill="currentColor" stroke="none"/>',
+    bolt: '<path d="M13.2 2.2 L4.8 13.6 H10.8 L9.2 21.8 L19.2 9.6 H12.8 Z" fill="currentColor" stroke="none"/>',
+    solar: '<path d="M5.2 3.8 H18.8 L20.8 14.8 H3.2 Z"/><path d="M8.4 3.8 L6.8 14.8 M15.6 3.8 L17.2 14.8 M4.2 9.3 H19.8"/><path d="M12 14.8 V18.8 M7.8 21 H16.2 M12 18.8 V21"/>',
+    hub: '<path d="M8.2 3 H15.8 L21 8.2 V15.8 L15.8 21 H8.2 L3 15.8 V8.2 Z"/><path d="M12 7.8 L15.6 10.4 L14.2 14.6 H9.8 L8.4 10.4 Z"/>',
+    spring: '<path d="M3.5 3.5 H20.5"/><path d="M6 3.5 L18 7.5 L6 11.5 L18 15.5 L6 19.5"/><path d="M3.5 20.5 H20.5"/>',
+    fender: '<path d="M2.8 13 L7 5.8 L12 3.8 L17 5.8 L21.2 13"/><path d="M8 20.2 L9.6 13.4 H14.4 L16 20.2"/><path d="M2.8 20.2 H21.2"/>',
+    hook: '<path d="M9 2.6 H15 V6.2 H9 Z"/><path d="M12 6.2 V11.8 L17.2 15.2 V17.8 L12 21.4 L6.8 17.8 V14"/>',
+    kit: '<path d="M8.5 6.8 V3.8 H15.5 V6.8"/><path d="M5 6.8 H19 L21 8.8 V18.8 L19 20.8 H5 L3 18.8 V8.8 Z"/><path d="M3 12.4 H21"/>',
+    alert: '<path d="M12 3 L22 20.2 H2 Z"/><path d="M12 9.2 V13.8"/><path d="M12 16.8 V17.1"/>',
+    diamond: '<path d="M12 2.8 L21.2 12 L12 21.2 L2.8 12 Z"/><path d="M12 7.4 L16.6 12 L12 16.6 L7.4 12 Z"/>',
+    controller: '<path d="M5 3.8 H19 L21 5.8 V18.2 L19 20.2 H5 L3 18.2 V5.8 Z"/><path d="M7.5 8 V16"/><path d="M5.8 11 H9.2"/><path d="M12 8 V16"/><path d="M10.3 13.5 H13.7"/><path d="M16.5 8 V16"/><path d="M14.8 9.5 H18.2"/>',
+    truck: '<path d="M2 16.2 L4.8 9.4 L9.6 8.4 L13.8 3.6 L17.8 8.2 L22 10.2 V16.2"/><path d="M2 16.2 H22"/><circle cx="7.4" cy="17.4" r="1.9"/><circle cx="16.6" cy="17.4" r="1.9"/><path d="M9.3 17.4 H14.7"/>'
+  };
+  var EMOJI_TO_KEY = {
+    '\u{1F4E6}': 'box',
+    '\u{1F50C}': 'plug',
+    '\u{1F4A1}': 'light',
+    '\u{1F6DE}': 'tire',
+    '\u{2699}': 'hex',
+    '\u{1F517}': 'link',
+    '\u{26D3}': 'chain',
+    '\u{1F3D7}': 'jack',
+    '\u{1F50B}': 'battery',
+    '\u{26A1}': 'bolt',
+    '\u{2600}': 'solar',
+    '\u{1F39B}': 'controller',
+    '\u{1F3AF}': 'hub',
+    '\u{1F33F}': 'spring',
+    '\u{1F6E1}': 'fender',
+    '\u{1FA9D}': 'hook',
+    '\u{1F9F0}': 'kit',
+    '\u{1F6A8}': 'alert',
+    '\u{1F536}': 'diamond',
+    '\u{1F690}': 'truck',
+    '\u{1F3ED}': 'factory'
+  };
+  var ICON_KEYS = ['box', 'controller', 'plug', 'light', 'bolt', 'battery', 'solar', 'tire', 'axle', 'hub', 'link', 'chain', 'hook', 'kit', 'spring', 'diamond'];
+  function svgIcon(key) {
+    var inner = ICON_PATHS[key] || ICON_PATHS.box;
+    return '<svg class="icon-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="miter" stroke-linecap="square" aria-hidden="true" focusable="false">' + inner + '</svg>';
+  }
+  function iconKeyFor(item) {
+    if (!item || !item.icon) return 'box';
+    if (ICON_PATHS[item.icon]) return item.icon;
+    var stripped = String(item.icon).replace(/\uFE0F/g, '');
+    return EMOJI_TO_KEY[stripped] || 'box';
+  }
+  function iconFor(item) { return svgIcon(iconKeyFor(item)); }
   var currentItemId = null;
   var selectedBin = null;
   var selectedSupplier = null;
-  var selectedIcon = ICONS[0];
+  var selectedIcon = ICON_KEYS[0];
 
   function esc(s) {
     return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
@@ -130,7 +199,7 @@
     });
     $('photoGrid').innerHTML = filtered.map(function (i) {
       return '<div class="photo-card" data-open="' + esc(i.id) + '" role="button" tabindex="0">' +
-        '<span class="pc-icon">' + esc(i.icon) + '</span>' +
+        '<span class="pc-icon">' + iconFor(i) + '</span>' +
         '<div class="pc-name">' + esc(i.name) + '</div>' +
         '<div class="pc-bin">Bin ' + esc(i.bin) + ' · ' + esc(i.sku) + '</div>' +
         '<span class="qty-pill ' + qtyClass(i.qty) + '">' + qtyLabel(i.qty) + '</span></div>';
@@ -148,7 +217,7 @@
     var item = D.getItem(id);
     if (!item) { toast('Item not found: ' + id); return; }
     currentItemId = id;
-    $('dIcon').textContent = item.icon;
+    $('dIcon').innerHTML = iconFor(item);
     $('dName').textContent = item.name;
     $('dMeta').textContent = item.sku + ' · Bin ' + item.bin + ' · ' + item.supplier;
     $('dQty').textContent = item.qty;
@@ -264,7 +333,7 @@
     }
   }
   function itemRow(i) {
-    return '<button class="list-item" data-open="' + esc(i.id) + '"><span class="li-icon">' + esc(i.icon) + '</span>' +
+    return '<button class="list-item" data-open="' + esc(i.id) + '"><span class="li-icon">' + iconFor(i) + '</span>' +
       '<span class="li-main"><span class="li-name">' + esc(i.name) + '</span><br><span class="li-sub">Bin ' + esc(i.bin) + ' · ' + esc(i.sku) + ' · ' + money(i.cost) + '</span></span>' +
       '<span class="li-qty">' + i.qty + '</span></button>';
   }
@@ -279,7 +348,7 @@
     var items = D.getItems();
     $('supplierList').innerHTML = D.getSuppliers().map(function (s) {
       var mine = items.filter(function (i) { return i.supplier === s.name; });
-      return '<button class="list-item" data-supplier="' + esc(s.name) + '"><span class="li-icon">🏭</span>' +
+      return '<button class="list-item" data-supplier="' + esc(s.name) + '"><span class="li-icon">' + svgIcon('factory') + '</span>' +
         '<span class="li-main"><span class="li-name">' + esc(s.name) + '</span><br>' +
         '<span class="li-sub">' + mine.length + ' items · lead ' + esc(s.leadTime) + '<br>' +
         esc(s.contact) + ' · ' + esc(s.phone) + ' · ' + esc(s.email) + '</span></span></button>';
@@ -302,8 +371,8 @@
   function initAddForm() {
     $('addBin').innerHTML = BINS.map(function (b) { return '<option>' + b + '</option>'; }).join('');
     $('addSupplier').innerHTML = D.getSuppliers().map(function (s) { return '<option>' + esc(s.name) + '</option>'; }).join('');
-    $('iconPicker').innerHTML = ICONS.map(function (ic, idx) {
-      return '<button type="button" class="icon-choice' + (idx === 0 ? ' sel' : '') + '" data-icon="' + ic + '">' + ic + '</button>';
+    $('iconPicker').innerHTML = ICON_KEYS.map(function (key, idx) {
+      return '<button type="button" class="icon-choice' + (idx === 0 ? ' sel' : '') + '" data-icon="' + key + '" aria-label="' + key + '">' + svgIcon(key) + '</button>';
     }).join('');
     $('iconPicker').querySelectorAll('[data-icon]').forEach(function (b) {
       b.addEventListener('click', function () {
@@ -322,7 +391,7 @@
     });
     $('addForm').classList.add('hidden');
     $('addSuccess').classList.remove('hidden');
-    $('addSuccessText').textContent = item.icon + ' ' + item.name + ' — ' + item.qty + ' in Bin ' + item.bin + '. Stick an NFC sticker on the bin/item and write this link to it:';
+    $('addSuccessText').textContent = item.name + ' — ' + item.qty + ' in Bin ' + item.bin + '. Stick an NFC sticker on the bin/item and write this link to it:';
     $('addStickerLink').value = D.stickerUrl(item.id);
     $('addWriteNfcBtn').classList.toggle('hidden', !('NDEFReader' in window));
     $('addWriteNfcBtn').onclick = function () { writeSticker(D.stickerUrl(item.id)); };
@@ -340,7 +409,7 @@
     try {
       var writer = new NDEFReader();
       writer.write({ records: [{ recordType: 'url', data: url }] })
-        .then(function () { toast('Sticker written ✅ Hold it near the phone to test.'); })
+        .then(function () { toast('Sticker written — hold it near the phone to test.'); })
         .catch(function (err) { toast('Write failed: ' + err.message); });
     } catch (e) { toast('NFC writing not available here'); }
   }
@@ -354,7 +423,7 @@
     $('queueLastSync').textContent = fmtTime(D.getMeta().lastSync);
     var sorted = q.slice().reverse();
     $('queueList').innerHTML = sorted.length ? sorted.map(function (c) {
-      return '<div class="list-item queue-item' + (c.synced ? ' synced' : '') + '"><span class="li-icon">' + (c.synced ? '✅' : '⏳') + '</span>' +
+      return '<div class="list-item queue-item' + (c.synced ? ' synced' : '') + '"><span class="li-icon">' + (c.synced ? svgIcon('check') : svgIcon('sync')) + '</span>' +
         '<span class="li-main"><span class="li-name">' + esc(c.detail) + '</span><br><span class="li-when">' + esc(c.type) + ' · ' + fmtTime(c.at) + '</span></span>' +
         '<span class="sync-tag' + (c.synced ? ' done' : '') + '">' + (c.synced ? 'SYNCED' : 'PENDING') + '</span></div>';
     }).join('') : '<p class="muted">No changes yet — adjust a quantity and it will appear here.</p>';

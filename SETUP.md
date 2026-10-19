@@ -79,7 +79,7 @@ mapping in `appsheet.js`):
 | `Bin`    | Text    | e.g. `A1`…`D6` — drives the Bin Map    |
 | `Supplier` | Text  | Must match the supplier name           |
 | `Cost`   | Decimal / Price | Per-unit cost                  |
-| `Icon`   | Text (optional) | Emoji used as the item's “photo” |
+| `Icon`   | Text (optional) | Angular icon key, e.g. `bolt` — one of: `box`, `controller`, `plug`, `light`, `bolt`, `battery`, `solar`, `tire`, `axle`, `hub`, `link`, `chain`, `hook`, `kit`, `spring`, `diamond`, `fender`, `jack`, `alert`. Legacy emoji values still render (mapped automatically) |
 | `NFC ID` | Text (optional) | Physical sticker serial, if you track them |
 
 If your real columns have different names, either rename them in the
