@@ -48,9 +48,9 @@
     workshop:  { themeColor: '#1b4332' }
   };
   function savedTheme() {
-    var t = 'midnight';
-    try { t = localStorage.getItem('et-theme') || 'midnight'; } catch (e) { /* storage blocked */ }
-    return THEMES[t] ? t : 'midnight';
+    var t = 'electric';
+    try { t = localStorage.getItem('et-theme') || 'electric'; } catch (e) { /* storage blocked */ }
+    return THEMES[t] ? t : 'electric';
   }
   function markThemeCards(name) {
     document.querySelectorAll('[data-theme-pick]').forEach(function (card) {
@@ -60,7 +60,7 @@
     });
   }
   function applyTheme(name, save) {
-    if (!THEMES[name]) name = 'midnight';
+    if (!THEMES[name]) name = 'electric';
     document.documentElement.dataset.theme = name;
     if (save) { try { localStorage.setItem('et-theme', name); } catch (e) { /* storage blocked */ } }
     var meta = document.querySelector('meta[name="theme-color"]');

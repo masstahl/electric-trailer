@@ -30,9 +30,9 @@ https://masstahl.github.io/electric-trailer/
 
 | Theme | Feel |
 |---|---|
-| **Midnight Industrial** (default) | Dark slate header, amber accent — the original look |
+| **Midnight Industrial** | Dark slate header, amber accent — the original look |
 | **Clean Warehouse** | Light theme, white cards, grey-blue background, royal blue accent |
-| **Electric** | Very dark navy, electric blue + violet accents, subtle glows, gradient header |
+| **Electric** (default) | Very dark navy, electric blue + violet accents, subtle glows, gradient header |
 | **Hi-Vis Safety** | Black, safety yellow, extra-bold type, highest contrast, thicker borders |
 | **Paper Minimal** | Warm off-white, cream cards, charcoal text, flat — no shadows, muted terracotta accent |
 | **Workshop Green** | Deep green + cream, warm cards |

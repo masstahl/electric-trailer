@@ -16,7 +16,7 @@
   --out-bg:#fee2e2; --out-text:#991b1b;
 }
 
-/* ---------- THEME 1 · Midnight Industrial (default) ---------- */
+/* ---------- THEME 1 · Midnight Industrial ---------- */
 :root, [data-theme="midnight"]{
   --bg:#eef2f6; --surface:#ffffff; --surface2:#f8fafc;
   --text:#0f172a; --muted:#64748b; --border:#dbe3ec;
@@ -38,7 +38,7 @@
   --badge-bg:#eef2f7; --badge-text:#334155; --badge-border:#cbd5e1;
 }
 
-/* ---------- THEME 3 · Electric ---------- */
+/* ---------- THEME 3 · Electric (default) ---------- */
 [data-theme="electric"]{
   --bg:#050914; --surface:#0d1526; --surface2:#131f3a;
   --text:#e6edf7; --muted:#8ea0bd; --border:#22345a;
