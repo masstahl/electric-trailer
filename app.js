@@ -87,8 +87,10 @@
   function iconFor(item) { return svgIcon(iconKeyFor(item)); }
   var currentItemId = null;
   var selectedBin = null;
+  var currentBin = null;
   var selectedSupplier = null;
   var selectedIcon = ICON_KEYS[0];
+  var lowFilter = false;
 
   function esc(s) {
     return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
@@ -96,11 +98,39 @@
     });
   }
   function money(n) { return '$' + Number(n || 0).toFixed(2); }
-  function qtyClass(q) { return q <= 0 ? 'qty-out' : (q <= 2 ? 'qty-out' : (q <= 5 ? 'qty-low' : 'qty-ok')); }
-  function qtyLabel(q) { return q <= 0 ? 'OUT OF STOCK' : q + ' in stock'; }
-  function toast(msg) {
-    var t = $('toast'); t.textContent = msg; t.classList.remove('hidden');
-    clearTimeout(t._h); t._h = setTimeout(function () { t.classList.add('hidden'); }, 2600);
+  /* SPEC PLATE status scale — always a word, never hue alone:
+   * 0 = OUT, 1–2 = CRITICAL, 3–5 = LOW, 6+ = OK. */
+  function statusOf(q) { return q <= 0 ? 'out' : (q <= 2 ? 'crit' : (q <= 5 ? 'low' : 'ok')); }
+  function qtyClass(q) { return 'qty-' + statusOf(q); }
+  function qtyLabel(q) {
+    var s = statusOf(q);
+    if (s === 'out') return 'OUT';
+    if (s === 'crit') return 'CRITICAL · ' + q;
+    if (s === 'low') return 'LOW · ' + q;
+    return q + ' in stock';
+  }
+  function qtyStateWord(q) {
+    var s = statusOf(q);
+    return s === 'out' ? 'Out of stock' : (s === 'crit' ? 'Critical' : (s === 'low' ? 'Low stock' : 'In stock'));
+  }
+  function hideToast() { $('toast').classList.add('hidden'); }
+  function toast(msg, ms) {
+    var t = $('toast');
+    $('toastMsg').textContent = msg;
+    $('toastUndo').classList.add('hidden');
+    t.classList.remove('hidden');
+    clearTimeout(t._h); t._h = setTimeout(hideToast, ms || 3000);
+  }
+  /* Qty changes get a 6-second UNDO toast (SPEC PLATE) — replaces, never stacks. */
+  function showUndoToast(msg, undoFn) {
+    var t = $('toast');
+    $('toastMsg').textContent = msg;
+    var u = $('toastUndo');
+    u.classList.remove('hidden');
+    t.classList.remove('hidden');
+    clearTimeout(t._h);
+    u.onclick = function () { hideToast(); if (undoFn) undoFn(); toast('Undone', 2000); };
+    t._h = setTimeout(hideToast, 6000);
   }
   function fmtTime(iso) {
     if (!iso) return 'never';
@@ -174,6 +204,45 @@
     tc.textContent = pending; tc.classList.toggle('hidden', pending === 0);
   }
 
+  /* ---------- shared qty-change path (cards, sheet, bin sheet, count) ----------
+   * Every change routes through ETData (which coalesces the sync queue),
+   * raises the UNDO toast, and refreshes whichever surfaces are visible. */
+  function changeQty(id, delta) {
+    var item = D.getItem(id);
+    if (!item) return null;
+    var before = item.qty;
+    var updated = D.updateQty(id, delta);
+    if (!updated || updated.qty === before) return updated;
+    showUndoToast(updated.name + ' → ' + updated.qty, function () { D.setQty(id, before); afterQtyChange(id); });
+    afterQtyChange(id);
+    return updated;
+  }
+  function setQtyWithUndo(id, qty) {
+    var item = D.getItem(id);
+    if (!item) return null;
+    var before = item.qty;
+    var updated = D.setQty(id, qty);
+    if (!updated || updated.qty === before) return updated;
+    showUndoToast(updated.name + ' → ' + updated.qty, function () { D.setQty(id, before); afterQtyChange(id); });
+    afterQtyChange(id);
+    return updated;
+  }
+  function afterQtyChange(id) {
+    refreshChrome();
+    if ($('view-home').classList.contains('active')) renderHome();
+    if (currentItemId === id && !$('itemOverlay').classList.contains('hidden')) syncSheetQty();
+    if (currentBin && !$('binOverlay').classList.contains('hidden')) renderBinSheetItems();
+    if ($('view-map').classList.contains('active')) renderMap();
+    if ($('view-sync').classList.contains('active')) renderQueue();
+  }
+
+  /* The sticky search+stat block docks right under the app header. */
+  function fitSticky() {
+    var h = document.querySelector('.app-header');
+    if (h) document.documentElement.style.setProperty('--header-h', h.offsetHeight + 'px');
+  }
+  window.addEventListener('resize', fitSticky);
+
   /* ---------- tabs ---------- */
   function showView(name) {
     document.querySelectorAll('.view').forEach(function (v) { v.classList.remove('active'); });
@@ -200,58 +269,132 @@
     $('statItems').textContent = items.length;
     $('statUnits').textContent = totalUnits;
     $('statLow').textContent = low;
+    $('statSegLow').classList.toggle('active', lowFilter);
+    $('statSegLow').setAttribute('aria-pressed', lowFilter ? 'true' : 'false');
+    $('filterHint').classList.toggle('hidden', !lowFilter);
     var filtered = items.filter(function (i) {
+      if (lowFilter && i.qty > 5) return false;
       if (!q) return true;
       return (i.name + ' ' + i.sku + ' ' + i.bin + ' ' + i.supplier).toLowerCase().indexOf(q) !== -1;
     });
+    if (lowFilter) filtered = filtered.slice().sort(function (a, b) { return a.qty - b.qty; });  // worst first: 0s, then 1–2, then 3–5
     $('photoGrid').innerHTML = filtered.map(function (i) {
-      return '<div class="photo-card" data-open="' + esc(i.id) + '" role="button" tabindex="0">' +
+      var st = statusOf(i.qty);
+      var pill = st === 'ok'
+        ? '<span class="qty-pill qty-slot" aria-hidden="true">' + qtyLabel(i.qty) + '</span>'
+        : '<span class="qty-pill ' + qtyClass(i.qty) + '">' + qtyLabel(i.qty) + '</span>';
+      return '<div class="photo-card st-' + st + '" data-card="' + esc(i.id) + '" role="button" tabindex="0" aria-label="' + esc(i.name) + ', ' + qtyLabel(i.qty) + '">' +
         '<span class="pc-icon">' + iconFor(i) + '</span>' +
         '<div class="pc-name">' + esc(i.name) + '</div>' +
         '<div class="pc-bin">Bin ' + esc(i.bin) + ' · ' + esc(i.sku) + '</div>' +
-        '<span class="qty-pill ' + qtyClass(i.qty) + '">' + qtyLabel(i.qty) + '</span></div>';
+        pill +
+        '<div class="stepper-strip">' +
+          '<button type="button" data-dec="' + esc(i.id) + '" aria-label="Remove one from ' + esc(i.name) + '">−</button>' +
+          '<span class="ss-qty">' + i.qty + '</span>' +
+          '<button type="button" data-inc="' + esc(i.id) + '" aria-label="Add one to ' + esc(i.name) + '">+</button>' +
+        '</div></div>';
     }).join('');
+    $('gridEmpty').textContent = lowFilter && !q ? 'Nothing is low right now.' : 'No items match your search.';
     $('gridEmpty').classList.toggle('hidden', filtered.length > 0);
-    $('photoGrid').querySelectorAll('[data-open]').forEach(function (card) {
-      card.addEventListener('click', function () { openItem(card.getAttribute('data-open')); });
+    var grid = $('photoGrid');
+    grid.querySelectorAll('[data-card]').forEach(function (card) {
+      card.addEventListener('click', function (e) {
+        if (e.target.closest('.stepper-strip')) return;
+        openItem(card.getAttribute('data-card'));
+      });
+      card.addEventListener('keydown', function (e) {
+        if ((e.key === 'Enter' || e.key === ' ') && !e.target.closest('.stepper-strip')) {
+          e.preventDefault(); openItem(card.getAttribute('data-card'));
+        }
+      });
+    });
+    grid.querySelectorAll('[data-dec]').forEach(function (b) {
+      b.addEventListener('click', function () { changeQty(b.getAttribute('data-dec'), -1); });
+    });
+    grid.querySelectorAll('[data-inc]').forEach(function (b) {
+      b.addEventListener('click', function () { changeQty(b.getAttribute('data-inc'), 1); });
     });
     refreshChrome();
   }
   $('searchInput').addEventListener('input', renderHome);
+  /* Stat bar tap-to-filter: LOW toggles the low-only view; Items/Units clear it. */
+  $('statSegLow').addEventListener('click', function () { lowFilter = !lowFilter; renderHome(); });
+  $('statSegItems').addEventListener('click', function () { if (lowFilter) { lowFilter = false; renderHome(); } });
+  $('statSegUnits').addEventListener('click', function () { if (lowFilter) { lowFilter = false; renderHome(); } });
 
   /* ---------- #02 NFC Tap-to-Open Item Card ---------- */
-  function openItem(id) {
+  function openItem(id, viaNfc) {
     var item = D.getItem(id);
     if (!item) { toast('Item not found: ' + id); return; }
     currentItemId = id;
     $('dIcon').innerHTML = iconFor(item);
     $('dName').textContent = item.name;
     $('dMeta').textContent = item.sku + ' · Bin ' + item.bin + ' · ' + item.supplier;
-    $('dQty').textContent = item.qty;
+    $('dBinChip').textContent = 'BIN ' + item.bin;
     $('dCost').textContent = money(item.cost) + ' each';
-    $('dUpdated').textContent = 'Last updated ' + fmtTime(item.updated);
     $('dStickerLink').value = D.stickerUrl(item.id);
+    $('qtyEditor').classList.add('hidden');
+    syncSheetQty();
     $('itemOverlay').classList.remove('hidden');
+    var sheet = $('itemOverlay').querySelector('.sheet');
+    sheet.classList.remove('nfc-pulse');
+    if (viaNfc) { void sheet.offsetWidth; sheet.classList.add('nfc-pulse'); }  // signature NFC flash
   }
-  function closeItem() { $('itemOverlay').classList.add('hidden'); currentItemId = null; renderHome(); }
+  function syncSheetQty() {
+    if (!currentItemId) return;
+    var item = D.getItem(currentItemId);
+    if (!item) return;
+    $('dQty').textContent = item.qty;
+    $('dQtyState').textContent = qtyStateWord(item.qty);
+    var pill = $('dStatus');
+    pill.className = 'qty-pill ' + qtyClass(item.qty);
+    pill.textContent = qtyLabel(item.qty);
+    $('dCost').textContent = money(item.cost) + ' each';
+    $('dUpdated').textContent = 'Last updated ' + fmtTime(item.updated) + (navigator.onLine ? '' : ' · queued (offline)');
+  }
+  function closeItem() { $('itemOverlay').classList.add('hidden'); $('qtyEditor').classList.add('hidden'); currentItemId = null; renderHome(); }
   $('closeDetail').addEventListener('click', closeItem);
+  $('doneDetail').addEventListener('click', closeItem);
   $('itemOverlay').addEventListener('click', function (e) { if (e.target === $('itemOverlay')) closeItem(); });
 
-  function bump(delta) {
-    if (!currentItemId) return;
-    var item = D.updateQty(currentItemId, delta);
-    if (item) {
-      $('dQty').textContent = item.qty;
-      $('dCost').textContent = money(item.cost) + ' each';
-      $('dUpdated').textContent = 'Last updated ' + fmtTime(item.updated) + (navigator.onLine ? '' : ' · queued (offline)');
-      toast(item.name + ' → ' + item.qty + (navigator.onLine ? '' : ' (queued)'));
-      refreshChrome();
-    }
-  }
+  function bump(delta) { if (currentItemId) changeQty(currentItemId, delta); }
   $('qtyPlus').addEventListener('click', function () { bump(1); });
   $('qtyMinus').addEventListener('click', function () { bump(-1); });
-  $('qtyPlus5').addEventListener('click', function () { bump(5); });
-  $('qtyMinus5').addEventListener('click', function () { bump(-5); });
+  /* ±5 is HOLD-to-apply (400ms): a short press does nothing, so a gloved
+   * slip can't 5× an edit. Pointer + keyboard holds both work. */
+  function attachHold(el, fn) {
+    var timer = null, fired = false;
+    function start(e) {
+      if (e.type === 'keydown' && e.repeat) return;
+      fired = false;
+      clearTimeout(timer);
+      timer = setTimeout(function () { fired = true; fn(); }, 400);
+    }
+    function cancel() { clearTimeout(timer); }
+    el.addEventListener('pointerdown', start);
+    el.addEventListener('pointerup', cancel);
+    el.addEventListener('pointerleave', cancel);
+    el.addEventListener('pointercancel', cancel);
+    el.addEventListener('keydown', start);
+    el.addEventListener('keyup', cancel);
+    el.addEventListener('click', function (e) { if (!fired) e.preventDefault(); });
+  }
+  attachHold($('qtyPlus5'), function () { bump(5); });
+  attachHold($('qtyMinus5'), function () { bump(-5); });
+  /* Exact count: tap the giant numeral, type the number, Set. */
+  $('dQtyBtn').addEventListener('click', function () {
+    if (!currentItemId) return;
+    var item = D.getItem(currentItemId);
+    $('qtySetInput').value = item ? item.qty : 0;
+    $('qtyEditor').classList.remove('hidden');
+    $('qtySetInput').focus(); $('qtySetInput').select();
+  });
+  $('qtySetBtn').addEventListener('click', function () {
+    if (!currentItemId) return;
+    setQtyWithUndo(currentItemId, parseInt($('qtySetInput').value, 10) || 0);
+    $('qtyEditor').classList.add('hidden');
+  });
+  $('qtySetCancel').addEventListener('click', function () { $('qtyEditor').classList.add('hidden'); });
 
   function copyText(inputEl, msg) {
     inputEl.select(); inputEl.setSelectionRange(0, 9999);
@@ -331,11 +474,29 @@
     if (!item) { toast('Tag not linked to an item'); return 'unlinked'; }
     if (currentItemId === item.id) return 'open';
     if (navigator.vibrate) { try { navigator.vibrate(60); } catch (e) { /* unsupported */ } }
-    openItem(item.id);
+    openItem(item.id, true);
     toast('NFC · ' + item.name);
     return 'opened';
   }
 
+  /* Wake Lock: while NFC Live is on and the page is visible, keep the
+   * screen awake so the scanner doesn't die in a pocket mid-session.
+   * Absence of the API is fine — everything degrades silently. */
+  var wakeLock = null;
+  function updateWakeLock() {
+    var want = nfcLiveWanted && nfcLiveActive && !document.hidden && ('wakeLock' in navigator);
+    if (want && !wakeLock) {
+      try {
+        navigator.wakeLock.request('screen').then(function (lock) {
+          wakeLock = lock;
+          lock.addEventListener('release', function () { wakeLock = null; });
+        }).catch(function () { /* denied — NFC still works */ });
+      } catch (e) { /* unsupported */ }
+    } else if (!want && wakeLock) {
+      try { wakeLock.release(); } catch (e) { /* already released */ }
+      wakeLock = null;
+    }
+  }
   function renderNfcChip() {
     var btn = $('nfcLiveBtn');
     if (!btn) return;
@@ -367,7 +528,7 @@
     nfcAbort = (typeof AbortController !== 'undefined') ? new AbortController() : null;
     var scanPromise = nfcAbort ? nfcReader.scan({ signal: nfcAbort.signal }) : nfcReader.scan();
     return scanPromise.then(function () {
-      nfcLiveActive = true; nfcLivePaused = false; renderNfcChip();
+      nfcLiveActive = true; nfcLivePaused = false; renderNfcChip(); updateWakeLock();
       return true;
     }).catch(function () {
       // Most often NotAllowedError: no gesture yet / permission not granted.
@@ -380,7 +541,7 @@
     nfcLiveWanted = false; nfcLiveActive = false; nfcLivePaused = false;
     try { localStorage.setItem('et-nfc-live', '0'); } catch (e) { /* storage blocked */ }
     if (nfcAbort) { try { nfcAbort.abort(); } catch (e) { /* already settled */ } nfcAbort = null; }
-    renderNfcChip();
+    renderNfcChip(); updateWakeLock();
   }
   /* Chrome needs a gesture: arm a one-time first-touch retry. */
   function armNfcOnFirstTouch() {
@@ -401,11 +562,11 @@
     if (document.hidden) {
       // Readings stop while hidden; end the session so resume is clean.
       if (nfcAbort) { try { nfcAbort.abort(); } catch (e) { /* settled */ } nfcAbort = null; }
-      nfcLiveActive = false; nfcLivePaused = true; renderNfcChip();
+      nfcLiveActive = false; nfcLivePaused = true; renderNfcChip(); updateWakeLock();
     } else {
       // Try an immediate restart; if Chrome refuses without a gesture,
       // the next touch anywhere re-arms it.
-      startNfcLive().then(function (ok) { if (!ok) armNfcOnFirstTouch(); });
+      startNfcLive().then(function (ok) { if (!ok) armNfcOnFirstTouch(); updateWakeLock(); });
     }
   });
   function initNfcLive() {
@@ -430,6 +591,12 @@
   }
 
   /* ---------- #03 Warehouse / Bin Map ---------- */
+  var STATUS_RANK = { out: 0, crit: 1, low: 2, ok: 3 };
+  function worstStatus(list) {
+    var worst = 'ok';
+    list.forEach(function (i) { if (STATUS_RANK[statusOf(i.qty)] < STATUS_RANK[worst]) worst = statusOf(i.qty); });
+    return worst;
+  }
   function renderMap() {
     var items = D.getItems();
     var byBin = {};
@@ -440,30 +607,168 @@
         var bin = a + n;
         var list = byBin[bin] || [];
         var total = list.reduce(function (s, i) { return s + i.qty; }, 0);
-        var cls = list.length === 0 || total === 0 ? 'bin-out' : (total <= 5 ? 'bin-low' : 'bin-ok');
+        var cls, label;
+        if (!list.length) { cls = 'bin-empty'; label = '·'; }
+        else {
+          var worst = worstStatus(list);
+          cls = 'bin-' + worst;
+          label = (worst === 'out' ? '✕ ' : (worst === 'ok' ? '' : '▲ ')) + total;
+        }
         cells += '<button class="bin-cell ' + cls + (selectedBin === bin ? ' sel' : '') + '" data-bin="' + bin + '">' +
-          '<strong>' + bin + '</strong><small>' + list.length + ' items · ' + total + ' units</small></button>';
+          '<strong>' + bin + '</strong><small>' + label + '</small></button>';
       }
       return '<div><div class="aisle-label">AISLE ' + a + '</div><div class="bin-row">' + cells + '</div></div>';
     }).join('');
     $('binMap').querySelectorAll('[data-bin]').forEach(function (c) {
-      c.addEventListener('click', function () { selectedBin = c.getAttribute('data-bin'); renderMap(); });
+      c.addEventListener('click', function () { openBinSheet(c.getAttribute('data-bin')); });
     });
-    if (selectedBin) {
-      var inBin = (byBin[selectedBin] || []);
-      $('binListTitle').textContent = 'Bin ' + selectedBin + ' — ' + inBin.length + ' item(s)';
-      $('binList').innerHTML = inBin.length ? inBin.map(itemRow).join('') : '<p class="muted">Nothing stored in this bin yet.</p>';
-      bindItemRows($('binList'));
-    } else {
-      $('binListTitle').textContent = 'Select a bin';
-      $('binList').innerHTML = '';
-    }
   }
   function itemRow(i) {
     return '<button class="list-item" data-open="' + esc(i.id) + '"><span class="li-icon">' + iconFor(i) + '</span>' +
       '<span class="li-main"><span class="li-name">' + esc(i.name) + '</span><br><span class="li-sub">Bin ' + esc(i.bin) + ' · ' + esc(i.sku) + ' · ' + money(i.cost) + '</span></span>' +
-      '<span class="li-qty">' + i.qty + '</span></button>';
+      '<span class="li-qty ' + qtyClass(i.qty) + '">' + i.qty + '</span></button>';
   }
+
+  /* ---------- Bin Sheet: a bin's contents as a sheet over the map ---------- */
+  function openBinSheet(bin) {
+    currentBin = bin; selectedBin = bin;
+    renderMap();
+    renderBinSheetItems();
+    $('binOverlay').classList.remove('hidden');
+  }
+  function closeBinSheet() { $('binOverlay').classList.add('hidden'); currentBin = null; }
+  function renderBinSheetItems() {
+    if (!currentBin) return;
+    var list = D.getItems().filter(function (i) { return i.bin === currentBin; });
+    var total = list.reduce(function (s, i) { return s + i.qty; }, 0);
+    $('bTitle').textContent = 'BIN ' + currentBin;
+    var worst = list.length ? worstStatus(list) : 'ok';
+    var statusHtml = !list.length ? 'Empty bin'
+      : '<span class="qty-pill ' + ('qty-' + worst) + '">' + (worst === 'ok' ? 'STOCKED' : qtyLabel(list.reduce(function (m, i) { return STATUS_RANK[statusOf(i.qty)] < STATUS_RANK[statusOf(m.qty)] ? i : m; }).qty)) + '</span>';
+    $('bMeta').innerHTML = list.length + ' item(s) · ' + total + ' units &nbsp;' + statusHtml;
+    $('binItems').innerHTML = list.length ? list.map(function (i) {
+      return '<div class="list-item row-item"><span class="li-icon">' + iconFor(i) + '</span>' +
+        '<button type="button" class="li-main row-open" data-open="' + esc(i.id) + '"><span class="li-name">' + esc(i.name) + '</span><br>' +
+        '<span class="li-sub">' + esc(i.sku) + ' · ' + esc(i.supplier) + '</span></button>' +
+        '<span class="row-stepper">' +
+          '<button type="button" data-bdec="' + esc(i.id) + '" aria-label="Remove one from ' + esc(i.name) + '">−</button>' +
+          '<b>' + i.qty + '</b>' +
+          '<button type="button" data-binc="' + esc(i.id) + '" aria-label="Add one to ' + esc(i.name) + '">+</button>' +
+        '</span></div>';
+    }).join('') : '<p class="muted">Nothing stored in this bin yet.</p>';
+    var box = $('binItems');
+    box.querySelectorAll('[data-open]').forEach(function (el) {
+      el.addEventListener('click', function () { var id = el.getAttribute('data-open'); closeBinSheet(); openItem(id); });
+    });
+    box.querySelectorAll('[data-bdec]').forEach(function (b) {
+      b.addEventListener('click', function () { changeQty(b.getAttribute('data-bdec'), -1); });
+    });
+    box.querySelectorAll('[data-binc]').forEach(function (b) {
+      b.addEventListener('click', function () { changeQty(b.getAttribute('data-binc'), 1); });
+    });
+  }
+  $('closeBin').addEventListener('click', closeBinSheet);
+  $('binOverlay').addEventListener('click', function (e) { if (e.target === $('binOverlay')) closeBinSheet(); });
+  $('binAddBtn').addEventListener('click', function () {
+    var bin = currentBin;
+    closeBinSheet();
+    openAddForBin(bin);
+  });
+  $('binCountBtn').addEventListener('click', function () { startCount(currentBin); });
+
+  /* ---------- Count Mode: walk a bin item by item, then apply ---------- */
+  var countSession = null;
+  function startCount(bin) {
+    if (!bin) return;
+    var list = D.getItems().filter(function (i) { return i.bin === bin; });
+    if (!list.length) { toast('Bin ' + bin + ' is empty — nothing to count'); return; }
+    countSession = {
+      bin: bin,
+      entries: list.map(function (i) { return { id: i.id, system: i.qty, counted: i.qty }; }),
+      idx: 0
+    };
+    closeBinSheet();
+    $('countOverlay').classList.remove('hidden');
+    showCountStep();
+  }
+  function showCountStep() {
+    if (!countSession) return;
+    $('cReview').classList.add('hidden');
+    $('cMain').classList.remove('hidden');
+    var en = countSession.entries[countSession.idx];
+    var item = D.getItem(en.id);
+    if (!item) return;
+    $('cProgress').textContent = (countSession.idx + 1) + ' of ' + countSession.entries.length + ' · Bin ' + countSession.bin;
+    $('cHero').innerHTML = iconFor(item);
+    $('cName').textContent = item.name;
+    $('cMeta').textContent = 'Bin ' + item.bin + ' · system qty ' + en.system;
+    $('cQty').textContent = en.counted;
+    $('cBack').textContent = countSession.idx === 0 ? 'Cancel' : 'Back';
+    $('cNext').textContent = countSession.idx === countSession.entries.length - 1 ? 'Finish' : 'Next';
+  }
+  function closeCount() { $('countOverlay').classList.add('hidden'); countSession = null; }
+  $('cPlus').addEventListener('click', function () {
+    if (!countSession) return;
+    var en = countSession.entries[countSession.idx];
+    en.counted++; $('cQty').textContent = en.counted;
+  });
+  $('cMinus').addEventListener('click', function () {
+    if (!countSession) return;
+    var en = countSession.entries[countSession.idx];
+    en.counted = Math.max(0, en.counted - 1); $('cQty').textContent = en.counted;
+  });
+  $('cBack').addEventListener('click', function () {
+    if (!countSession) return;
+    if (countSession.idx === 0) closeCount();
+    else { countSession.idx--; showCountStep(); }
+  });
+  $('cNext').addEventListener('click', function () {
+    if (!countSession) return;
+    if (countSession.idx < countSession.entries.length - 1) { countSession.idx++; showCountStep(); }
+    else finishCount();
+  });
+  /* Variance gate: flag counts off by >20% OR >10 units before applying. */
+  function countVariance(en) {
+    var diff = Math.abs(en.counted - en.system);
+    return diff > 10 || (en.system > 0 && diff > 0.2 * en.system);
+  }
+  function finishCount() {
+    var flagged = countSession.entries.filter(countVariance);
+    if (!flagged.length) { applyCount(); return; }
+    $('cMain').classList.add('hidden');
+    $('cReview').classList.remove('hidden');
+    $('cReviewList').innerHTML = flagged.map(function (en) {
+      var item = D.getItem(en.id);
+      var diff = en.counted - en.system;
+      return '<div class="list-item"><span class="li-icon">' + (item ? iconFor(item) : '') + '</span>' +
+        '<span class="li-main"><span class="li-name">' + esc(item ? item.name : en.id) + '</span><br>' +
+        '<span class="li-sub">System ' + en.system + ' → counted ' + en.counted + ' (' + (diff > 0 ? '+' : '') + diff + ')</span></span></div>';
+    }).join('');
+  }
+  $('cReviewBack').addEventListener('click', function () { showCountStep(); });
+  $('cApplyBtn').addEventListener('click', function () { applyCount(); });
+  function applyCount() {
+    var session = countSession;
+    if (!session) return;
+    var changed = session.entries.filter(function (en) { return en.counted !== en.system; });
+    var prev = {};
+    changed.forEach(function (en) { prev[en.id] = en.system; D.setQty(en.id, en.counted); });
+    closeCount();
+    if ($('view-map').classList.contains('active')) renderMap();
+    if ($('view-home').classList.contains('active')) renderHome();
+    refreshChrome();
+    if (changed.length) {
+      showUndoToast('Count applied — ' + changed.length + ' item(s) updated', function () {
+        changed.forEach(function (en) { D.setQty(en.id, prev[en.id]); });
+        if ($('view-map').classList.contains('active')) renderMap();
+        if ($('view-home').classList.contains('active')) renderHome();
+        refreshChrome();
+      });
+    } else {
+      toast('Count matches — no changes');
+    }
+  }
+  $('countOverlay').addEventListener('click', function (e) { if (e.target === $('countOverlay')) closeCount(); });
   function bindItemRows(container) {
     container.querySelectorAll('[data-open]').forEach(function (el) {
       el.addEventListener('click', function () { openItem(el.getAttribute('data-open')); });
@@ -495,6 +800,32 @@
   }
 
   /* ---------- #22 Quick Add ---------- */
+  var iconTouched = false;      // user picked a category manually — stop auto-assigning
+  var pendingAdd = null;        // { data, dup } while the duplicate warning is up
+  function selectIcon(key) {
+    selectedIcon = key;
+    $('iconPicker').querySelectorAll('.icon-choice').forEach(function (x) {
+      x.classList.toggle('sel', x.getAttribute('data-icon') === key);
+    });
+  }
+  /* Icon auto-assign by name keywords (until the user picks one manually). */
+  function autoIconFor(name) {
+    var n = ' ' + String(name || '').toLowerCase() + ' ';
+    if (/brake|controller/.test(n)) return 'controller';
+    if (n.indexOf(' tire') !== -1 || n.indexOf(' tyre') !== -1) return 'tire';
+    if (n.indexOf('light') !== -1 || n.indexOf('lamp') !== -1) return 'light';
+    if (n.indexOf('battery') !== -1) return 'battery';
+    if (n.indexOf('coupler') !== -1 || n.indexOf('hitch') !== -1) return 'link';
+    if (n.indexOf('axle') !== -1) return 'axle';
+    if (n.indexOf('hub') !== -1) return 'hub';
+    if (n.indexOf('jack') !== -1) return 'jack';
+    if (n.indexOf('chain') !== -1) return 'chain';
+    if (n.indexOf('solar') !== -1) return 'solar';
+    if (n.indexOf('plug') !== -1 || n.indexOf('harness') !== -1) return 'plug';
+    if (n.indexOf('spring') !== -1) return 'spring';
+    if (n.indexOf('fender') !== -1) return 'fender';
+    return null;
+  }
   function initAddForm() {
     $('addBin').innerHTML = BINS.map(function (b) { return '<option>' + b + '</option>'; }).join('');
     $('addSupplier').innerHTML = D.getSuppliers().map(function (s) { return '<option>' + esc(s.name) + '</option>'; }).join('');
@@ -502,20 +833,19 @@
       return '<button type="button" class="icon-choice' + (idx === 0 ? ' sel' : '') + '" data-icon="' + key + '" aria-label="' + key + '">' + svgIcon(key) + '</button>';
     }).join('');
     $('iconPicker').querySelectorAll('[data-icon]').forEach(function (b) {
-      b.addEventListener('click', function () {
-        selectedIcon = b.getAttribute('data-icon');
-        $('iconPicker').querySelectorAll('.icon-choice').forEach(function (x) { x.classList.remove('sel'); });
-        b.classList.add('sel');
-      });
+      b.addEventListener('click', function () { iconTouched = true; selectIcon(b.getAttribute('data-icon')); });
+    });
+    $('addName').addEventListener('input', function () {
+      if (iconTouched) return;
+      var key = autoIconFor($('addName').value);
+      if (key) selectIcon(key);
     });
   }
-  $('addForm').addEventListener('submit', function (e) {
-    e.preventDefault();
-    var item = D.addItem({
-      name: $('addName').value.trim(),
-      qty: $('addQty').value, cost: $('addCost').value,
-      bin: $('addBin').value, supplier: $('addSupplier').value, icon: selectedIcon
-    });
+  function normName(s) { return String(s || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim(); }
+  function doAdd(data) {
+    var item = D.addItem(data);
+    pendingAdd = null;
+    $('addDupWarn').classList.add('hidden');
     $('addForm').classList.add('hidden');
     $('addSuccess').classList.remove('hidden');
     $('addSuccessText').textContent = item.name + ' — ' + item.qty + ' in Bin ' + item.bin + '. Stick an NFC sticker on the bin/item and write this link to it:';
@@ -524,12 +854,53 @@
     $('addWriteNfcBtn').onclick = function () { writeSticker(D.stickerUrl(item.id)); };
     refreshChrome();
     toast('Added ' + item.name);
+  }
+  $('addForm').addEventListener('submit', function (e) {
+    e.preventDefault();
+    var data = {
+      name: $('addName').value.trim(),
+      qty: $('addQty').value, cost: $('addCost').value,
+      bin: $('addBin').value, supplier: $('addSupplier').value, icon: selectedIcon
+    };
+    if (!data.name) return;
+    /* Duplicate-name check: offer "Receive this instead" rather than
+     * silently creating a twin of an item that already exists. */
+    var dup = D.getItems().filter(function (i) { return normName(i.name) === normName(data.name); })[0];
+    if (dup) {
+      pendingAdd = { data: data, dup: dup };
+      $('dupText').textContent = '“' + dup.name + '” already exists — Bin ' + dup.bin + ', ' + dup.qty + ' in stock. Receive against that item instead of adding a duplicate?';
+      $('addDupWarn').classList.remove('hidden');
+      return;
+    }
+    doAdd(data);
   });
+  $('dupReceiveBtn').addEventListener('click', function () {
+    if (!pendingAdd) return;
+    var dup = pendingAdd.dup;
+    pendingAdd = null;
+    $('addDupWarn').classList.add('hidden');
+    openItem(dup.id);
+  });
+  $('dupAnywayBtn').addEventListener('click', function () {
+    if (!pendingAdd) return;
+    doAdd(pendingAdd.data);
+  });
+  /* Quick Add launched from a bin (bin sheet) — bin comes pre-filled. */
+  function openAddForBin(bin) {
+    showView('add');
+    $('addSuccess').classList.add('hidden');
+    $('addForm').classList.remove('hidden');
+    if (bin) $('addBin').value = bin;
+    $('addName').focus();
+  }
   $('addCopyBtn').addEventListener('click', function () { copyText($('addStickerLink'), 'Sticker link copied'); });
   $('addAnotherBtn').addEventListener('click', function () {
     $('addSuccess').classList.add('hidden');
     $('addForm').classList.remove('hidden');
     $('addForm').reset(); $('addQty').value = 1;
+    iconTouched = false; pendingAdd = null;
+    $('addDupWarn').classList.add('hidden');
+    selectIcon(ICON_KEYS[0]);
   });
   function writeSticker(url) {
     if (!('NDEFReader' in window)) { toast('Web NFC writing needs Chrome on Android'); return; }
@@ -564,8 +935,20 @@
       renderQueue(); renderSync();
     });
   });
-  window.addEventListener('online', function () { refreshChrome(); renderQueue(); toast('Back online'); });
+  /* Auto-flush: when the connection returns or the app comes back to the
+   * foreground, quietly push the queue if we're connected to AppSheet. */
+  function maybeAutoFlush() {
+    if (!navigator.onLine || !D.isLive()) return;
+    if (!D.getQueue().some(function (c) { return !c.synced; })) return;
+    D.flushQueue().then(function (r) {
+      refreshChrome();
+      if ($('view-sync').classList.contains('active')) { renderQueue(); renderSync(); }
+      if (!r.ok) return;   // failure stays visible in Settings — no noisy toast
+    });
+  }
+  window.addEventListener('online', function () { refreshChrome(); renderQueue(); toast('Back online'); maybeAutoFlush(); });
   window.addEventListener('offline', function () { refreshChrome(); renderQueue(); toast('Offline — changes will queue'); });
+  document.addEventListener('visibilitychange', function () { if (!document.hidden) maybeAutoFlush(); });
 
   /* ---------- #24 Sync Health & Settings ---------- */
   function renderSync() {
@@ -609,5 +992,6 @@
   renderHome();
   renderSync();
   refreshChrome();
+  fitSticky();
   openFromUrl();
 })();

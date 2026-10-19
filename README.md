@@ -26,7 +26,8 @@ https://masstahl.github.io/electric-trailer/
 ## Appearance
 
 7 switchable looks, applied instantly and saved per device. Switch in the
-**Sync** tab → **Appearance**:
+**Settings** tab → **Appearance** (Milwaukee Red and Hi-Vis Safety are
+grouped first as the working modes; the rest sit under “More looks”):
 
 | Theme | Feel |
 |---|---|
@@ -45,19 +46,44 @@ emoji anywhere in the UI. Items store an icon **key** (e.g. `bolt`, `tire`,
 `battery`, `box`); older inventories saved with emoji values are mapped to
 the matching key automatically at render time, so nothing needs migrating.
 
-## The 7 screens
+## Design — SPEC PLATE
 
-Bottom tab bar: **Home · Map · Suppliers · Add · Queue · Sync**
+The current design pass ("SPEC PLATE") follows one rule: **one job per
+color, always paired with a word.**
+
+- **Brand red (#DB011C) is for fills and brand only** — header, the Add
+  disc, one primary call-to-action per screen. It is never a status.
+- **Status scale:** 0 = **OUT** and 1–2 = **CRITICAL** use safety orange
+  (#FF5A00); 3–5 = **LOW** uses amber; 6+ = **OK** stays quiet (no pill).
+  Quantity steppers are neutral charcoal everywhere — the numeral and the
+  status word carry the state, not the buttons.
+- **Smoked glass:** the floating dock and the Home stat/filter bar are the
+  only glass surfaces, tinted ~88% (blur 30px + sheen kept) so labels stay
+  readable over scrolling photos. The dock deliberately stays at its
+  compact 2/3 size (content-sized pill, 16px icons) — only its tint changed.
+- Search + stat bar form one sticky glass block; tapping **low / out**
+  filters the grid to low stock, worst first.
+- Every quantity change — card steppers, item sheet, bin sheet, Count
+  Mode — offers a 6-second **UNDO**. Repeat edits to one item coalesce
+  into a single queued change (and vanish if the count returns to where
+  it started); the queue also auto-flushes when the app reconnects or
+  returns to the foreground in Live mode.
+
+## The screens
+
+Bottom dock (5 tabs): **Home · Map · Suppliers · Add · Settings**, plus
+item / bin / count sheets that open over the current tab.
 
 | # | Screen | What it does |
 |---|--------|--------------|
-| 08 | **Photo-First Grid** (Home) | Big photo/icon cards instead of spreadsheet rows. Name, bin, and a color-coded quantity pill (green OK, amber ≤5, red ≤2 / out). Live search filters instantly. Tap a card to open the item. |
-| 02 | **NFC Tap-to-Open Item Card** | Item detail with giant + / − buttons (gloved-hands friendly, plus ±5), qty, bin, supplier, cost, SKU. “Scan NFC” uses Web NFC where available; sticker taps via `?item=<id>` open the item directly. Includes a copyable sticker link. |
-| 03 | **Warehouse / Bin Map** | Aisles A–D × bins 1–6 as a visual grid. Each bin shows item count and total units, colored by stock level. Tap a bin to list its items. |
-| 16 | **Offline-First Field Mode** (Settings → Sync Queue) | Online/offline status, a pending-changes queue in localStorage, and “Sync now”. Every edit made offline queues instead of failing and flushes through the data layer when back online. |
+| 08 | **Photo-First Grid** (Home) | Big photo/icon cards instead of spreadsheet rows — 3 across, photo on an unclipped white plate, bin chip, status pill with a word (OUT / CRITICAL · n / LOW · n), and an inline − qty + stepper strip on every card. Live search; tap **low / out** in the glass stat bar to filter to low stock. Tap a card to open the item. |
+| 02 | **NFC Tap-to-Open Item Card** | Item sheet leading with a big white photo plate, a loud BIN chip, and a sticky Done footer. Giant neutral + / − steppers; ±5 is **hold-to-apply** (400ms) so a gloved slip can't 5× an edit; tap the quantity numeral for an exact-count entry. Sticker taps via `?item=<id>` — or NFC Live — open the item directly. Includes a copyable sticker link. |
+| 03 | **Warehouse / Bin Map** | Aisles A–D × bins 1–6 as a visual grid. Each bin shows its code and total units, colored by its **worst** item (with a ▲/✕ glyph, never color alone). Tap a bin to open its sheet: items with inline steppers, **Count this bin** (Count Mode), and **Add item to this bin** (bin pre-filled). |
+| 16 | **Offline-First Field Mode** (Settings → Sync Queue) | Online/offline status, a pending-changes queue in localStorage, and “Sync now”. Every edit made offline queues instead of failing; qty edits coalesce per item, and the queue auto-flushes on reconnect/foreground when connected to AppSheet. |
 | 19 | **Supplier Hub** | Supplier cards with item count, lead time, and contact. Tap a supplier to list its items. |
-| 22 | **Quick Add New Item** | Fast form (name, qty, bin, supplier, cost, photo-icon picker). On save it shows the new item's NFC sticker link, a copy button, a Web NFC “write to sticker” button where supported, and iPhone NFC Tools instructions. |
+| 22 | **Quick Add New Item** | Fast form (name, qty, bin, supplier, cost, photo-icon picker). The icon auto-assigns from the name (tire, light, battery, axle…) unless a category is picked manually. A duplicate name offers **“Receive this instead”** instead of creating a twin. On save it shows the new item's NFC sticker link, a copy button, a Web NFC “write to sticker” button where supported, and iPhone NFC Tools instructions. |
 | 24 | **AppSheet Sync Health & Settings** | Demo/Live mode, last sync, row count, pending queue count, last error, and the AppSheet connection settings with a real “Test connection” (AppSheet `Find` action). |
+| — | **Count Mode** | From a bin sheet: walk the bin one item at a time with a giant quantity and − / +. Counts that differ from the system by >20% or >10 units get a variance review before anything is applied. |
 
 ## Demo mode vs Live mode
 
@@ -96,8 +122,8 @@ Expected table columns (rename/map in AppSheet — see SETUP.md):
    the item. It pauses while the app is in the background and resumes on
    the first touch after the app is reopened (if the chip shows
    “Paused — tap”, tap it). Turn it off by tapping the chip while it is
-   live. The “Scan NFC sticker” button in an item card also turns NFC
-   Live on.
+   live. While NFC Live is on, a screen Wake Lock is held so the scanner
+   doesn't die when the phone would otherwise sleep mid-session.
    **iPhone:** there is no in-app listening — Safari does not support Web
    NFC. That is fine: iOS itself reads the sticker's URL in the
    background and opens the item directly, no listening needed. This is

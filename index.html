@@ -45,14 +45,17 @@
 
   <!-- ============ HOME · #08 Photo-First Grid ============ -->
   <section id="view-home" class="view active">
-    <div class="search-wrap">
-      <input id="searchInput" type="search" placeholder="Search parts, SKU, bin, supplier…" autocomplete="off">
+    <div class="sticky-search">
+      <div class="search-wrap">
+        <input id="searchInput" type="search" placeholder="Search parts, SKU, bin, supplier…" autocomplete="off" aria-label="Search inventory">
+      </div>
+      <div class="stat-row" role="group" aria-label="Inventory totals — tap Low to filter">
+        <button type="button" class="stat" id="statSegItems"><strong id="statItems">–</strong><span>items</span></button>
+        <button type="button" class="stat" id="statSegUnits"><strong id="statUnits">–</strong><span>units</span></button>
+        <button type="button" class="stat warn" id="statSegLow" aria-pressed="false"><strong id="statLow">–</strong><span>low / out</span></button>
+      </div>
     </div>
-    <div class="stat-row">
-      <div class="stat"><strong id="statItems">–</strong><span>items</span></div>
-      <div class="stat"><strong id="statUnits">–</strong><span>units</span></div>
-      <div class="stat warn"><strong id="statLow">–</strong><span>low / out</span></div>
-    </div>
+    <p id="filterHint" class="muted small hidden">Showing low stock only (worst first) — tap <strong>low / out</strong> again to clear.</p>
     <div id="photoGrid" class="photo-grid"></div>
     <p id="gridEmpty" class="empty hidden">No items match your search.</p>
   </section>
@@ -60,11 +63,9 @@
   <!-- ============ MAP · #03 Warehouse / Bin Map ============ -->
   <section id="view-map" class="view">
     <h2>Warehouse / Bin Map</h2>
-    <p class="muted">Aisles A–D, bins 1–6. Color shows total quantity in the bin. Tap a bin to see what's in it.</p>
+    <p class="muted">Aisles A–D, bins 1–6. A bin's color follows its worst item. Tap a bin to open it.</p>
     <div id="binMap" class="bin-map"></div>
-    <div class="legend"><span><i class="dot dot-ok"></i>Stocked</span><span><i class="dot dot-low"></i>Low</span><span><i class="dot dot-out"></i>Empty / out</span></div>
-    <h3 id="binListTitle">Select a bin</h3>
-    <div id="binList" class="list"></div>
+    <div class="legend"><span><i class="dot dot-ok"></i>Stocked</span><span><i class="dot dot-low"></i>▲ Low / Critical</span><span><i class="dot dot-out"></i>✕ Out</span><span>· Empty</span></div>
   </section>
 
   <!-- ============ SUPPLIERS · #19 Supplier Hub ============ -->
@@ -91,6 +92,13 @@
       </div>
       <label>Item icon</label>
       <div id="iconPicker" class="icon-picker"></div>
+      <div id="addDupWarn" class="dup-warn hidden">
+        <p id="dupText"></p>
+        <div class="dup-actions">
+          <button type="button" id="dupReceiveBtn" class="btn btn-primary">Receive this instead</button>
+          <button type="button" id="dupAnywayBtn" class="btn">Add anyway</button>
+        </div>
+      </div>
       <button type="submit" class="btn btn-primary btn-big">Add item</button>
     </form>
     <div id="addSuccess" class="card success hidden">
@@ -120,11 +128,23 @@
     <h3>Queued changes</h3>
     <div id="queueList" class="list"></div>
 
-    <!-- Appearance: 6 switchable looks, saved on this device -->
+    <!-- Appearance: 7 switchable looks, saved on this device -->
     <div class="card">
       <h3 style="margin-top:0">Appearance</h3>
       <p class="muted small">Pick a look — it applies instantly and is saved on this device.</p>
       <div class="theme-grid" id="themeGrid">
+        <p class="theme-group-label">Working modes</p>
+        <button type="button" class="theme-card" data-theme-pick="milwaukee">
+          <span class="theme-swatches"><span class="theme-swatch" style="background:#db011c"></span><span class="theme-swatch" style="background:#101011"></span><span class="theme-swatch" style="background:#1a1a1c"></span><span class="theme-swatch" style="background:#ffffff"></span></span>
+          <span class="theme-name">Milwaukee Red</span>
+          <span class="theme-feel">Milwaukee red + black · tool-case industrial · default</span>
+        </button>
+        <button type="button" class="theme-card" data-theme-pick="hivis">
+          <span class="theme-swatches"><span class="theme-swatch" style="background:#000000"></span><span class="theme-swatch" style="background:#ffd500"></span><span class="theme-swatch" style="background:#141414"></span><span class="theme-swatch" style="background:#ffffff"></span></span>
+          <span class="theme-name">Hi-Vis Safety</span>
+          <span class="theme-feel">Black + safety yellow · maximum contrast</span>
+        </button>
+        <p class="theme-group-label">More looks</p>
         <button type="button" class="theme-card" data-theme-pick="midnight">
           <span class="theme-swatches"><span class="theme-swatch" style="background:#0f172a"></span><span class="theme-swatch" style="background:#d97706"></span><span class="theme-swatch" style="background:#ffffff"></span><span class="theme-swatch" style="background:#eef2f6"></span></span>
           <span class="theme-name">Midnight Industrial</span>
@@ -139,16 +159,6 @@
           <span class="theme-swatches"><span class="theme-swatch" style="background:#050914"></span><span class="theme-swatch" style="background:#38bdf8"></span><span class="theme-swatch" style="background:#8b5cf6"></span><span class="theme-swatch" style="background:#0d1526"></span></span>
           <span class="theme-name">Electric</span>
           <span class="theme-feel">Dark navy + electric blue · glowing accents</span>
-        </button>
-        <button type="button" class="theme-card" data-theme-pick="milwaukee">
-          <span class="theme-swatches"><span class="theme-swatch" style="background:#db011c"></span><span class="theme-swatch" style="background:#101011"></span><span class="theme-swatch" style="background:#1a1a1c"></span><span class="theme-swatch" style="background:#ffffff"></span></span>
-          <span class="theme-name">Milwaukee Red</span>
-          <span class="theme-feel">Milwaukee red + black · tool-case industrial · default</span>
-        </button>
-        <button type="button" class="theme-card" data-theme-pick="hivis">
-          <span class="theme-swatches"><span class="theme-swatch" style="background:#000000"></span><span class="theme-swatch" style="background:#ffd500"></span><span class="theme-swatch" style="background:#141414"></span><span class="theme-swatch" style="background:#ffffff"></span></span>
-          <span class="theme-name">Hi-Vis Safety</span>
-          <span class="theme-feel">Black + safety yellow · maximum contrast</span>
         </button>
         <button type="button" class="theme-card" data-theme-pick="paper">
           <span class="theme-swatches"><span class="theme-swatch" style="background:#faf7f2"></span><span class="theme-swatch" style="background:#b4552d"></span><span class="theme-swatch" style="background:#fffcf5"></span><span class="theme-swatch" style="background:#292524"></span></span>
@@ -197,26 +207,81 @@
 <div id="itemOverlay" class="overlay hidden" role="dialog" aria-modal="true">
   <div class="sheet">
     <button id="closeDetail" class="close-btn" aria-label="Close">✕</button>
-    <div class="detail-icon" id="dIcon"></div>
+    <div class="sheet-hero"><span class="detail-icon" id="dIcon"></span></div>
     <h2 id="dName">Item</h2>
     <p class="muted" id="dMeta">SKU · Bin · Supplier</p>
-    <div class="qty-display"><span id="dQty">0</span><small>in stock</small></div>
+    <div class="sheet-chips">
+      <span class="bin-chip" id="dBinChip">BIN A1</span>
+      <span class="qty-pill qty-ok" id="dStatus">0 in stock</span>
+    </div>
+    <div class="qty-display">
+      <button type="button" id="dQtyBtn" class="qty-num" title="Tap to set an exact count" aria-label="Set exact count"><span id="dQty">0</span></button>
+      <small id="dQtyState">in stock</small>
+    </div>
+    <div id="qtyEditor" class="qty-editor hidden">
+      <input id="qtySetInput" type="number" min="0" inputmode="numeric" aria-label="Exact quantity">
+      <button type="button" id="qtySetBtn" class="btn btn-primary">Set</button>
+      <button type="button" id="qtySetCancel" class="btn">Cancel</button>
+    </div>
     <div class="qty-controls">
       <button id="qtyMinus" class="qty-btn minus" aria-label="Remove one">−</button>
       <button id="qtyPlus" class="qty-btn plus" aria-label="Add one">+</button>
     </div>
     <div class="qty-controls small-controls">
-      <button id="qtyMinus5" class="qty-btn-sm">−5</button>
-      <button id="qtyPlus5" class="qty-btn-sm">+5</button>
+      <button id="qtyMinus5" class="qty-btn-sm hold-btn">−5 <small class="hold-hint">hold</small></button>
+      <button id="qtyPlus5" class="qty-btn-sm hold-btn">+5 <small class="hold-hint">hold</small></button>
     </div>
     <p id="dCost" class="detail-cost"></p>
     <p id="dUpdated" class="muted small"></p>
     <label class="small-label">NFC sticker link (write this URL to a sticker)</label>
     <div class="copy-row"><input id="dStickerLink" readonly><button id="dCopyBtn" class="btn">Copy</button></div>
+    <div class="sheet-footer">
+      <button type="button" id="doneDetail" class="btn btn-primary btn-big">Done</button>
+    </div>
   </div>
 </div>
 
-<div id="toast" class="toast hidden"></div>
+<!-- ============ BIN SHEET · bin contents over the map ============ -->
+<div id="binOverlay" class="overlay hidden" role="dialog" aria-modal="true">
+  <div class="sheet bin-sheet">
+    <button id="closeBin" class="close-btn" aria-label="Close">✕</button>
+    <h2 id="bTitle">BIN A1</h2>
+    <p class="muted" id="bMeta"></p>
+    <div id="binItems" class="list"></div>
+    <button type="button" id="binCountBtn" class="btn btn-big">Count this bin</button>
+    <button type="button" id="binAddBtn" class="btn btn-big">Add item to this bin</button>
+  </div>
+</div>
+
+<!-- ============ COUNT MODE · walk a bin item by item ============ -->
+<div id="countOverlay" class="overlay hidden" role="dialog" aria-modal="true">
+  <div class="sheet count-sheet">
+    <div id="cMain">
+      <p class="muted small" id="cProgress">1 of 1</p>
+      <div class="sheet-hero"><span class="detail-icon" id="cHero"></span></div>
+      <h2 id="cName">Item</h2>
+      <p class="muted" id="cMeta">Bin A1 · system qty 0</p>
+      <div class="qty-display"><span id="cQty">0</span><small>counted</small></div>
+      <div class="qty-controls">
+        <button id="cMinus" class="qty-btn minus" aria-label="One less">−</button>
+        <button id="cPlus" class="qty-btn plus" aria-label="One more">+</button>
+      </div>
+      <div class="count-nav">
+        <button type="button" id="cBack" class="btn">Cancel</button>
+        <button type="button" id="cNext" class="btn btn-primary">Next</button>
+      </div>
+    </div>
+    <div id="cReview" class="hidden">
+      <h2>Check these counts</h2>
+      <p class="muted small">These differ from the system by more than 20% or more than 10 units.</p>
+      <div id="cReviewList" class="list"></div>
+      <button type="button" id="cApplyBtn" class="btn btn-primary btn-big">Apply anyway</button>
+      <button type="button" id="cReviewBack" class="btn btn-big">Back to counting</button>
+    </div>
+  </div>
+</div>
+
+<div id="toast" class="toast hidden"><span id="toastMsg"></span><button type="button" id="toastUndo" class="toast-undo hidden">UNDO</button></div>
 
 <nav class="tabbar" aria-label="Main">
   <button class="tab active" data-view="home"><span><svg class="icon-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="miter" stroke-linecap="square" aria-hidden="true" focusable="false"><path d="M3 11 L12 3 L21 11"/><path d="M6 9.5 V21 H18 V9.5"/><path d="M10 21 V14 H14 V21"/></svg></span>Home</button>

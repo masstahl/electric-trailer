@@ -119,16 +119,64 @@
     return q.length;
   }
 
+  /* Qty edits coalesce (SPEC PLATE): repeated edits to the same item merge
+   * into ONE pending op that keeps the ORIGINAL baseline qty (baseQty) and
+   * carries the latest qty. An edit that returns qty to the baseline drops
+   * the op entirely, and no-op edits never reach this function. The op
+   * shape stays flush-compatible: type !== 'add' flushes as an Edit with
+   * the item's current row. */
+  function qtyDetail(item, from, to) {
+    var d = to - from;
+    return item.name + ' · ' + from + ' → ' + to + ' (' + (d > 0 ? '+' : '') + d + ')';
+  }
+  function queueQty(item, beforeQty, afterQty) {
+    var q = getQueue();
+    var idx = -1;
+    for (var i = q.length - 1; i >= 0; i--) {
+      if (!q[i].synced && q[i].itemId === item.id && q[i].kind === 'qty') { idx = i; break; }
+    }
+    if (idx >= 0) {
+      var op = q[idx];
+      if (afterQty === op.baseQty) q.splice(idx, 1);   // back at baseline — nothing to send
+      else {
+        op.qty = afterQty;
+        op.type = 'qty';
+        op.detail = qtyDetail(item, op.baseQty, afterQty);
+        op.at = nowISO();
+      }
+    } else if (afterQty !== beforeQty) {
+      q.push({ id: 'q' + Date.now() + Math.random().toString(36).slice(2, 7), type: 'qty', kind: 'qty', itemId: item.id, baseQty: beforeQty, qty: afterQty, detail: qtyDetail(item, beforeQty, afterQty), at: nowISO(), synced: false });
+    }
+    write(LS.queue, q);
+  }
+
   function saveItems(items) { write(LS.items, items); }
 
   function updateQty(id, delta) {
     var items = getItems();
     var item = items.filter(function (i) { return i.id === id; })[0];
     if (!item) return null;
+    var before = item.qty;
     item.qty = Math.max(0, item.qty + delta);
+    if (item.qty === before) return item;   // no-op edits never queue
     item.updated = nowISO();
     saveItems(items);
-    queueChange(delta > 0 ? 'qty+' + delta : 'qty' + delta, id, item.name + ' → ' + item.qty);
+    queueQty(item, before, item.qty);
+    return item;
+  }
+
+  /* Set an absolute qty (exact-count entry, count mode, undo). Same
+   * coalescing rules as updateQty. */
+  function setQty(id, qty) {
+    var items = getItems();
+    var item = items.filter(function (i) { return i.id === id; })[0];
+    if (!item) return null;
+    var before = item.qty;
+    item.qty = Math.max(0, Math.floor(Number(qty) || 0));
+    if (item.qty === before) return item;
+    item.updated = nowISO();
+    saveItems(items);
+    queueQty(item, before, item.qty);
     return item;
   }
 
@@ -240,7 +288,7 @@
     getSettings: getSettings, saveSettings: saveSettings, isLive: isLive,
     getItems: getItems, getSuppliers: getSuppliers, getItem: getItem,
     getQueue: getQueue, getMeta: getMeta,
-    updateQty: updateQty, addItem: addItem,
+    updateQty: updateQty, setQty: setQty, addItem: addItem,
     testConnection: testConnection, flushQueue: flushQueue, resetDemo: resetDemo,
     stickerUrl: function (id) { return 'https://masstahl.github.io/electric-trailer/?item=' + encodeURIComponent(id); }
   };

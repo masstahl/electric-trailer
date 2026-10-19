@@ -9,10 +9,13 @@
   --bw:1px;                    /* border width (Hi-Vis bumps this up) */
   --card-shadow:0 1px 3px rgba(15,23,42,.08);
   --glow:none;
-  /* status colors (semantic — tinted per theme where sensible) */
+  --header-h:64px;             /* app-header height (app.js keeps this exact) */
+  /* status colors (SPEC PLATE — one job per color, always paired with a word) */
   --green:#16a34a; --red:#dc2626; --amber:#d97706;
+  --danger:#ff5a00;            /* safety orange: OUT / CRITICAL / danger */
   --ok-bg:#dcfce7; --ok-text:#166534;
   --low-bg:#fef3c7; --low-text:#92400e;
+  --crit-bg:#ffe7d3; --crit-text:#9a3400;
   --out-bg:#fee2e2; --out-text:#991b1b;
 }
 
@@ -51,6 +54,7 @@
   --glow:0 0 18px rgba(56,189,248,.5);
   --ok-bg:#052e1b; --ok-text:#4ade80;
   --low-bg:#3a2a05; --low-text:#fbbf24;
+  --crit-bg:#3a1e08; --crit-text:#ffb27a;
   --out-bg:#3b0a14; --out-text:#fb7185;
   --green:#22c55e; --red:#f43f5e; --amber:#f59e0b;
 }
@@ -68,6 +72,7 @@
   --bw:2px;
   --ok-bg:#14532d; --ok-text:#bbf7d0;
   --low-bg:#713f12; --low-text:#fde68a;
+  --crit-bg:#3a1e08; --crit-text:#ffb27a;
   --out-bg:#7f1d1d; --out-text:#fecaca;
   --green:#22c55e; --red:#ef4444; --amber:#f59e0b;
 }
@@ -108,6 +113,7 @@
   --glow:0 0 16px rgba(219,1,28,.45);
   --ok-bg:#052e1b; --ok-text:#4ade80;
   --low-bg:#3a2a05; --low-text:#fbbf24;
+  --crit-bg:#3a1e08; --crit-text:#ffb27a;
   --out-bg:#450a0a; --out-text:#fca5a5;
   --green:#22c55e; --red:#ef4444; --amber:#f59e0b;
 }
@@ -150,27 +156,33 @@ a{color:var(--accent)}
 main{max-width:960px;margin:0 auto;padding:1rem}
 .view{display:none}.view.active{display:block}
 
-/* Search + stats */
-.search-wrap input{
-  width:100%;font-size:1.05rem;padding:.85rem 1rem;border-radius:999px;
-  border:2px solid var(--border);background:var(--input-bg);color:var(--text);outline:none;
-}
-.search-wrap input:focus{border-color:var(--accent)}
-/* Stat bar: one frosted-glass pill matching the dock (same tint, blur,
-   sheen, radius and height), sitting under the search. */
-.stat-row{
-  display:flex;align-items:stretch;margin:.8rem 0 1rem;padding:4px;
-  background:color-mix(in srgb,var(--tabbar-bg) 42%,transparent);
+/* Search + stats — ONE smoked-glass sticky block (SPEC PLATE): search and
+   the stat/filter bar stick together under the header, glass at ~88% tint
+   so labels stay readable over scrolling photos. */
+.sticky-search{
+  position:sticky;top:calc(var(--header-h) + 6px);z-index:15;
+  padding:.55rem;margin-bottom:.4rem;
+  background:color-mix(in srgb,var(--tabbar-bg) 88%,transparent);
   background-image:linear-gradient(180deg,rgba(255,255,255,.22),rgba(255,255,255,.05) 55%,rgba(255,255,255,0));
   -webkit-backdrop-filter:blur(30px) saturate(1.9);backdrop-filter:blur(30px) saturate(1.9);
   border:var(--bw) solid color-mix(in srgb,var(--border) 55%,rgba(255,255,255,.35));border-radius:19px;
   box-shadow:inset 0 1px 0 rgba(255,255,255,.45),inset 0 -1px 0 rgba(255,255,255,.08),0 8px 24px rgba(0,0,0,.22);
 }
-.stat{flex:1;background:none;border:none;padding:.3rem .2rem .32rem;text-align:center}
+.search-wrap input{
+  width:100%;font-size:1.05rem;padding:.85rem 1rem;border-radius:999px;
+  border:2px solid var(--border);background:var(--input-bg);color:var(--text);outline:none;
+}
+.search-wrap input:focus{border-color:var(--accent)}
+.stat-row{display:flex;align-items:stretch;margin-top:.55rem}
+.stat{
+  flex:1;background:none;border:none;padding:.3rem .2rem .32rem;text-align:center;
+  font:inherit;color:inherit;cursor:pointer;border-radius:13px;
+}
 .stat + .stat{border-left:1px solid color-mix(in srgb,var(--border) 60%,transparent)}
 .stat strong{display:block;font-size:1.05rem;line-height:1.15}
 .stat span{font-size:.62rem;color:var(--muted);text-transform:uppercase;letter-spacing:.05em}
-.stat.warn strong{color:var(--red)}
+.stat.warn strong{color:var(--danger)}
+.stat.active{background:color-mix(in srgb,var(--danger) 18%,transparent);box-shadow:inset 0 0 0 2px var(--danger)}
 
 /* #08 Photo grid */
 .photo-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:.55rem}
@@ -186,7 +198,25 @@ main{max-width:960px;margin:0 auto;padding:1rem}
 .qty-pill{display:inline-block;margin-top:.35rem;font-weight:800;font-size:.78rem;padding:.22rem .55rem;border-radius:999px}
 .qty-ok{background:var(--ok-bg);color:var(--ok-text)}
 .qty-low{background:var(--low-bg);color:var(--low-text)}
-.qty-out{background:var(--out-bg);color:var(--out-text)}
+.qty-crit{background:var(--crit-bg);color:var(--crit-text)}
+.qty-out{background:var(--danger);color:#1c0f00}
+.qty-slot{background:transparent;color:transparent;visibility:hidden}
+/* Status inset bars: LOW amber, CRITICAL/OUT safety orange (word in pill too) */
+.photo-card.st-low{box-shadow:inset 3px 0 0 var(--amber),var(--card-shadow)}
+.photo-card.st-crit{box-shadow:inset 3px 0 0 var(--danger),var(--card-shadow)}
+.photo-card.st-out{box-shadow:inset 3px 0 0 var(--danger),var(--card-shadow)}
+.photo-card.st-out .pc-icon{opacity:.45;filter:grayscale(1)}
+/* Inline stepper strip on every card — neutral charcoal, numeral carries state */
+.stepper-strip{
+  display:flex;align-items:stretch;margin-top:.5rem;border-radius:10px;overflow:hidden;
+  background:var(--surface2);
+}
+.stepper-strip button{
+  flex:1;min-height:44px;border:none;background:none;color:var(--text);
+  font-size:1.25rem;font-weight:800;cursor:pointer;font-family:inherit;
+}
+.stepper-strip button:active{background:color-mix(in srgb,var(--text) 12%,transparent)}
+.stepper-strip .ss-qty{display:flex;align-items:center;justify-content:center;min-width:2.3rem;font-weight:900;font-size:1.05rem}
 .empty{text-align:center;color:var(--muted);padding:2rem 0}
 
 /* Cards, lists, forms */
@@ -230,15 +260,21 @@ main{max-width:960px;margin:0 auto;padding:1rem}
 .bin-row{display:grid;grid-template-columns:repeat(6,1fr);gap:.45rem}
 .bin-cell{
   border-radius:12px;border:2px solid var(--border);background:var(--surface);color:var(--text);padding:.5rem .2rem;
-  text-align:center;cursor:pointer;font:inherit;
+  text-align:center;cursor:pointer;font:inherit;min-height:64px;
+  display:flex;flex-direction:column;align-items:center;justify-content:center;
 }
 .bin-cell strong{display:block;font-size:.95rem}
 .bin-cell small{display:block;color:var(--muted);font-size:.68rem}
 .bin-cell.sel{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-soft)}
-.bin-ok{background:var(--ok-bg)}.bin-low{background:var(--low-bg)}.bin-out{background:var(--out-bg)}
+/* Bin color = its WORST item's status (SPEC PLATE), glyph + tint together */
+.bin-ok{background:var(--ok-bg)}
+.bin-low{background:var(--low-bg)}
+.bin-crit{background:var(--crit-bg)}
+.bin-out{background:color-mix(in srgb,var(--danger) 28%,var(--surface))}
+.bin-empty{opacity:.55}
 .legend{display:flex;gap:1rem;font-size:.8rem;color:var(--muted);margin-top:.6rem;flex-wrap:wrap}
 .dot{display:inline-block;width:.65rem;height:.65rem;border-radius:50%;margin-right:.3rem;vertical-align:middle}
-.dot-ok{background:var(--green)}.dot-low{background:var(--amber)}.dot-out{background:var(--red)}
+.dot-ok{background:var(--green)}.dot-low{background:var(--amber)}.dot-out{background:var(--danger)}
 
 /* Icon picker */
 .icon-picker{display:flex;flex-wrap:wrap;gap:.45rem;margin-bottom:.8rem}
@@ -248,6 +284,12 @@ main{max-width:960px;margin:0 auto;padding:1rem}
 }
 .icon-choice.sel{border-color:var(--accent);background:var(--accent-soft)}
 .success{border-color:var(--ok-text);background:var(--ok-bg)}
+/* Quick Add duplicate warning */
+.dup-warn{
+  background:var(--low-bg);color:var(--low-text);border-radius:12px;padding:.75rem .85rem;margin-bottom:.8rem;
+}
+.dup-warn p{margin:0 0 .6rem;font-weight:600}
+.dup-actions{display:flex;gap:.5rem;flex-wrap:wrap}
 
 /* Queue */
 .queue-item.synced{opacity:.55}
@@ -257,6 +299,11 @@ main{max-width:960px;margin:0 auto;padding:1rem}
 
 /* Appearance / theme picker (Sync tab) */
 .theme-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:.6rem;margin-top:.6rem}
+.theme-group-label{
+  grid-column:1/-1;font-weight:800;font-size:.78rem;text-transform:uppercase;letter-spacing:.06em;
+  color:var(--muted);margin:.5rem 0 0;
+}
+.theme-group-label:first-child{margin-top:0}
 .theme-card{
   appearance:none;background:var(--surface);border:2px solid var(--border);border-radius:14px;
   padding:.7rem;text-align:left;cursor:pointer;font:inherit;color:var(--text);box-shadow:var(--card-shadow);
@@ -268,35 +315,82 @@ main{max-width:960px;margin:0 auto;padding:1rem}
 .theme-name{display:block;font-weight:800;font-size:.92rem}
 .theme-feel{display:block;color:var(--muted);font-size:.76rem;margin-top:.15rem;line-height:1.35}
 
-/* Item detail overlay (#02) */
+/* Item detail overlay (#02) + bin sheet + count sheet */
 .overlay{position:fixed;inset:0;background:var(--overlay);z-index:40;display:flex;align-items:flex-end;justify-content:center}
 .sheet{
   background:var(--surface);color:var(--text);width:100%;max-width:560px;max-height:92vh;overflow:auto;
-  border-radius:22px 22px 0 0;padding:1.2rem 1.2rem 2rem;position:relative;text-align:center;
+  border-radius:22px 22px 0 0;padding:1.2rem 1.2rem 2rem;position:relative;text-align:left;
 }
 @media(min-width:640px){.overlay{align-items:center}.sheet{border-radius:22px}}
-.close-btn{position:absolute;top:.7rem;right:.7rem;width:44px;height:44px;border-radius:50%;border:none;background:var(--surface2);color:var(--text);font-size:1.05rem;cursor:pointer}
+.close-btn{position:absolute;top:.7rem;right:.7rem;width:44px;height:44px;border-radius:50%;border:none;background:var(--surface2);color:var(--text);font-size:1.05rem;cursor:pointer;z-index:2}
+/* Photo hero: a big WHITE plate, never cropped (SPEC PLATE) */
+.sheet-hero{
+  background:#fff;border-radius:16px;height:180px;
+  display:flex;align-items:center;justify-content:center;margin-bottom:.8rem;
+}
 .detail-icon{font-size:4.2rem;line-height:1.1}
 .sheet h2{margin:.2rem 0 .1rem;font-size:1.45rem}
-.qty-display{margin:.7rem 0 .2rem}
+.sheet-chips{display:flex;align-items:center;gap:.5rem;flex-wrap:wrap;margin:.45rem 0 .2rem}
+.bin-chip{
+  background:var(--accent-soft);color:var(--text);border-left:4px solid var(--accent);
+  font-weight:900;font-size:1rem;letter-spacing:.04em;padding:.35rem .65rem;border-radius:8px;
+}
+.sheet-chips .qty-pill{margin-top:0}
+.qty-display{margin:.7rem 0 .2rem;text-align:center}
 .qty-display span{font-size:3rem;font-weight:900}
 .qty-display small{display:block;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;font-size:.72rem}
-.qty-controls{display:flex;gap:.8rem;justify-content:center;margin:.7rem 0 .4rem}
-.qty-btn{
-  flex:1;max-width:170px;min-height:72px;font-size:2.4rem;font-weight:900;border:none;border-radius:18px;cursor:pointer;color:#fff;
+.qty-num{background:none;border:none;padding:0;font:inherit;color:inherit;cursor:pointer}
+.qty-num span{font-variant-numeric:tabular-nums}
+.qty-editor{display:flex;gap:.5rem;align-items:center;justify-content:center;margin:.4rem 0}
+.qty-editor input{
+  width:7rem;padding:.6rem .7rem;font-size:1.2rem;font-weight:800;text-align:center;
+  border:1.5px solid var(--border);border-radius:10px;background:var(--input-bg);color:var(--text);
 }
-.qty-btn.plus{background:var(--green)} .qty-btn.minus{background:var(--red)}
+.qty-controls{display:flex;gap:.8rem;justify-content:center;margin:.7rem 0 .4rem}
+/* Steppers are neutral charcoal in every theme — the numeral carries state */
+.qty-btn{
+  flex:1;max-width:170px;min-height:72px;font-size:2.4rem;font-weight:900;border:none;border-radius:18px;cursor:pointer;
+  background:var(--surface2);color:var(--text);
+}
 .qty-btn:active{transform:scale(.96)}
 .qty-btn-sm{flex:1;max-width:170px;min-height:48px;font-size:1.05rem;font-weight:800;border-radius:12px;border:1.5px solid var(--border);background:var(--surface2);color:var(--text);cursor:pointer}
+.hold-btn{touch-action:none;user-select:none;-webkit-user-select:none}
+.hold-btn:active{transform:scale(.97);background:color-mix(in srgb,var(--text) 10%,var(--surface2))}
+.hold-hint{font-size:.68rem;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.05em}
 .small-controls{margin-top:0}
 .detail-cost{font-weight:700}
+.sheet-footer{
+  position:sticky;bottom:-2rem;margin:.9rem -1.2rem -2rem;padding:.7rem 1.2rem calc(.9rem + env(safe-area-inset-bottom));
+  background:var(--surface);border-top:var(--bw) solid var(--border);
+}
+.sheet-footer .btn-big{margin-top:0}
+/* Bin sheet rows: open area + inline stepper */
+.row-item{cursor:default}
+.row-open{
+  background:none;border:none;padding:0;font:inherit;color:inherit;text-align:left;cursor:pointer;flex:1;min-width:0;
+}
+.row-stepper{display:flex;align-items:center;gap:.15rem;flex:none}
+.row-stepper button{
+  width:40px;height:40px;border:none;border-radius:10px;background:var(--surface2);color:var(--text);
+  font-size:1.15rem;font-weight:800;cursor:pointer;font-family:inherit;
+}
+.row-stepper b{min-width:1.9rem;text-align:center;font-size:1rem;font-variant-numeric:tabular-nums}
+.count-nav{display:flex;gap:.8rem;margin-top:.6rem}
+.count-nav .btn{flex:1;min-height:52px}
+.bin-sheet .list{margin-bottom:.8rem}
 
-/* Toast */
+/* Toast (+ UNDO action for qty changes) */
 .toast{
   position:fixed;left:50%;bottom:98px;transform:translateX(-50%);z-index:60;
   background:var(--header-bg);color:var(--header-text);padding:.7rem 1.1rem;border-radius:999px;font-weight:600;
   box-shadow:0 8px 24px rgba(0,0,0,.3);max-width:92vw;text-align:center;
+  display:flex;align-items:center;gap:.65rem;transition:opacity .15s ease;
 }
+.toast-undo{
+  border:1.5px solid currentColor;background:transparent;color:inherit;border-radius:999px;
+  padding:.28rem .75rem;font-weight:800;font-size:.82rem;cursor:pointer;font-family:inherit;flex:none;
+}
+.toast-undo:active{transform:scale(.95)}
 
 /* Floating dock (Apple-style): frosted glass, lifted off the bottom edge,
    sized to its content like the concept mockups — a compact centered pill.
@@ -304,7 +398,7 @@ main{max-width:960px;margin:0 auto;padding:1rem}
 .tabbar{
   position:fixed;left:50%;transform:translateX(-50%);bottom:calc(10px + env(safe-area-inset-bottom));z-index:30;
   width:max-content;max-width:94vw;
-  background:color-mix(in srgb,var(--tabbar-bg) 42%,transparent);
+  background:color-mix(in srgb,var(--tabbar-bg) 88%,transparent);
   background-image:linear-gradient(180deg,rgba(255,255,255,.22),rgba(255,255,255,.05) 55%,rgba(255,255,255,0));
   -webkit-backdrop-filter:blur(30px) saturate(1.9);backdrop-filter:blur(30px) saturate(1.9);
   border:var(--bw) solid color-mix(in srgb,var(--border) 55%,rgba(255,255,255,.35));border-radius:19px;
@@ -354,11 +448,10 @@ main{max-width:960px;margin:0 auto;padding:1rem}
 }
 .list-item .li-icon .icon-svg{width:27px;height:27px}
 .detail-icon{
-  font-size:1rem;color:var(--accent);background:var(--surface2);
-  width:112px;height:92px;margin:0 auto;display:flex;align-items:center;justify-content:center;
-  clip-path:polygon(12% 0,100% 0,100% 88%,88% 100%,0 100%,0 12%);
+  font-size:1rem;color:#242426;background:transparent;
+  display:flex;align-items:center;justify-content:center;
 }
-.detail-icon .icon-svg{width:72px;height:72px}
+.detail-icon .icon-svg{width:110px;height:110px}
 .icon-choice{
   font-size:1rem;display:inline-flex;align-items:center;justify-content:center;color:var(--muted);
   clip-path:polygon(20% 0,100% 0,100% 80%,80% 100%,0 100%,0 20%);
@@ -366,3 +459,17 @@ main{max-width:960px;margin:0 auto;padding:1rem}
 .icon-choice .icon-svg{width:26px;height:26px}
 .icon-choice.sel{color:var(--accent)}
 .btn .icon-svg{width:1.25em;height:1.25em}
+
+/* ---------- Motion (SPEC PLATE): subtle, fast, operational commits stay instant ---------- */
+.view.active{animation:viewIn .18s ease}
+@keyframes viewIn{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:none}}
+.sheet{animation:sheetUp .22s cubic-bezier(.32,.72,0,1)}
+@keyframes sheetUp{from{transform:translateY(24px);opacity:.5}to{transform:none;opacity:1}}
+/* NFC-opened sheet: signature accent flash (240ms rise + haptic in JS) */
+.sheet.nfc-pulse{animation:sheetUp .24s cubic-bezier(.32,.72,0,1),nfcFlash .6s ease-out}
+@keyframes nfcFlash{0%{box-shadow:0 0 0 0 color-mix(in srgb,var(--accent) 65%,transparent)}100%{box-shadow:0 0 0 16px transparent}}
+@media (prefers-reduced-motion: reduce){
+  .view.active,.sheet,.sheet.nfc-pulse{animation:none}
+  .toast{transition:none}
+  .photo-card,.tab,.btn,.qty-btn,.theme-card{transition:none}
+}
