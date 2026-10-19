@@ -256,43 +256,178 @@
   }
   $('dCopyBtn').addEventListener('click', function () { copyText($('dStickerLink'), 'Sticker link copied'); });
 
-  /* Web NFC: read a sticker (Android Chrome) — falls back gracefully. */
+  /* ---------- NFC Live: always-on listening while the app is open ----------
+   * Android Chrome (Web NFC): a single NDEFReader.scan() keeps firing
+   * `reading` events for every tag presented while the page is visible, so
+   * listening can stay on for a whole warehouse session. Chrome requires a
+   * user gesture for the first scan, so the header chip tap starts it, and
+   * the saved preference ('et-nfc-live') re-arms it on the first touch after
+   * the app is reopened. iOS Safari has no Web NFC at all — the chip stays
+   * hidden there and stickers keep working because iOS opens their URLs. */
+  var NFC_SUPPORTED = ('NDEFReader' in window);
+  var nfcLiveWanted = false;
+  try { nfcLiveWanted = localStorage.getItem('et-nfc-live') === '1'; } catch (e) { /* storage blocked */ }
+  var nfcLiveActive = false;   // a scan() session is running
+  var nfcLivePaused = false;   // wanted, but backgrounded or awaiting a gesture
+  var nfcReader = null;
+  var nfcAbort = null;
+  var nfcArmSet = false;
+  var nfcLastKey = '';
+  var nfcLastAt = 0;
+
+  /* All candidate ids from one tag read: ?item= ids from URL records,
+   * raw text from text records, and the tag serial (matched to nfcId). */
+  function nfcCandidateIds(ev) {
+    var ids = [];
+    var records = (ev && ev.message && ev.message.records) || [];
+    for (var i = 0; i < records.length; i++) {
+      var rec = records[i];
+      if (!rec.data) continue;
+      try {
+        var text = new TextDecoder().decode(rec.data);
+        if (rec.recordType === 'url' || rec.recordType === 'text') {
+          var m = text.match(/[?&]item=([^&#\s]+)/);
+          if (m) ids.push(decodeURIComponent(m[1]));
+          if (rec.recordType === 'text' && text.trim()) ids.push(text.trim());
+        }
+      } catch (e) { /* ignore undecodable record */ }
+    }
+    if (ev && ev.serialNumber) ids.push(String(ev.serialNumber).replace(/:/g, ''));
+    return ids;
+  }
+  function matchTagIds(ids) {
+    var items = D.getItems();
+    var i, hit;
+    for (i = 0; i < ids.length; i++) {
+      hit = items.filter(function (it) { return it.id === ids[i]; })[0];
+      if (hit) return hit;
+    }
+    for (i = 0; i < ids.length; i++) {
+      hit = items.filter(function (it) { return it.nfcId && it.nfcId === ids[i]; })[0];
+      if (hit) return hit;
+    }
+    return null;
+  }
+  /* Shared tag handler — the live listener and the item-detail Scan button
+   * both end up here. Accepts an array of candidate ids (or a single raw
+   * payload string) plus the tag serial. Debounced: the same outcome within
+   * 3 s is ignored, and a tag for the item already open does nothing. */
+  function handleTag(rawPayload, serialNumber) {
+    var ids = [];
+    if (Array.isArray(rawPayload)) ids = rawPayload.slice();
+    else if (rawPayload != null && rawPayload !== '') ids = [String(rawPayload)];
+    if (serialNumber) ids.push(String(serialNumber).replace(/:/g, ''));
+    var item = matchTagIds(ids);
+    var key = item ? item.id : '__unlinked__';
+    var now = Date.now();
+    if (key === nfcLastKey && now - nfcLastAt < 3000) return 'debounced';
+    nfcLastKey = key; nfcLastAt = now;
+    if (!item) { toast('Tag not linked to an item'); return 'unlinked'; }
+    if (currentItemId === item.id) return 'open';
+    if (navigator.vibrate) { try { navigator.vibrate(60); } catch (e) { /* unsupported */ } }
+    openItem(item.id);
+    toast('NFC · ' + item.name);
+    return 'opened';
+  }
+
+  function renderNfcChip() {
+    var btn = $('nfcLiveBtn');
+    if (!btn) return;
+    btn.classList.toggle('hidden', !NFC_SUPPORTED);
+    if (!NFC_SUPPORTED) return;
+    var label = $('nfcLiveLabel');
+    btn.classList.remove('is-live', 'is-paused');
+    if (nfcLivePaused) { btn.classList.add('is-paused'); label.textContent = 'NFC · Paused — tap'; }
+    else if (nfcLiveActive) { btn.classList.add('is-live'); label.textContent = 'NFC · Live'; }
+    else if (nfcLiveWanted) { btn.classList.add('is-paused'); label.textContent = 'NFC · Tap to resume'; }
+    else { label.textContent = 'NFC · Off'; }
+    btn.setAttribute('aria-pressed', nfcLiveWanted ? 'true' : 'false');
+  }
+  function startNfcLive() {
+    if (!NFC_SUPPORTED) return Promise.resolve(false);
+    nfcLiveWanted = true;
+    try { localStorage.setItem('et-nfc-live', '1'); } catch (e) { /* storage blocked */ }
+    if (nfcLiveActive) { nfcLivePaused = false; renderNfcChip(); return Promise.resolve(true); }
+    if (!nfcReader) {
+      nfcReader = new NDEFReader();
+      nfcReader.addEventListener('reading', function (ev) {
+        if (!nfcLiveWanted) return;   // stopped logically — Web NFC has no stop API of its own
+        handleTag(nfcCandidateIds(ev), ev.serialNumber);
+      });
+      nfcReader.addEventListener('readingerror', function () {
+        if (nfcLiveWanted) toast('Could not read that tag — try again');
+      });
+    }
+    nfcAbort = (typeof AbortController !== 'undefined') ? new AbortController() : null;
+    var scanPromise = nfcAbort ? nfcReader.scan({ signal: nfcAbort.signal }) : nfcReader.scan();
+    return scanPromise.then(function () {
+      nfcLiveActive = true; nfcLivePaused = false; renderNfcChip();
+      return true;
+    }).catch(function () {
+      // Most often NotAllowedError: no gesture yet / permission not granted.
+      // The chip stays in "Paused — tap"; tapping it retries with a gesture.
+      nfcLiveActive = false; nfcLivePaused = true; renderNfcChip();
+      return false;
+    });
+  }
+  function stopNfcLive() {
+    nfcLiveWanted = false; nfcLiveActive = false; nfcLivePaused = false;
+    try { localStorage.setItem('et-nfc-live', '0'); } catch (e) { /* storage blocked */ }
+    if (nfcAbort) { try { nfcAbort.abort(); } catch (e) { /* already settled */ } nfcAbort = null; }
+    renderNfcChip();
+  }
+  /* Chrome needs a gesture: arm a one-time first-touch retry. */
+  function armNfcOnFirstTouch() {
+    if (nfcArmSet || !NFC_SUPPORTED) return;
+    nfcArmSet = true;
+    document.addEventListener('pointerdown', function () {
+      nfcArmSet = false;
+      if (nfcLiveWanted && !nfcLiveActive) startNfcLive();
+    }, { once: true });
+  }
+  $('nfcLiveBtn').addEventListener('click', function () {
+    if (!NFC_SUPPORTED) return;
+    if (nfcLiveWanted && nfcLiveActive) { stopNfcLive(); toast('NFC Live off'); }
+    else startNfcLive();   // this tap is the user gesture Chrome requires
+  });
+  document.addEventListener('visibilitychange', function () {
+    if (!NFC_SUPPORTED || !nfcLiveWanted) return;
+    if (document.hidden) {
+      // Readings stop while hidden; end the session so resume is clean.
+      if (nfcAbort) { try { nfcAbort.abort(); } catch (e) { /* settled */ } nfcAbort = null; }
+      nfcLiveActive = false; nfcLivePaused = true; renderNfcChip();
+    } else {
+      // Try an immediate restart; if Chrome refuses without a gesture,
+      // the next touch anywhere re-arms it.
+      startNfcLive().then(function (ok) { if (!ok) armNfcOnFirstTouch(); });
+    }
+  });
+  function initNfcLive() {
+    renderNfcChip();
+    var dev = $('nfcDeviceStatus');
+    if (dev) dev.textContent = NFC_SUPPORTED
+      ? 'NFC Live available in this browser'
+      : 'NFC Live not available in this browser — stickers open items via their URL instead';
+    if (NFC_SUPPORTED && nfcLiveWanted) {
+      startNfcLive().then(function (ok) { if (!ok) armNfcOnFirstTouch(); });
+    }
+  }
+
+  /* Item detail: the old one-shot Scan button now just turns NFC Live on —
+   * the same shared handleTag() opens whatever sticker is presented. */
   $('scanNfcBtn').addEventListener('click', function () {
     var msg = $('nfcMsg');
-    if (!('NDEFReader' in window)) {
+    if (!NFC_SUPPORTED) {
       msg.className = 'result';
       msg.textContent = 'Web NFC scanning needs Chrome on Android. On iPhone, close this and just tap the sticker to the top of the phone — it opens this item automatically.';
       return;
     }
-    msg.textContent = 'Hold a sticker near the back of the phone…';
-    try {
-      var reader = new NDEFReader();
-      reader.scan().then(function () {
-        reader.onreading = function (ev) {
-          var opened = false;
-          for (var i = 0; i < ev.message.records.length && !opened; i++) {
-            var rec = ev.message.records[i];
-            if (rec.recordType === 'url' && rec.data) {
-              try {
-                var url = new TextDecoder().decode(rec.data);
-                var m = url.match(/[?&]item=([^&]+)/);
-                if (m) { openItem(decodeURIComponent(m[1])); opened = true; }
-              } catch (e) { /* ignore undecodable record */ }
-            }
-          }
-          if (!opened) {
-            var rawId = ev.serialNumber ? ev.serialNumber.replace(/:/g, '') : '';
-            var items = D.getItems();
-            var byNfc = items.filter(function (it) { return it.nfcId && it.nfcId === rawId; })[0];
-            if (byNfc) openItem(byNfc.id);
-            else { msg.textContent = 'Sticker read, but it is not linked to an item yet. Open the item and use its sticker link.'; }
-          }
-        };
-        reader.onreadingerror = function () { msg.textContent = 'Could not read that sticker — try again.'; };
-      }).catch(function (err) { msg.textContent = 'NFC scan failed: ' + err.message; });
-    } catch (e) {
-      msg.textContent = 'NFC is not available on this device/browser.';
-    }
+    msg.textContent = 'Turning NFC Live on — hold any sticker near the back of the phone…';
+    startNfcLive().then(function (ok) {
+      msg.textContent = ok
+        ? 'NFC Live is on — every sticker tap now opens its item while the app is open.'
+        : 'NFC could not start yet. Tap the NFC chip in the header, allow the permission, then tap a sticker.';
+    });
   });
 
   /* Sticker taps: ?item=<id> opens that item directly on load. */
@@ -477,6 +612,7 @@
 
   /* ---------- init ---------- */
   initTheme();
+  initNfcLive();
   initAddForm();
   renderHome();
   renderSync();

@@ -121,6 +121,14 @@ a{color:var(--accent)}
 .badge-live{background:var(--ok-bg);color:var(--ok-text);border-color:var(--green)}
 .badge-online{color:var(--ok-text)}.badge-offline{color:var(--out-text)}
 .badge-queue{background:var(--out-bg);color:var(--out-text);border-color:var(--red)}
+/* NFC Live chip (header) */
+.badge-nfc{cursor:pointer;font-family:inherit;display:inline-flex;align-items:center;gap:.35rem}
+.badge-nfc .nfc-dot{width:7px;height:7px;border-radius:50%;background:var(--muted);display:inline-block;flex:none}
+.badge-nfc.is-live{border-color:var(--accent);color:var(--accent)}
+.badge-nfc.is-live .nfc-dot{background:var(--accent);animation:nfcPulse 1.6s ease-in-out infinite}
+.badge-nfc.is-paused .nfc-dot{background:var(--amber)}
+@keyframes nfcPulse{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.35;transform:scale(.7)}}
+@media (prefers-reduced-motion:reduce){.badge-nfc.is-live .nfc-dot{animation:none}}
 
 main{max-width:960px;margin:0 auto;padding:1rem}
 .view{display:none}.view.active{display:block}

@@ -92,6 +92,15 @@ See the **NFC sticker guide in README.md**. Short version: NTAG213/216
 stickers, one per item/bin, each written with
 `https://masstahl.github.io/electric-trailer/?item=ITEM_ID`.
 
+**NFC Live (Android Chrome):** tap the **NFC chip in the app header** once
+to turn on always-on listening while the app is open — after that, tapping
+any sticker opens its item with no other presses. It pauses when the app
+is backgrounded and resumes on the first touch after reopening (tap the
+chip if it shows “Paused”). On iPhone there is no in-app listening (a
+Safari limitation) — stickers open items directly through their URL
+instead. Stickers are always written as URLs because the URL works on
+both platforms, and the Android listener reads the URL records too.
+
 ## Troubleshooting
 
 - **“Test connection” fails with a plan/deployment error** → step 2 isn't
@@ -101,6 +110,7 @@ stickers, one per item/bin, each written with
 - **Changes made offline didn't appear in AppSheet** → open the **Queue**
   tab and tap **Sync now** while online; the Sync tab shows the last
   error if AppSheet rejected anything.
+- **NFC chip shows "Paused" on Android** → tap the chip (or tap anywhere in the app) to resume listening; NFC Live needs one tap to (re)start after the app is reopened.
 - **Sticker tap opens the site but not the item** → the sticker URL must
   end with `?item=ITEM_ID` using the item's exact Id (copy it from the
   item card — don't type it by hand).

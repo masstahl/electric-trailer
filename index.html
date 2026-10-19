@@ -27,6 +27,7 @@
     <div class="header-status">
       <span id="modeBadge" class="badge badge-demo">Demo mode</span>
       <span id="netBadge" class="badge badge-online">● Online</span>
+      <button type="button" id="nfcLiveBtn" class="badge badge-nfc hidden" aria-pressed="false" title="NFC Live — always-on sticker listening while the app is open"><span class="nfc-dot"></span><span id="nfcLiveLabel">NFC · Off</span></button>
       <span id="queueBadge" class="badge badge-queue hidden">0 pending</span>
     </div>
   </div>
@@ -151,6 +152,12 @@
       </div>
     </div>
 
+    <div class="card">
+      <h3 style="margin-top:0">NFC Live</h3>
+      <p class="muted small"><strong>Android (Chrome):</strong> NFC Live listens continuously while the app is open — turn it on once from the <strong>NFC chip in the header</strong>. It pauses while the app is in the background and resumes on the first touch after the app is reopened.</p>
+      <p class="muted small"><strong>iPhone (Safari):</strong> there is no in-app NFC listening — Safari does not support Web NFC. Stickers still open items directly when tapped, because iOS itself opens each sticker's URL.</p>
+      <p class="small">This device: <strong id="nfcDeviceStatus">checking…</strong></p>
+    </div>
     <div class="card stats-card">
       <div class="kv"><span>Connection mode</span><strong id="healthMode">Demo</strong></div>
       <div class="kv"><span>Item rows on this device</span><strong id="healthRows">–</strong></div>

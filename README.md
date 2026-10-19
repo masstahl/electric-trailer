@@ -88,7 +88,20 @@ Expected table columns (rename/map in AppSheet — see SETUP.md):
      of the phone.
 4. **Use it:** tap the phone to the sticker. iPhone and Android both open
    the link with no app install, and the item card opens ready to + / −.
-   On Android Chrome you can also use “Scan NFC” inside an item card.
+5. **NFC Live (Android Chrome):** with the app open, tap the **NFC chip in
+   the header** once to turn on always-on listening (“NFC · Live”, with a
+   pulsing dot). From then on, every sticker tap opens its item without
+   pressing anything else — the warehouse flow: app open, walk, tap, see
+   the item. It pauses while the app is in the background and resumes on
+   the first touch after the app is reopened (if the chip shows
+   “Paused — tap”, tap it). Turn it off by tapping the chip while it is
+   live. The “Scan NFC sticker” button in an item card also turns NFC
+   Live on.
+   **iPhone:** there is no in-app listening — Safari does not support Web
+   NFC. That is fine: iOS itself reads the sticker's URL in the
+   background and opens the item directly, no listening needed. This is
+   why stickers are always written as URLs — the URL works on both
+   platforms, and the Android listener reads those URL records too.
 5. Stickers are just URLs — if the site address ever changes, re-write the
    stickers (or put a redirect at the old address).
 
