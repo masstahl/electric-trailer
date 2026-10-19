@@ -48,6 +48,13 @@ the matching key automatically at render time, so nothing needs migrating.
 
 ## Design — SPEC PLATE
 
+Locations are Shelf × Level × Position: the sheet's `Bin` column carries
+shelf + position (`B5`); a `Level` column (1 = floor … 4 = top) carries the
+height. One notation everywhere — short `B · L4 · P5`, long
+`Shelf B · Level 4 · Position 5`. Blink-on-search: the located cell pulses
+3× in the accent color, then a solid ring and a caption hold it until
+dismissed; reduced-motion devices get the solid outline immediately.
+
 The current design pass ("SPEC PLATE") follows one rule: **one job per
 color, always paired with a word.**
 
@@ -78,9 +85,9 @@ item / bin / count sheets that open over the current tab.
 
 | # | Screen | What it does |
 |---|--------|--------------|
-| 08 | **Photo-First Grid** (Home) | Big photo/icon cards instead of spreadsheet rows — 3 across, photo on an unclipped white plate, bin chip, status pill with a word (OUT / CRITICAL · n / LOW · n), and an inline − qty + stepper strip on every card. Live search; tap **low / out** in the glass stat bar to filter to low stock. Tap a card to open the item. |
-| 02 | **NFC Tap-to-Open Item Card** | Item sheet leading with a big white photo plate, a loud BIN chip, and a sticky Done footer. Giant neutral + / − steppers; ±5 is **hold-to-apply** (400ms) so a gloved slip can't 5× an edit; tap the quantity numeral for an exact-count entry. Sticker taps via `?item=<id>` — or NFC Live — open the item directly. Includes a copyable sticker link. |
-| 03 | **Warehouse / Bin Map** | Aisles A–D × bins 1–6 as a visual grid. Each bin shows its code and total units, colored by its **worst** item (with a ▲/✕ glyph, never color alone). Tap a bin to open its sheet: items with inline steppers, **Count this bin** (Count Mode), and **Add item to this bin** (bin pre-filled). |
+| 08 | **Photo-First Grid** (Home) | Big photo/icon cards instead of spreadsheet rows — 3 across, photo on an unclipped white plate, location code (`B · L4 · P5`), status pill with a word (OUT / CRITICAL · n / LOW · n), and an inline − qty + stepper strip on every card. Live search; tap **low / out** in the glass stat bar to filter to low stock. Tap a card to open the item. |
+| 02 | **NFC Tap-to-Open Item Card** | Item sheet leading with a big white photo plate, a loud location chip (`B · L4 · P5`), a **Show on shelf** button (jumps to the Shelf Map and blinks the item's cell), and a sticky Done footer. Giant neutral + / − steppers; ±5 is **hold-to-apply** (400ms) so a gloved slip can't 5× an edit; tap the quantity numeral for an exact-count entry. Sticker taps via `?item=<id>` — or NFC Live — open the item directly. Includes a copyable sticker link. |
+| 03 | **Warehouse / Shelf Map** | Concept D elevation: each shelf drawn as a long elevation — levels 4 (top) → 1 (floor) × positions 1–6. Each cell shows its position and total units, colored by its **worst** item (with a ▲/✕ glyph, never color alone). Tap a cell to open its location sheet: items with inline steppers, **Count this location** (Count Mode), and **Add item here** (shelf, position and level pre-filled). **Show on shelf** from any item jumps here and blinks that item's cell. |
 | 16 | **Offline-First Field Mode** (Settings → Sync Queue) | Online/offline status, a pending-changes queue in localStorage, and “Sync now”. Every edit made offline queues instead of failing; qty edits coalesce per item, and the queue auto-flushes on reconnect/foreground when connected to AppSheet. |
 | 19 | **Supplier Hub** | Supplier cards with item count, lead time, and contact. Tap a supplier to list its items. |
 | 22 | **Quick Add New Item** | Fast form (name, qty, bin, supplier, cost, photo-icon picker). The icon auto-assigns from the name (tire, light, battery, axle…) unless a category is picked manually. A duplicate name offers **“Receive this instead”** instead of creating a twin. On save it shows the new item's NFC sticker link, a copy button, a Web NFC “write to sticker” button where supported, and iPhone NFC Tools instructions. |
@@ -100,7 +107,7 @@ item / bin / count sheets that open over the current tab.
   API (`Add`/`Edit` actions) and connection tests run a real `Find`.
 
 Expected table columns (rename/map in AppSheet — see SETUP.md):
-`Id, Name, SKU, Qty, Bin, Supplier, Cost` (plus optional `Icon`, `NFC ID`).
+`Id, Name, SKU, Qty, Bin, Level, Supplier, Cost` (plus optional `Icon`, `NFC ID`).
 
 ## NFC sticker guide
 

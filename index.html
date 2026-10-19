@@ -62,9 +62,20 @@
 
   <!-- ============ MAP · #03 Warehouse / Bin Map ============ -->
   <section id="view-map" class="view">
-    <h2>Warehouse / Bin Map</h2>
-    <p class="muted">Aisles A–D, bins 1–6. A bin's color follows its worst item. Tap a bin to open it.</p>
+    <h2>Warehouse / Shelf Map</h2>
+    <p class="muted">Shelves A–D · Levels stack 4 (top) → 1 (floor) · Positions 1–6 along each shelf. A cell's color follows its worst item. Tap a cell to open it.</p>
+    <div class="shelf-jump" role="group" aria-label="Jump to shelf">
+      <span>Shelf</span>
+      <button type="button" data-jump="A">A</button>
+      <button type="button" data-jump="B">B</button>
+      <button type="button" data-jump="C">C</button>
+      <button type="button" data-jump="D">D</button>
+    </div>
     <div id="binMap" class="bin-map"></div>
+    <div id="locateCaption" class="locate-caption hidden" role="status" aria-live="polite">
+      <span id="locateCaptionText" class="locate-caption-text"></span>
+      <button type="button" id="locateDismiss" class="locate-dismiss" aria-label="Dismiss located item">✕</button>
+    </div>
     <div class="legend"><span><i class="dot dot-ok"></i>Stocked</span><span><i class="dot dot-low"></i>▲ Low / Critical</span><span><i class="dot dot-out"></i>✕ Out</span><span>· Empty</span></div>
   </section>
 
@@ -87,9 +98,15 @@
         <label>Cost $<input id="addCost" type="number" min="0" step="0.01" value="0"></label>
       </div>
       <div class="form-row">
-        <label>Bin<select id="addBin"></select></label>
-        <label>Supplier<select id="addSupplier"></select></label>
+        <label>Bin (shelf + position)<select id="addBin"></select></label>
+        <label>Level<select id="addLevel">
+          <option value="1">Level 1 — floor</option>
+          <option value="2" selected>Level 2</option>
+          <option value="3">Level 3</option>
+          <option value="4">Level 4 — top</option>
+        </select></label>
       </div>
+      <label>Supplier<select id="addSupplier"></select></label>
       <label>Item icon</label>
       <div id="iconPicker" class="icon-picker"></div>
       <div id="addDupWarn" class="dup-warn hidden">
@@ -211,9 +228,10 @@
     <h2 id="dName">Item</h2>
     <p class="muted" id="dMeta">SKU · Bin · Supplier</p>
     <div class="sheet-chips">
-      <span class="bin-chip" id="dBinChip">BIN A1</span>
+      <span class="bin-chip" id="dBinChip">A · L2 · P1</span>
       <span class="qty-pill qty-ok" id="dStatus">0 in stock</span>
     </div>
+    <button type="button" id="showOnShelfBtn" class="btn show-shelf-btn"><svg class="icon-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="miter" stroke-linecap="square" aria-hidden="true" focusable="false"><path d="M12 21.5 L5 13.8 V6.8 L12 2.8 L19 6.8 V13.8 Z"/><path d="M12 12.5 L9.3 9.8 L12 7.2 L14.7 9.8 Z"/></svg> Show on shelf</button>
     <div class="qty-display">
       <button type="button" id="dQtyBtn" class="qty-num" title="Tap to type a new quantity" aria-label="Quantity 0 for Item — tap to type a new quantity"><span id="dQty">0</span></button>
       <small id="dQtyState">in stock</small>
@@ -243,8 +261,8 @@
     <h2 id="bTitle">BIN A1</h2>
     <p class="muted" id="bMeta"></p>
     <div id="binItems" class="list"></div>
-    <button type="button" id="binCountBtn" class="btn btn-big">Count this bin</button>
-    <button type="button" id="binAddBtn" class="btn btn-big">Add item to this bin</button>
+    <button type="button" id="binCountBtn" class="btn btn-big">Count this location</button>
+    <button type="button" id="binAddBtn" class="btn btn-big">Add item here</button>
   </div>
 </div>
 

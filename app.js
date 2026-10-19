@@ -15,6 +15,18 @@
   var AISLES = ['A', 'B', 'C', 'D'];
   var BINS = [];
   AISLES.forEach(function (a) { for (var i = 1; i <= 6; i++) BINS.push(a + i); });
+  /* Location model: item.bin stays "B5" (shelf + position, AppSheet-friendly);
+   * item.level (1-4, 1 = floor, 4 = top) is the vertical dimension.
+   * One notation system: short "B · L4 · P5", long "Shelf B · Level 4 · Position 5". */
+  var LEVELS_TOP_DOWN = [4, 3, 2, 1];
+  function levelOf(item) { var l = parseInt(item && item.level, 10); return (l >= 1 && l <= 4) ? l : 2; }
+  function shelfOf(bin) { return String(bin || 'A1').charAt(0).toUpperCase(); }
+  function posOf(bin) { return parseInt(String(bin || 'A1').slice(1), 10) || 1; }
+  function locShort(item) { return shelfOf(item.bin) + ' · L' + levelOf(item) + ' · P' + posOf(item.bin); }
+  function locLong(item) { return 'Shelf ' + shelfOf(item.bin) + ' · Level ' + levelOf(item) + ' · Position ' + posOf(item.bin); }
+  function locShortParts(bin, level) { return shelfOf(bin) + ' · L' + level + ' · P' + posOf(bin); }
+  function locLongParts(bin, level) { return 'Shelf ' + shelfOf(bin) + ' · Level ' + level + ' · Position ' + posOf(bin); }
+  function cellKey(bin, level) { return bin + '-L' + level; }
   /* ---------- Angular icon system (Cybertruck clipped geometry) ----------
    * Flat geometric line icons: straight segments, chamfered/clipped shapes,
    * stroke=currentColor so every theme tints them. Items store an icon KEY
@@ -88,6 +100,8 @@
   var currentItemId = null;
   var selectedBin = null;
   var currentBin = null;
+  var currentLevel = null;
+  var locateTarget = null;   // { id, name, bin, level } — blink-on-search target
   var selectedSupplier = null;
   var selectedIcon = ICON_KEYS[0];
   var lowFilter = false;
@@ -329,8 +343,9 @@
       t.classList.toggle('active', on);
       if (on) t.setAttribute('aria-current', 'page'); else t.removeAttribute('aria-current');
     });
+    if (name !== 'map' && locateTarget) { locateTarget = null; $('locateCaption').classList.add('hidden'); }
     if (name === 'home') renderHome();
-    if (name === 'map') renderMap();
+    if (name === 'map') { renderMap(); if (locateTarget) setTimeout(activateLocate, 40); }
     if (name === 'suppliers') renderSuppliers();
     if (name === 'sync') { renderQueue(); renderSync(); }
     window.scrollTo(0, 0);
@@ -354,7 +369,10 @@
     var filtered = items.filter(function (i) {
       if (lowFilter && i.qty > 5) return false;
       if (!q) return true;
-      return (i.name + ' ' + i.sku + ' ' + i.bin + ' ' + i.supplier).toLowerCase().indexOf(q) !== -1;
+      var hay = (i.name + ' ' + i.sku + ' ' + i.bin + ' ' + i.supplier + ' ' + locShort(i) + ' ' + locLong(i)).toLowerCase();
+      if (hay.indexOf(q) !== -1) return true;
+      var compact = q.replace(/[\s·\-]/g, '');
+      return compact.length > 1 && locShort(i).toLowerCase().replace(/[\s·]/g, '').indexOf(compact) !== -1;
     });
     if (lowFilter) filtered = filtered.slice().sort(function (a, b) { return a.qty - b.qty; });  // worst first: 0s, then 1–2, then 3–5
     $('photoGrid').innerHTML = filtered.map(function (i) {
@@ -365,7 +383,8 @@
       return '<div class="photo-card st-' + st + '" data-card="' + esc(i.id) + '" role="button" tabindex="0" aria-label="' + esc(i.name) + ', ' + qtyLabel(i.qty) + '">' +
         '<span class="pc-icon">' + iconFor(i) + '</span>' +
         '<div class="pc-name">' + esc(i.name) + '</div>' +
-        '<div class="pc-bin">Bin ' + esc(i.bin) + ' · ' + esc(i.sku) + '</div>' +
+        '<div class="pc-loc">' + locShort(i) + '</div>' +
+        '<div class="pc-bin">' + esc(i.sku) + '</div>' +
         pill +
         '<div class="stepper-strip">' +
           '<button type="button" data-dec="' + esc(i.id) + '" aria-label="Remove one from ' + esc(i.name) + '">−</button>' +
@@ -420,8 +439,9 @@
     currentItemId = id;
     $('dIcon').innerHTML = iconFor(item);
     $('dName').textContent = item.name;
-    $('dMeta').textContent = item.sku + ' · Bin ' + item.bin + ' · ' + item.supplier;
-    $('dBinChip').textContent = 'BIN ' + item.bin;
+    $('dMeta').textContent = item.sku + ' · ' + item.supplier;
+    $('dBinChip').textContent = locShort(item);
+    $('dBinChip').setAttribute('aria-label', locLong(item));
     $('dCost').textContent = money(item.cost) + ' each';
     $('dStickerLink').value = D.stickerUrl(item.id);
     syncSheetQty();
@@ -687,53 +707,116 @@
   }
   function renderMap() {
     var items = D.getItems();
-    var byBin = {};
-    items.forEach(function (i) { (byBin[i.bin] = byBin[i.bin] || []).push(i); });
+    var byCell = {};
+    items.forEach(function (i) { var k = cellKey(i.bin, levelOf(i)); (byCell[k] = byCell[k] || []).push(i); });
     $('binMap').innerHTML = AISLES.map(function (a) {
-      var cells = '';
-      for (var n = 1; n <= 6; n++) {
-        var bin = a + n;
-        var list = byBin[bin] || [];
-        var total = list.reduce(function (s, i) { return s + i.qty; }, 0);
-        var cls, label;
-        if (!list.length) { cls = 'bin-empty'; label = '·'; }
-        else {
-          var worst = worstStatus(list);
-          cls = 'bin-' + worst;
-          label = (worst === 'out' ? '✕ ' : (worst === 'ok' ? '' : '▲ ')) + total;
+      var shelfItems = items.filter(function (i) { return shelfOf(i.bin) === a; });
+      var lowOut = shelfItems.filter(function (i) { return i.qty <= 5; }).length;
+      var bands = LEVELS_TOP_DOWN.map(function (lv) {
+        var cells = '';
+        for (var n = 1; n <= 6; n++) {
+          var bin = a + n;
+          var list = byCell[cellKey(bin, lv)] || [];
+          var total = list.reduce(function (sum, i) { return sum + i.qty; }, 0);
+          var cls, label;
+          if (!list.length) { cls = 'bin-empty'; label = '·'; }
+          else {
+            var worst = worstStatus(list);
+            cls = 'bin-' + worst;
+            label = (worst === 'out' ? '✕ ' : (worst === 'ok' ? '' : '▲ ')) + total;
+          }
+          var isTarget = locateTarget && locateTarget.bin === bin && locateTarget.level === lv;
+          cells += '<button class="bin-cell ' + cls + (isTarget ? ' sel' : '') + '" data-cell="' + cellKey(bin, lv) + '" data-bin="' + bin + '" data-level="' + lv + '" aria-label="' + locLongParts(bin, lv) + (list.length ? ', ' + total + ' units' : ', empty') + '">' +
+            '<strong>P' + n + '</strong><small>' + label + '</small></button>';
         }
-        cells += '<button class="bin-cell ' + cls + (selectedBin === bin ? ' sel' : '') + '" data-bin="' + bin + '">' +
-          '<strong>' + bin + '</strong><small>' + label + '</small></button>';
-      }
-      return '<div><div class="aisle-label">AISLE ' + a + '</div><div class="bin-row">' + cells + '</div></div>';
+        return '<div class="shelf-band"><div class="level-rail">L' + lv + '</div><div class="bin-row">' + cells + '</div></div>';
+      }).join('');
+      var hasTarget = locateTarget && shelfOf(locateTarget.bin) === a;
+      return '<section class="shelf-section" id="shelf-' + a + '"><div class="shelf-head' + (hasTarget ? ' has-target' : '') + '"><strong>SHELF ' + a + '</strong><span>24 cells · ' + lowOut + ' low/out</span></div>' + bands + '<div class="shelf-floor"></div></section>';
     }).join('');
-    $('binMap').querySelectorAll('[data-bin]').forEach(function (c) {
-      c.addEventListener('click', function () { openBinSheet(c.getAttribute('data-bin')); });
+    $('binMap').querySelectorAll('[data-cell]').forEach(function (c) {
+      c.addEventListener('click', function () {
+        if (locateTarget) { locateTarget = null; $('locateCaption').classList.add('hidden'); }
+        openBinSheet(c.getAttribute('data-bin'), parseInt(c.getAttribute('data-level'), 10));
+      });
     });
+    updateLocateCaption();
   }
+
+  /* ---------- Blink-on-search: "Show on shelf" ----------
+   * The target cell pulses 3x in the accent color, then the .sel ring and
+   * the caption hold it until dismissed, a cell is tapped, or tabs change.
+   * Reduced motion: no pulse — the solid ring + caption are the signal. */
+  function updateLocateCaption() {
+    var cap = $('locateCaption');
+    if (!locateTarget) { cap.classList.add('hidden'); return; }
+    $('locateCaptionText').innerHTML = '<strong>' + esc(locateTarget.name) + '</strong> — ' + esc(locLongParts(locateTarget.bin, locateTarget.level));
+    cap.classList.remove('hidden');
+  }
+  function blinkCell(cell) {
+    if (!cell) return;
+    cell.classList.remove('blink');
+    void cell.offsetWidth;
+    cell.classList.add('blink');
+  }
+  function activateLocate() {
+    if (!locateTarget) return;
+    updateLocateCaption();
+    var cell = $('binMap').querySelector('[data-cell="' + cellKey(locateTarget.bin, locateTarget.level) + '"]');
+    if (!cell) return;
+    var reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    cell.scrollIntoView({ block: 'center', behavior: reduced ? 'auto' : 'smooth' });
+    setTimeout(function () {
+      blinkCell(cell);
+      try { cell.focus({ preventScroll: true }); } catch (e) { /* focus is a bonus */ }
+    }, reduced ? 0 : 350);
+  }
+  function showOnShelf() {
+    if (!currentItemId) return;
+    var item = D.getItem(currentItemId);
+    if (!item) return;
+    locateTarget = { id: item.id, name: item.name, bin: item.bin, level: levelOf(item) };
+    closeItem();
+    showView('map');
+  }
+  $('showOnShelfBtn').addEventListener('click', showOnShelf);
+  $('locateCaptionText').addEventListener('click', activateLocate);
+  $('locateDismiss').addEventListener('click', function () {
+    locateTarget = null;
+    $('locateCaption').classList.add('hidden');
+    renderMap();
+  });
+  document.querySelectorAll('[data-jump]').forEach(function (b) {
+    b.addEventListener('click', function () {
+      var el = document.getElementById('shelf-' + b.getAttribute('data-jump'));
+      if (!el) return;
+      var reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+      el.scrollIntoView({ block: 'start', behavior: reduced ? 'auto' : 'smooth' });
+    });
+  });
   function itemRow(i) {
     return '<button class="list-item" data-open="' + esc(i.id) + '"><span class="li-icon">' + iconFor(i) + '</span>' +
-      '<span class="li-main"><span class="li-name">' + esc(i.name) + '</span><br><span class="li-sub">Bin ' + esc(i.bin) + ' · ' + esc(i.sku) + ' · ' + money(i.cost) + '</span></span>' +
+      '<span class="li-main"><span class="li-name">' + esc(i.name) + '</span><br><span class="li-sub">' + locShort(i) + ' · ' + esc(i.sku) + ' · ' + money(i.cost) + '</span></span>' +
       '<span class="li-qty ' + qtyClass(i.qty) + '">' + i.qty + '</span></button>';
   }
 
   /* ---------- Bin Sheet: a bin's contents as a sheet over the map ---------- */
-  function openBinSheet(bin) {
-    currentBin = bin; selectedBin = bin;
+  function openBinSheet(bin, level) {
+    currentBin = bin; currentLevel = (level >= 1 && level <= 4) ? level : 2; selectedBin = bin;
     renderMap();
     renderBinSheetItems();
     $('binOverlay').classList.remove('hidden');
   }
-  function closeBinSheet() { $('binOverlay').classList.add('hidden'); currentBin = null; }
+  function closeBinSheet() { $('binOverlay').classList.add('hidden'); currentBin = null; currentLevel = null; }
   function renderBinSheetItems() {
     if (!currentBin) return;
-    var list = D.getItems().filter(function (i) { return i.bin === currentBin; });
+    var list = D.getItems().filter(function (i) { return i.bin === currentBin && levelOf(i) === currentLevel; });
     var total = list.reduce(function (s, i) { return s + i.qty; }, 0);
-    $('bTitle').textContent = 'BIN ' + currentBin;
+    $('bTitle').textContent = locShortParts(currentBin, currentLevel);
     var worst = list.length ? worstStatus(list) : 'ok';
     var statusHtml = !list.length ? 'Empty bin'
       : '<span class="qty-pill ' + ('qty-' + worst) + '">' + (worst === 'ok' ? 'STOCKED' : qtyLabel(list.reduce(function (m, i) { return STATUS_RANK[statusOf(i.qty)] < STATUS_RANK[statusOf(m.qty)] ? i : m; }).qty)) + '</span>';
-    $('bMeta').innerHTML = list.length + ' item(s) · ' + total + ' units &nbsp;' + statusHtml;
+    $('bMeta').innerHTML = locLongParts(currentBin, currentLevel) + ' · ' + list.length + ' item(s) · ' + total + ' units &nbsp;' + statusHtml;
     $('binItems').innerHTML = list.length ? list.map(function (i) {
       return '<div class="list-item row-item"><span class="li-icon">' + iconFor(i) + '</span>' +
         '<button type="button" class="li-main row-open" data-open="' + esc(i.id) + '"><span class="li-name">' + esc(i.name) + '</span><br>' +
@@ -770,20 +853,21 @@
   $('closeBin').addEventListener('click', closeBinSheet);
   $('binOverlay').addEventListener('click', function (e) { if (e.target === $('binOverlay')) closeBinSheet(); });
   $('binAddBtn').addEventListener('click', function () {
-    var bin = currentBin;
+    var bin = currentBin, level = currentLevel;
     closeBinSheet();
-    openAddForBin(bin);
+    openAddForBin(bin, level);
   });
-  $('binCountBtn').addEventListener('click', function () { startCount(currentBin); });
+  $('binCountBtn').addEventListener('click', function () { startCount(currentBin, currentLevel); });
 
   /* ---------- Count Mode: walk a bin item by item, then apply ---------- */
   var countSession = null;
-  function startCount(bin) {
+  function startCount(bin, level) {
     if (!bin) return;
-    var list = D.getItems().filter(function (i) { return i.bin === bin; });
-    if (!list.length) { toast('Bin ' + bin + ' is empty — nothing to count'); return; }
+    var lv = (level >= 1 && level <= 4) ? level : 2;
+    var list = D.getItems().filter(function (i) { return i.bin === bin && levelOf(i) === lv; });
+    if (!list.length) { toast(locShortParts(bin, lv) + ' is empty — nothing to count'); return; }
     countSession = {
-      bin: bin,
+      bin: bin, level: lv,
       entries: list.map(function (i) { return { id: i.id, system: i.qty, counted: i.qty }; }),
       idx: 0
     };
@@ -798,10 +882,10 @@
     var en = countSession.entries[countSession.idx];
     var item = D.getItem(en.id);
     if (!item) return;
-    $('cProgress').textContent = (countSession.idx + 1) + ' of ' + countSession.entries.length + ' · Bin ' + countSession.bin;
+    $('cProgress').textContent = (countSession.idx + 1) + ' of ' + countSession.entries.length + ' · ' + locShort(item);
     $('cHero').innerHTML = iconFor(item);
     $('cName').textContent = item.name;
-    $('cMeta').textContent = 'Bin ' + item.bin + ' · system qty ' + en.system;
+    $('cMeta').textContent = locShort(item) + ' · system qty ' + en.system;
     $('cQty').textContent = en.counted;
     $('cQtyBtn').setAttribute('aria-label', 'Counted quantity ' + en.counted + ' for ' + item.name + ' — tap to type a new counted quantity');
     $('cBack').textContent = countSession.idx === 0 ? 'Cancel' : 'Back';
@@ -965,7 +1049,7 @@
     $('addDupWarn').classList.add('hidden');
     $('addForm').classList.add('hidden');
     $('addSuccess').classList.remove('hidden');
-    $('addSuccessText').textContent = item.name + ' — ' + item.qty + ' in Bin ' + item.bin + '. Stick an NFC sticker on the bin/item and write this link to it:';
+    $('addSuccessText').textContent = item.name + ' — ' + item.qty + ' in ' + locShort(item) + '. Stick an NFC sticker on the bin/item and write this link to it:';
     $('addStickerLink').value = D.stickerUrl(item.id);
     $('addWriteNfcBtn').classList.toggle('hidden', !('NDEFReader' in window));
     $('addWriteNfcBtn').onclick = function () { writeSticker(D.stickerUrl(item.id)); };
@@ -977,7 +1061,7 @@
     var data = {
       name: $('addName').value.trim(),
       qty: $('addQty').value, cost: $('addCost').value,
-      bin: $('addBin').value, supplier: $('addSupplier').value, icon: selectedIcon
+      bin: $('addBin').value, level: $('addLevel').value, supplier: $('addSupplier').value, icon: selectedIcon
     };
     if (!data.name) return;
     /* Duplicate-name check: offer "Receive this instead" rather than
@@ -985,7 +1069,7 @@
     var dup = D.getItems().filter(function (i) { return normName(i.name) === normName(data.name); })[0];
     if (dup) {
       pendingAdd = { data: data, dup: dup };
-      $('dupText').textContent = '“' + dup.name + '” already exists — Bin ' + dup.bin + ', ' + dup.qty + ' in stock. Receive against that item instead of adding a duplicate?';
+      $('dupText').textContent = '“' + dup.name + '” already exists — ' + locShort(dup) + ', ' + dup.qty + ' in stock. Receive against that item instead of adding a duplicate?';
       $('addDupWarn').classList.remove('hidden');
       return;
     }
@@ -1003,11 +1087,12 @@
     doAdd(pendingAdd.data);
   });
   /* Quick Add launched from a bin (bin sheet) — bin comes pre-filled. */
-  function openAddForBin(bin) {
+  function openAddForBin(bin, level) {
     showView('add');
     $('addSuccess').classList.add('hidden');
     $('addForm').classList.remove('hidden');
     if (bin) $('addBin').value = bin;
+    if (level >= 1 && level <= 4) $('addLevel').value = String(level);
     $('addName').focus();
   }
   $('addCopyBtn').addEventListener('click', function () { copyText($('addStickerLink'), 'Sticker link copied'); });

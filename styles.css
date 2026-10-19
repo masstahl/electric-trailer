@@ -194,7 +194,8 @@ main{max-width:960px;margin:0 auto;padding:1rem}
 .photo-card:active{transform:scale(.97)}
 .photo-card .pc-icon{font-size:3rem;line-height:1.15;display:block}
 .photo-card .pc-name{font-weight:700;font-size:.8rem;line-height:1.15;margin:.22rem 0 .05rem;min-height:2.3em}
-.photo-card .pc-bin{color:var(--muted);font-size:.7rem;line-height:1.15}
+.photo-card .pc-loc{font-weight:800;font-size:.68rem;line-height:1.15;font-variant-numeric:tabular-nums;margin-top:.1rem}
+.photo-card .pc-bin{color:var(--muted);font-size:.62rem;line-height:1.15}
 .qty-pill{display:inline-block;margin-top:.25rem;font-weight:800;font-size:.78rem;padding:.22rem .55rem;border-radius:999px}
 .qty-ok{background:var(--ok-bg);color:var(--ok-text)}
 .qty-low{background:var(--low-bg);color:var(--low-text)}
@@ -254,18 +255,79 @@ main{max-width:960px;margin:0 auto;padding:1rem}
 .kv:last-child{border-bottom:none}
 .kv span{color:var(--muted)}
 
-/* #03 Bin map */
-.bin-map{display:flex;flex-direction:column;gap:.8rem}
-.aisle-label{font-weight:800;font-size:.85rem;color:var(--muted);letter-spacing:.06em;margin-bottom:.35rem}
-.bin-row{display:grid;grid-template-columns:repeat(6,1fr);gap:.45rem}
+/* #03 Shelf map — Concept D elevation: each shelf is a long elevation,
+   level bands stacked L4 (top) → L1 (floor), positions 1–6 along. */
+.bin-map{display:flex;flex-direction:column;gap:1rem}
+.shelf-jump{
+  position:sticky;top:calc(var(--header-h) + 6px);z-index:12;
+  display:flex;align-items:center;gap:.4rem;padding:.35rem;margin-bottom:.6rem;
+  background:color-mix(in srgb,var(--tabbar-bg) 88%,transparent);
+  background-image:linear-gradient(180deg,rgba(255,255,255,.22),rgba(255,255,255,.05) 55%,rgba(255,255,255,0));
+  -webkit-backdrop-filter:blur(30px) saturate(1.9);backdrop-filter:blur(30px) saturate(1.9);
+  border:var(--bw) solid color-mix(in srgb,var(--border) 55%,rgba(255,255,255,.35));border-radius:18px;
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.45),0 8px 24px rgba(0,0,0,.22);
+}
+.shelf-jump span{font-weight:800;font-size:.75rem;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;padding-left:.3rem}
+.shelf-jump button{
+  flex:1;min-height:44px;border-radius:12px;border:var(--bw) solid var(--border);
+  background:var(--surface);color:var(--text);font-weight:900;font-family:inherit;cursor:pointer;font-size:1rem;
+}
+.shelf-section{
+  background:var(--surface);border:var(--bw) solid var(--border);border-radius:16px;overflow:hidden;
+  box-shadow:var(--card-shadow);scroll-margin-top:calc(var(--header-h) + 64px);
+}
+.shelf-head{
+  display:flex;justify-content:space-between;align-items:center;min-height:40px;
+  padding:.45rem .75rem;border-bottom:var(--bw) solid var(--border);
+}
+.shelf-head strong{font-size:.95rem;letter-spacing:.06em}
+.shelf-head span{font-size:.72rem;color:var(--muted)}
+.shelf-head.has-target{box-shadow:inset 4px 0 0 var(--accent)}
+.shelf-band{display:grid;grid-template-columns:28px 1fr;gap:.25rem;padding:.3rem .35rem;align-items:stretch}
+.level-rail{
+  display:flex;align-items:center;justify-content:center;background:var(--surface2);
+  border-radius:8px;font-size:.72rem;font-weight:900;color:var(--muted);
+}
+.shelf-floor{height:4px;background:var(--text);opacity:.55;margin:0 .35rem .35rem;border-radius:2px}
+.bin-row{display:grid;grid-template-columns:repeat(6,1fr);gap:.25rem}
 .bin-cell{
-  border-radius:14px;border:2px solid var(--border);background:var(--surface);color:var(--text);padding:.5rem .2rem;
-  text-align:center;cursor:pointer;font:inherit;min-height:64px;
+  border-radius:10px;border:2px solid var(--border);background:var(--surface);color:var(--text);padding:.3rem .1rem;
+  text-align:center;cursor:pointer;font:inherit;min-height:56px;position:relative;
   display:flex;flex-direction:column;align-items:center;justify-content:center;
 }
-.bin-cell strong{display:block;font-size:.95rem}
-.bin-cell small{display:block;color:var(--muted);font-size:.68rem}
-.bin-cell.sel{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-soft)}
+@media(min-width:640px){.bin-cell{min-height:72px}}
+.bin-cell strong{display:block;font-size:.78rem;line-height:1.1}
+.bin-cell small{display:block;color:var(--muted);font-size:.68rem;font-weight:700}
+.bin-cell.sel{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent)}
+/* Blink-on-search: 3 accent pulses, then the .sel ring holds the target */
+@keyframes shelfBlink{
+  0%,100%{box-shadow:0 0 0 0 transparent;transform:scale(1)}
+  50%{box-shadow:0 0 0 3px var(--surface),0 0 0 7px var(--accent);
+      background-color:color-mix(in srgb,var(--accent) 38%,transparent);transform:scale(1.06)}
+}
+.bin-cell.blink{animation:shelfBlink .6s ease-in-out 3;z-index:2}
+@media (prefers-reduced-motion: reduce){
+  .bin-cell.blink{animation:none;box-shadow:0 0 0 3px var(--accent)}
+}
+.locate-caption{
+  position:fixed;left:50%;transform:translateX(-50%);bottom:calc(96px + env(safe-area-inset-bottom));z-index:35;
+  width:min(94vw,560px);display:flex;align-items:center;gap:.5rem;padding:.55rem .4rem .55rem .85rem;
+  background:color-mix(in srgb,var(--tabbar-bg) 88%,transparent);
+  background-image:linear-gradient(180deg,rgba(255,255,255,.22),rgba(255,255,255,.05) 55%,rgba(255,255,255,0));
+  -webkit-backdrop-filter:blur(30px) saturate(1.9);backdrop-filter:blur(30px) saturate(1.9);
+  border:var(--bw) solid color-mix(in srgb,var(--border) 55%,rgba(255,255,255,.35));border-radius:18px;
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.45),0 8px 24px rgba(0,0,0,.22);
+}
+.locate-caption-text{flex:1;font-size:.82rem;cursor:pointer}
+.locate-caption-text strong{font-size:.92rem}
+.locate-dismiss{
+  width:44px;height:44px;flex:none;border:none;border-radius:50%;
+  background:var(--surface2);color:var(--text);cursor:pointer;font-size:1rem;
+}
+.show-shelf-btn{
+  width:100%;min-height:48px;margin:.55rem 0 .1rem;background:var(--surface2);
+  border:1.5px solid var(--accent);display:flex;align-items:center;justify-content:center;gap:.45rem;
+}
 /* Bin color = its WORST item's status (SPEC PLATE), glyph + tint together */
 .bin-ok{background:var(--ok-bg)}
 .bin-low{background:var(--low-bg)}

@@ -76,7 +76,8 @@ mapping in `appsheet.js`):
 | `Name`   | Text    | Display name                           |
 | `SKU`    | Text    |                                        |
 | `Qty`    | Number  | On-hand quantity                       |
-| `Bin`    | Text    | e.g. `A1`…`D6` — drives the Bin Map    |
+| `Bin`    | Text    | e.g. `A1`…`D6` — shelf + position; drives the Shelf Map |
+| `Level`  | Number  | `1`–`4` — shelf level (`1` = floor, `4` = top); with `Bin` it shows as e.g. `B · L4 · P5` |
 | `Supplier` | Text  | Must match the supplier name           |
 | `Cost`   | Decimal / Price | Per-unit cost                  |
 | `Icon`   | Text (optional) | Angular icon key, e.g. `bolt` — one of: `box`, `controller`, `plug`, `light`, `bolt`, `battery`, `solar`, `tire`, `axle`, `hub`, `link`, `chain`, `hook`, `kit`, `spring`, `diamond`, `fender`, `jack`, `alert`. Legacy emoji values still render (mapped automatically) |

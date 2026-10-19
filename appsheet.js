@@ -37,24 +37,24 @@
   ];
 
   var DEMO_ITEMS = [
-    { id: 'brake-controller',  name: 'Brake Controller',        sku: 'ET-BRK-101', qty: 14, bin: 'A1', supplier: 'eTrailer Wholesale',   cost: 89.99,  icon: 'controller', nfcId: '', updated: '' },
-    { id: 'wiring-harness-7pin', name: '7-Pin Wiring Harness',  sku: 'ET-WIR-207', qty: 32, bin: 'A2', supplier: 'General Trailer Parts', cost: 24.50, icon: 'plug', nfcId: '', updated: '' },
-    { id: 'led-tail-light',    name: 'LED Tail Light',          sku: 'ET-LGT-310', qty: 48, bin: 'A3', supplier: 'General Trailer Parts', cost: 18.75, icon: 'light', nfcId: '', updated: '' },
-    { id: 'trailer-tire',      name: 'Trailer Tire ST205/75R15', sku: 'ET-TIR-415', qty: 9,  bin: 'D1', supplier: 'Redneck Trailer Co.',  cost: 112.00, icon: 'tire', nfcId: '', updated: '' },
-    { id: 'axle-3500',         name: '3500 lb Axle',            sku: 'ET-AXL-350', qty: 4,  bin: 'D3', supplier: 'Dexter Axle Supply',   cost: 289.00, icon: 'axle', nfcId: '', updated: '' },
-    { id: 'coupler-2in',       name: '2" Coupler',              sku: 'ET-CPL-020', qty: 21, bin: 'B1', supplier: 'Dexter Axle Supply',   cost: 32.40,  icon: 'link', nfcId: '', updated: '' },
-    { id: 'safety-chains',     name: 'Safety Chains (pair)',    sku: 'ET-CHN-050', qty: 5,  bin: 'B2', supplier: 'General Trailer Parts', cost: 21.99, icon: 'chain', nfcId: '', updated: '' },
-    { id: 'tongue-jack',       name: 'Tongue Jack',             sku: 'ET-JCK-700', qty: 7,  bin: 'B3', supplier: 'Redneck Trailer Co.',  cost: 64.95,  icon: 'jack', nfcId: '', updated: '' },
-    { id: 'battery-12v',       name: '12V Deep-Cycle Battery',  sku: 'ET-BAT-120', qty: 11, bin: 'C1', supplier: 'SunSpark Solar',       cost: 139.00, icon: 'battery', nfcId: '', updated: '' },
-    { id: 'power-inverter',    name: 'Power Inverter 2000W',    sku: 'ET-INV-200', qty: 3,  bin: 'C2', supplier: 'SunSpark Solar',       cost: 219.00, icon: 'bolt', nfcId: '', updated: '' },
-    { id: 'solar-kit',         name: 'Solar Panel Kit 200W',    sku: 'ET-SOL-200', qty: 6,  bin: 'C3', supplier: 'SunSpark Solar',       cost: 349.00, icon: 'solar', nfcId: '', updated: '' },
-    { id: 'hub-assembly',      name: 'Hub Assembly 5-Lug',      sku: 'ET-HUB-505', qty: 16, bin: 'B4', supplier: 'Dexter Axle Supply',   cost: 58.25,  icon: 'hub', nfcId: '', updated: '' },
-    { id: 'leaf-spring',       name: 'Leaf Spring 4-Leaf',      sku: 'ET-SPR-440', qty: 2,  bin: 'D4', supplier: 'Dexter Axle Supply',   cost: 74.80,  icon: 'spring', nfcId: '', updated: '' },
-    { id: 'fender-single',     name: 'Single-Axle Fender',      sku: 'ET-FND-010', qty: 8,  bin: 'D2', supplier: 'Redneck Trailer Co.',  cost: 46.60,  icon: 'fender', nfcId: '', updated: '' },
-    { id: 'winch-2500',        name: 'Winch 2500 lb',           sku: 'ET-WIN-250', qty: 5,  bin: 'C4', supplier: 'eTrailer Wholesale',   cost: 129.99, icon: 'hook', nfcId: '', updated: '' },
-    { id: 'wiring-kit',        name: 'Wiring Kit Complete',     sku: 'ET-WIR-900', qty: 19, bin: 'A4', supplier: 'eTrailer Wholesale',   cost: 39.95,  icon: 'kit', nfcId: '', updated: '' },
-    { id: 'breakaway-kit',     name: 'Breakaway Kit',           sku: 'ET-BRK-900', qty: 1,  bin: 'A5', supplier: 'eTrailer Wholesale',   cost: 54.30,  icon: 'alert', nfcId: '', updated: '' },
-    { id: 'reflector-set',     name: 'Reflector Set (12 pc)',   sku: 'ET-RFL-012', qty: 0,  bin: 'A6', supplier: 'General Trailer Parts', cost: 9.99, icon: 'diamond', nfcId: '', updated: '' }
+    { id: 'brake-controller',  name: 'Brake Controller',        sku: 'ET-BRK-101', qty: 14, bin: 'A1', level: 3, supplier: 'eTrailer Wholesale',   cost: 89.99,  icon: 'controller', nfcId: '', updated: '' },
+    { id: 'wiring-harness-7pin', name: '7-Pin Wiring Harness',  sku: 'ET-WIR-207', qty: 32, bin: 'A2', level: 2, supplier: 'General Trailer Parts', cost: 24.50, icon: 'plug', nfcId: '', updated: '' },
+    { id: 'led-tail-light',    name: 'LED Tail Light',          sku: 'ET-LGT-310', qty: 48, bin: 'A3', level: 3, supplier: 'General Trailer Parts', cost: 18.75, icon: 'light', nfcId: '', updated: '' },
+    { id: 'trailer-tire',      name: 'Trailer Tire ST205/75R15', sku: 'ET-TIR-415', qty: 9,  bin: 'D1', level: 1, supplier: 'Redneck Trailer Co.',  cost: 112.00, icon: 'tire', nfcId: '', updated: '' },
+    { id: 'axle-3500',         name: '3500 lb Axle',            sku: 'ET-AXL-350', qty: 4,  bin: 'D3', level: 1, supplier: 'Dexter Axle Supply',   cost: 289.00, icon: 'axle', nfcId: '', updated: '' },
+    { id: 'coupler-2in',       name: '2" Coupler',              sku: 'ET-CPL-020', qty: 21, bin: 'B1', level: 2, supplier: 'Dexter Axle Supply',   cost: 32.40,  icon: 'link', nfcId: '', updated: '' },
+    { id: 'safety-chains',     name: 'Safety Chains (pair)',    sku: 'ET-CHN-050', qty: 5,  bin: 'B2', level: 2, supplier: 'General Trailer Parts', cost: 21.99, icon: 'chain', nfcId: '', updated: '' },
+    { id: 'tongue-jack',       name: 'Tongue Jack',             sku: 'ET-JCK-700', qty: 7,  bin: 'B3', level: 2, supplier: 'Redneck Trailer Co.',  cost: 64.95,  icon: 'jack', nfcId: '', updated: '' },
+    { id: 'battery-12v',       name: '12V Deep-Cycle Battery',  sku: 'ET-BAT-120', qty: 11, bin: 'C1', level: 1, supplier: 'SunSpark Solar',       cost: 139.00, icon: 'battery', nfcId: '', updated: '' },
+    { id: 'power-inverter',    name: 'Power Inverter 2000W',    sku: 'ET-INV-200', qty: 3,  bin: 'C2', level: 2, supplier: 'SunSpark Solar',       cost: 219.00, icon: 'bolt', nfcId: '', updated: '' },
+    { id: 'solar-kit',         name: 'Solar Panel Kit 200W',    sku: 'ET-SOL-200', qty: 6,  bin: 'C3', level: 1, supplier: 'SunSpark Solar',       cost: 349.00, icon: 'solar', nfcId: '', updated: '' },
+    { id: 'hub-assembly',      name: 'Hub Assembly 5-Lug',      sku: 'ET-HUB-505', qty: 16, bin: 'B4', level: 2, supplier: 'Dexter Axle Supply',   cost: 58.25,  icon: 'hub', nfcId: '', updated: '' },
+    { id: 'leaf-spring',       name: 'Leaf Spring 4-Leaf',      sku: 'ET-SPR-440', qty: 2,  bin: 'D4', level: 1, supplier: 'Dexter Axle Supply',   cost: 74.80,  icon: 'spring', nfcId: '', updated: '' },
+    { id: 'fender-single',     name: 'Single-Axle Fender',      sku: 'ET-FND-010', qty: 8,  bin: 'D2', level: 1, supplier: 'Redneck Trailer Co.',  cost: 46.60,  icon: 'fender', nfcId: '', updated: '' },
+    { id: 'winch-2500',        name: 'Winch 2500 lb',           sku: 'ET-WIN-250', qty: 5,  bin: 'C4', level: 1, supplier: 'eTrailer Wholesale',   cost: 129.99, icon: 'hook', nfcId: '', updated: '' },
+    { id: 'wiring-kit',        name: 'Wiring Kit Complete',     sku: 'ET-WIR-900', qty: 19, bin: 'A4', level: 2, supplier: 'eTrailer Wholesale',   cost: 39.95,  icon: 'kit', nfcId: '', updated: '' },
+    { id: 'breakaway-kit',     name: 'Breakaway Kit',           sku: 'ET-BRK-900', qty: 1,  bin: 'A5', level: 3, supplier: 'eTrailer Wholesale',   cost: 54.30,  icon: 'alert', nfcId: '', updated: '' },
+    { id: 'reflector-set',     name: 'Reflector Set (12 pc)',   sku: 'ET-RFL-012', qty: 0,  bin: 'A6', level: 4, supplier: 'General Trailer Parts', cost: 9.99, icon: 'diamond', nfcId: '', updated: '' }
   ];
 
   function read(key, fallback) {
@@ -69,11 +69,23 @@
   function nowISO() { return new Date().toISOString(); }
 
   function seedIfNeeded() {
-    if (!read(LS.items, null)) {
+    var existing = read(LS.items, null);
+    if (!existing) {
       var items = DEMO_ITEMS.map(function (it) {
         var copy = Object.assign({}, it); copy.updated = nowISO(); return copy;
       });
       write(LS.items, items);
+    } else {
+      // Location levels (v15): backfill demo items saved before `level`
+      // existed, matched by id from the demo set. Other items keep theirs.
+      var levelsById = {};
+      DEMO_ITEMS.forEach(function (it) { levelsById[it.id] = it.level; });
+      var changed = false;
+      existing.forEach(function (it) {
+        var ok = Number(it.level) >= 1 && Number(it.level) <= 4;
+        if (!ok && levelsById[it.id]) { it.level = levelsById[it.id]; changed = true; }
+      });
+      if (changed) write(LS.items, existing);
     }
     if (!read(LS.suppliers, null)) write(LS.suppliers, DEMO_SUPPLIERS);
     if (!read(LS.queue, null)) write(LS.queue, []);
@@ -188,7 +200,7 @@
     var item = {
       id: id,
       name: data.name, sku: data.sku || ('ET-' + Math.floor(100 + Math.random() * 900)),
-      qty: Number(data.qty) || 0, bin: data.bin || 'A1',
+      qty: Number(data.qty) || 0, bin: data.bin || 'A1', level: Math.min(4, Math.max(1, Number(data.level) || 2)),
       supplier: data.supplier || '', cost: Number(data.cost) || 0,
       icon: data.icon || 'box', nfcId: '', updated: nowISO()
     };
@@ -260,7 +272,7 @@
       chain = chain.then(function () {
         var item = itemsById[c.itemId];
         if (!item) { c.synced = true; c.syncedAt = nowISO(); return; }
-        var row = { Id: item.id, Name: item.name, SKU: item.sku, Qty: item.qty, Bin: item.bin, Supplier: item.supplier, Cost: item.cost };
+        var row = { Id: item.id, Name: item.name, SKU: item.sku, Qty: item.qty, Bin: item.bin, Level: item.level || 2, Supplier: item.supplier, Cost: item.cost };
         return apiAction(c.type === 'add' ? 'Add' : 'Edit', [row]).then(function () {
           c.synced = true; c.syncedAt = nowISO();
         });
