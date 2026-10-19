@@ -7,10 +7,18 @@
 <meta name="description" content="Electric Trailer — fast AppSheet-backed inventory front-end with NFC stickers. Photo grid, bin map, offline-first, supplier hub.">
 <title>Electric Trailer — Inventory</title>
 <script>
-/* Apply the saved theme before first paint (no flash). Key: 'et-theme'. */
+/* Apply the saved theme before first paint (no flash). Key: 'et-theme'.
+   One-time switch (2026-10-19): devices that saved an older theme are moved
+   to Milwaukee Red once — flag 'et-theme-force' = 'mk1'. */
 (function () {
   var t = 'milwaukee';
-  try { t = localStorage.getItem('et-theme') || 'milwaukee'; } catch (e) { /* storage blocked */ }
+  try {
+    if (localStorage.getItem('et-theme-force') !== 'mk1') {
+      localStorage.setItem('et-theme', 'milwaukee');
+      localStorage.setItem('et-theme-force', 'mk1');
+    }
+    t = localStorage.getItem('et-theme') || 'milwaukee';
+  } catch (e) { /* storage blocked */ }
   if (['midnight', 'warehouse', 'electric', 'hivis', 'paper', 'workshop', 'milwaukee'].indexOf(t) === -1) t = 'milwaukee';
   document.documentElement.dataset.theme = t;
 })();

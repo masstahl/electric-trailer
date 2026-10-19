@@ -119,7 +119,14 @@
   };
   function savedTheme() {
     var t = 'milwaukee';
-    try { t = localStorage.getItem('et-theme') || 'milwaukee'; } catch (e) { /* storage blocked */ }
+    try {
+      // One-time switch to Milwaukee Red (mirrors the index.html head script).
+      if (localStorage.getItem('et-theme-force') !== 'mk1') {
+        localStorage.setItem('et-theme', 'milwaukee');
+        localStorage.setItem('et-theme-force', 'mk1');
+      }
+      t = localStorage.getItem('et-theme') || 'milwaukee';
+    } catch (e) { /* storage blocked */ }
     return THEMES[t] ? t : 'milwaukee';
   }
   function markThemeCards(name) {
