@@ -1480,8 +1480,22 @@
   /* One Connect button: saves the pasted link on this device, then
    * tests it — in Sheet mode testConnection also imports the rows. */
   $('connectSheetBtn').addEventListener('click', function () {
-    if (window.ETSheets) window.ETSheets.saveConfig({ url: $('setSheetUrl').value });
     var out = $('sheetTestResult');
+    var pasted = $('setSheetUrl').value.trim();
+    // Guard the mix-up that produces a bare "Load failed": the sheet's
+    // own link is not the bridge link. Say so, in plain words, before
+    // anything is saved or fetched.
+    if (/docs\.google\.com\/spreadsheets/.test(pasted)) {
+      out.textContent = 'That is the spreadsheet link, not the Web app link — the app needs the link from the script editor: Deploy → Manage deployments → Web app URL (starts with script.google.com, ends in /exec).';
+      out.className = 'result err';
+      return;
+    }
+    if (!/^https:\/\/script\.google\.com\/macros\/s\/.+\/exec$/.test(pasted)) {
+      out.textContent = 'That does not look like a Web app link — it should start with script.google.com/macros/s/ and end in /exec. Find it in the script editor: Deploy → Manage deployments.';
+      out.className = 'result err';
+      return;
+    }
+    if (window.ETSheets) window.ETSheets.saveConfig({ url: pasted });
     out.textContent = 'Connecting…'; out.className = 'result';
     D.testConnection().then(function (r) {
       out.textContent = r.message; out.className = 'result ' + (r.ok ? 'ok' : 'err');

@@ -84,6 +84,15 @@
     };
   }
 
+  /* A failed fetch surfaces as a raw platform string ("Load failed" on
+   * iOS, "Failed to fetch" on Chrome). Translate it into the two checks
+   * that actually fix it: right link shape, and Anyone access. */
+  function unreachable(err) {
+    return 'Could not reach the Sheet link (' + String((err && err.message) || err) + '). ' +
+      'Check that it is the Web app link from Deploy (script.google.com/macros/s/…, ending in /exec) ' +
+      'and that the deployment access is set to Anyone.';
+  }
+
   function notConfigured() {
     return { ok: false, mode: 'sheet', rows: 0, items: [],
              message: 'Google Sheet is not connected — paste the Sheet link (the Web app link from Deploy, ending in /exec) in Settings → Backend → Google Sheet.' };
@@ -105,7 +114,7 @@
       return { ok: true, mode: 'sheet', rows: rawRows.length, items: items,
                message: 'Connected. Google Sheet returned ' + rawRows.length + ' row(s).' };
     }).catch(function (err) {
-      return { ok: false, mode: 'sheet', rows: 0, items: [], message: String((err && err.message) || err) };
+      return { ok: false, mode: 'sheet', rows: 0, items: [], message: unreachable(err) };
     });
   }
 
@@ -128,7 +137,7 @@
       if (body.ok === false && !body.results) throw new Error(body.error || 'Sheet bridge error');
       return { ok: true, results: body.results || [] };
     }).catch(function (err) {
-      return { ok: false, results: [], message: String((err && err.message) || err) };
+      return { ok: false, results: [], message: unreachable(err) };
     });
   }
 
