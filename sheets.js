@@ -6,9 +6,9 @@
  * "Option B"). The bridge link is stored ONLY in this device's
  * localStorage ('et-sheet-config') — never in code, never in the repo.
  *
- * No token is needed: the link alone connects. (A token saved by an
- * earlier setup is still sent along silently, for bridges that have
- * the optional TOKEN switched on in apps-script.gs.)
+ * The link alone connects when the bridge's TOKEN is blank. If the
+ * script has a TOKEN set, the same token entered in Settings is sent
+ * along with every request — the two must match exactly.
  */
 (function () {
   'use strict';

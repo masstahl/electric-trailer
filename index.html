@@ -250,7 +250,8 @@
     </div>
     <div id="sheetBlock" class="card form hidden">
       <label>Sheet link<input id="setSheetUrl" placeholder="https://script.google.com/macros/s/…/exec" autocomplete="off"></label>
-      <p class="muted small">Paste the Web app link from Deploy (ends in /exec) — that's all it takes. The link is stored <strong>only in this device's browser</strong>. Anyone who has the link can read and write this inventory, so keep it among the people using it. Setup steps: <a href="https://github.com/masstahl/electric-trailer/blob/main/SETUP.md" target="_blank" rel="noopener">SETUP.md → Option B</a>.</p>
+      <label>Token<input id="setSheetToken" type="password" placeholder="Only if the script has a TOKEN set" autocomplete="off"></label>
+      <p class="muted small">Paste the Web app link from Deploy (ends in /exec). If the script has a <strong>TOKEN</strong> set at the top, type the same token here — it must match exactly. If the script's TOKEN is blank, leave this blank. Both are stored <strong>only in this device's browser</strong>. Anyone who has the link (and token, if set) can read and write this inventory, so keep them among the people using it. Setup steps: <a href="https://github.com/masstahl/electric-trailer/blob/main/SETUP.md" target="_blank" rel="noopener">SETUP.md → Option B</a>.</p>
       <button type="button" id="connectSheetBtn" class="btn btn-primary">Connect</button>
       <p id="sheetTestResult" class="result"></p>
     </div>

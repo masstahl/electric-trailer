@@ -102,9 +102,11 @@ runs as the sheet owner's Google account and only ever touches its
 own spreadsheet. If the link ever needs to stop working, delete the
 deployment (Apps Script → Deploy → Manage deployments) or re-deploy
 for a fresh link. A shared-secret token is available if that ever
-changes: set `TOKEN` in `apps-script.gs`, re-deploy, and add the same
-value as `token` in the app's saved sheet config on each device — the
-bridge then rejects requests that don't carry it.
+changes: set `TOKEN` in `apps-script.gs`, re-deploy (a new deployment
+version — code edits alone don't go live), and enter the same value in
+the app's **Token** field (Settings → Backend → Google Sheet) on each
+device — the bridge then rejects requests that don't carry it, and
+"Bad token" means the two don't match.
 
 Expected sheet columns are the same as step 5 (including the optional
 **`Photo`** column — an image URL per item; the app shows it on the
@@ -213,10 +215,12 @@ both platforms, and the Android listener reads the URL records too.
 - **“Test connection” fails with a plan/deployment error** → step 2 isn't
   finished; no front-end setting can bypass it. (Or switch to Option B
   and connect the Google Sheet directly.)
-- **Sheet mode says “Bad token”** → only possible when the optional
-  `TOKEN` is set in `apps-script.gs`: the `token` in the app's saved
-  sheet config must match it exactly, and the script must have been
-  (re)deployed after the token was set.
+- **Sheet mode says “Bad token”** → only possible when a `TOKEN` is
+  set in `apps-script.gs`: the **Token** field in the app
+  (Settings → Backend → Google Sheet) must match it exactly — and the
+  script must have been redeployed (Deploy → Manage deployments → new
+  version) after the token was set; editing the code alone doesn't
+  update the live web app.
 - **Connect fails / the link opens a Google sign-in page** → the
   deployment's **Who has access** isn't set to **Anyone**. In Apps
   Script: Deploy → Manage deployments → edit → set it to **Anyone**

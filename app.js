@@ -1435,6 +1435,7 @@
     if (window.ETSheets) {
       var sc = window.ETSheets.getConfig();
       if (document.activeElement !== $('setSheetUrl')) $('setSheetUrl').value = sc.url;
+      if (document.activeElement !== $('setSheetToken')) $('setSheetToken').value = sc.token;
     }
     $('healthMode').textContent = active === 'sheet' ? 'Live · Google Sheet' : (active === 'appsheet' ? 'Live · AppSheet API' : 'Demo (local data)');
     $('healthSheetRows').textContent = D.getMeta().sheetRows == null ? '–' : D.getMeta().sheetRows;
@@ -1495,7 +1496,7 @@
       out.className = 'result err';
       return;
     }
-    if (window.ETSheets) window.ETSheets.saveConfig({ url: pasted });
+    if (window.ETSheets) window.ETSheets.saveConfig({ url: pasted, token: $('setSheetToken').value });
     out.textContent = 'Connecting…'; out.className = 'result';
     D.testConnection().then(function (r) {
       out.textContent = r.message; out.className = 'result ' + (r.ok ? 'ok' : 'err');
