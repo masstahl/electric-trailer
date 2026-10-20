@@ -2,11 +2,10 @@
  * Screens (bottom tabs):
  *   Home      #08 Photo-First Grid (+ item detail #02 NFC Tap-to-Open)
  *   Map       #03 Warehouse / Bin Map
- *   Suppliers #19 Supplier Hub
  *   Add       #22 Quick Add New Item
- *   Queue     #16 Offline-First Field Mode (sync queue)
- *   Sync      #24 AppSheet Sync Health & Settings
- * Data + AppSheet API live in appsheet.js (window.ETData).
+ *   Settings  Sync Queue (#16) + Sync Health + Appearance
+ * Data layer lives in appsheet.js (window.ETData); the Google Sheet
+ * bridge provider is sheets.js (window.ETSheets).
  */
 (function () {
   'use strict';
@@ -15,7 +14,7 @@
   var AISLES = ['A', 'B', 'C', 'D'];
   var BINS = [];
   AISLES.forEach(function (a) { for (var i = 1; i <= 6; i++) BINS.push(a + i); });
-  /* Location model: item.bin stays "B5" (shelf + position, AppSheet-friendly);
+  /* Location model: item.bin stays "B5" (shelf + position, sheet-friendly);
    * item.level (1-4, 1 = floor, 4 = top) is the vertical dimension.
    * One notation system: short "B · L4 · P5", long "Shelf B · Level 4 · Position 5". */
   var LEVELS_TOP_DOWN = [4, 3, 2, 1];
@@ -111,7 +110,6 @@
   var currentBin = null;
   var currentLevel = null;
   var locateTarget = null;   // { id, name, bin, level } — blink-on-search target
-  var selectedSupplier = null;
   var selectedIcon = ICON_KEYS[0];
   var lowFilter = false;
   /* Categories home state: null = folder browse · 'ALL' = all items ·
@@ -222,7 +220,7 @@
     var pending = D.getQueue().filter(function (c) { return !c.synced; }).length;
     var live = D.isLive();
     var mb = $('modeBadge');
-    mb.textContent = live ? (D.activeBackend() === 'sheet' ? 'Live · Google Sheet' : 'Live · AppSheet') : 'Demo mode';
+    mb.textContent = live ? 'Live · Google Sheet' : 'Local only';
     mb.className = 'badge ' + (live ? 'badge-live' : 'badge-demo');
     var nb = $('netBadge');
     nb.textContent = navigator.onLine ? '● Online' : '● Offline';
@@ -364,7 +362,6 @@
     if (name === 'home') renderHome();
     if (name === 'add') prepAddForm();
     if (name === 'map') { renderMap(); if (locateTarget) setTimeout(activateLocate, 40); }
-    if (name === 'suppliers') renderSuppliers();
     if (name === 'sync') { renderQueue(); renderSync(); }
     window.scrollTo(0, 0);
   }
@@ -631,43 +628,63 @@
 
   /* ---------- Sorting Kit: file the Uncategorized pile ----------
    * suggestCategory proposes a folder from ordered phrase rules over
-   * the item's name + SKU. ORDER IS THE WHOLE GAME: specific phrases
-   * run before the generic words inside them — 'charge controller'
-   * (Power) before 'brake' (Brakes) before a bare 'controller'
-   * (Brakes, the common case here), 'u-bolt' (Axles) before 'bolt'
-   * (Body), 'lug' (Tires) before 'nut' (Body). No keyword hit falls
-   * back to the item's icon family (the v18 icon→folder map); still
+   * the item's name + SKU, in electrician vocabulary. ORDER IS THE
+   * WHOLE GAME: multiword phrases run before the generic words inside
+   * them — 'wire nut' (Fasteners) before 'wire' (Wire & Cable),
+   * 'conduit strap' (Conduit) before 'strap' (Fasteners), 'cable
+   * staple' / 'romex staple' (Fasteners) before 'cable' / 'romex'
+   * (Wire), 'smoke detector' (Lighting) before the bare 'detector'.
+   * No keyword hit falls back to the item's icon family; still
    * nothing → null, and the row asks a human. A suggestion is only
    * offered while its folder exists in the saved list (a renamed
    * folder never resurrects its old name as a guess). */
   var SUGGEST_RULES = [
-    ['charge controller', 'Power'],
-    ['brake', 'Brakes & Control'], ['breakaway', 'Brakes & Control'], ['actuator', 'Brakes & Control'],
-    ['coupler', 'Couplers & Towing'], ['coupling', 'Couplers & Towing'], ['hitch ball', 'Couplers & Towing'],
-    ['hitch', 'Couplers & Towing'], ['chain', 'Couplers & Towing'], ['jack', 'Couplers & Towing'],
-    ['hook', 'Couplers & Towing'], ['winch', 'Couplers & Towing'], ['ball mount', 'Couplers & Towing'],
-    ['latch', 'Couplers & Towing'], ['tow', 'Couplers & Towing'],
-    ['axle', 'Axles & Suspension'], ['hub', 'Axles & Suspension'], ['spring', 'Axles & Suspension'],
-    ['bearing', 'Axles & Suspension'], ['u-bolt', 'Axles & Suspension'], ['suspension', 'Axles & Suspension'],
-    ['shackle', 'Axles & Suspension'], ['spindle', 'Axles & Suspension'], ['drum', 'Axles & Suspension'],
-    ['tire', 'Tires & Wheels'], ['tyre', 'Tires & Wheels'], ['wheel', 'Tires & Wheels'],
-    ['lug', 'Tires & Wheels'], ['rim', 'Tires & Wheels'], ['valve stem', 'Tires & Wheels'],
-    ['light', 'Lighting'], ['lamp', 'Lighting'], ['led', 'Lighting'], ['marker', 'Lighting'], ['reflector', 'Lighting'],
-    ['harness', 'Electrical'], ['plug', 'Electrical'], ['wire', 'Electrical'], ['wiring', 'Electrical'],
-    ['socket', 'Electrical'], ['charger', 'Electrical'], ['converter', 'Electrical'], ['fuse', 'Electrical'],
-    ['switch', 'Electrical'], ['7-pin', 'Electrical'], ['7 pin', 'Electrical'], ['4-pin', 'Electrical'],
-    ['battery', 'Power'], ['solar', 'Power'], ['inverter', 'Power'],
-    ['fender', 'Body & Hardware'], ['bolt', 'Body & Hardware'], ['bracket', 'Body & Hardware'],
-    ['mount', 'Body & Hardware'], ['hardware', 'Body & Hardware'], ['washer', 'Body & Hardware'],
-    ['screw', 'Body & Hardware'], ['nut', 'Body & Hardware'], ['cap', 'Body & Hardware'],
-    ['controller', 'Brakes & Control']
+    // Phrases first — they outrank every single word below.
+    ['wire nut', 'Fasteners & Hardware'], ['wirenut', 'Fasteners & Hardware'],
+    ['conduit strap', 'Conduit & Fittings'],
+    ['cable staple', 'Fasteners & Hardware'], ['romex staple', 'Fasteners & Hardware'], ['wire staple', 'Fasteners & Hardware'],
+    ['wall plate', 'Devices & Plates'],
+    ['load center', 'Breakers & Panels'], ['loadcentre', 'Breakers & Panels'],
+    ['smoke detector', 'Lighting'], ['smoke alarm', 'Lighting'],
+    ['fish tape', 'Tools & Supplies'],
+    // Breakers & Panels
+    ['breaker', 'Breakers & Panels'], ['panelboard', 'Breakers & Panels'], ['panel', 'Breakers & Panels'],
+    ['disconnect', 'Breakers & Panels'], ['fuse', 'Breakers & Panels'], ['surge', 'Breakers & Panels'],
+    // Devices & Plates
+    ['gfci', 'Devices & Plates'], ['afci', 'Devices & Plates'], ['receptacle', 'Devices & Plates'],
+    ['outlet', 'Devices & Plates'], ['switch', 'Devices & Plates'], ['dimmer', 'Devices & Plates'],
+    ['plate', 'Devices & Plates'], ['thermostat', 'Devices & Plates'], ['doorbell', 'Devices & Plates'],
+    // Conduit & Fittings
+    ['conduit', 'Conduit & Fittings'], ['emt', 'Conduit & Fittings'], ['fitting', 'Conduit & Fittings'],
+    ['elbow', 'Conduit & Fittings'], ['coupling', 'Conduit & Fittings'], ['pvc', 'Conduit & Fittings'],
+    // Boxes & Enclosures
+    ['box', 'Boxes & Enclosures'], ['enclosure', 'Boxes & Enclosures'], ['junction', 'Boxes & Enclosures'],
+    ['octagon', 'Boxes & Enclosures'], ['cover', 'Boxes & Enclosures'],
+    // Lighting
+    ['light', 'Lighting'], ['lamp', 'Lighting'], ['led', 'Lighting'], ['bulb', 'Lighting'],
+    ['fixture', 'Lighting'], ['recessed', 'Lighting'], ['detector', 'Lighting'],
+    // Wire & Cable
+    ['romex', 'Wire & Cable'], ['thhn', 'Wire & Cable'], ['nm-b', 'Wire & Cable'], ['uf-b', 'Wire & Cable'],
+    ['coax', 'Wire & Cable'], ['cat5', 'Wire & Cable'], ['cat6', 'Wire & Cable'],
+    ['cable', 'Wire & Cable'], ['wire', 'Wire & Cable'], ['spool', 'Wire & Cable'],
+    // Fasteners & Hardware
+    ['tape', 'Fasteners & Hardware'], ['staple', 'Fasteners & Hardware'], ['screw', 'Fasteners & Hardware'],
+    ['anchor', 'Fasteners & Hardware'], ['bolt', 'Fasteners & Hardware'], ['nut', 'Fasteners & Hardware'],
+    ['washer', 'Fasteners & Hardware'], ['zip tie', 'Fasteners & Hardware'], ['strap', 'Fasteners & Hardware'],
+    ['connector', 'Fasteners & Hardware'],
+    // Tools & Supplies
+    ['tool', 'Tools & Supplies'], ['meter', 'Tools & Supplies'], ['tester', 'Tools & Supplies'],
+    ['drill', 'Tools & Supplies'], ['bit', 'Tools & Supplies'], ['gloves', 'Tools & Supplies'],
+    ['knife', 'Tools & Supplies'], ['fish tape', 'Tools & Supplies']
   ];
+  /* Icon fallback: conservative on purpose. 'box' is deliberately NOT
+   * here — it is the default icon for everything, so mapping it would
+   * auto-file every unknown item into Boxes & Enclosures. battery and
+   * solar stay unmapped for the same reason. */
   var ICON_FOLDER = {
-    controller: 'Brakes & Control', plug: 'Electrical', light: 'Lighting', tire: 'Tires & Wheels',
-    axle: 'Axles & Suspension', hub: 'Axles & Suspension', spring: 'Axles & Suspension',
-    link: 'Couplers & Towing', chain: 'Couplers & Towing', jack: 'Couplers & Towing', hook: 'Couplers & Towing',
-    battery: 'Power', solar: 'Power',
-    fender: 'Body & Hardware', bolt: 'Body & Hardware', kit: 'Body & Hardware'
+    plug: 'Devices & Plates', light: 'Lighting', bolt: 'Fasteners & Hardware',
+    controller: 'Breakers & Panels', kit: 'Tools & Supplies',
+    link: 'Wire & Cable', hex: 'Conduit & Fittings'
   };
   function suggestCategory(item) {
     if (!item) return null;
@@ -849,7 +866,7 @@
   /* Quick Add's Folder picker: the saved folder list + Uncategorized.
    * Rebuilt whenever the Add view opens (folders may have been
    * renamed); defaults to the folder you're standing in. */
-  function prepAddForm() { refreshFolderSelect(); updateSkuLookup(); }
+  function prepAddForm() { refreshFolderSelect(); refreshSupplierList(); updateSkuLookup(); }
   function refreshFolderSelect() {
     var sel = $('addFolder');
     if (!sel) return;
@@ -1144,10 +1161,6 @@
   });
   function initNfcLive() {
     renderNfcChip();
-    var dev = $('nfcDeviceStatus');
-    if (dev) dev.textContent = NFC_SUPPORTED
-      ? 'NFC Live available in this browser'
-      : 'NFC Live not available in this browser — stickers open items via their URL instead';
     if (NFC_SUPPORTED && nfcLiveWanted) {
       startNfcLive().then(function (ok) { if (!ok) armNfcOnFirstTouch(); });
     }
@@ -1259,12 +1272,6 @@
       el.scrollIntoView({ block: 'start', behavior: reduced ? 'auto' : 'smooth' });
     });
   });
-  function itemRow(i) {
-    return '<button class="list-item" data-open="' + esc(i.id) + '"><span class="li-icon">' + iconPlate(i) + '</span>' +
-      '<span class="li-main"><span class="li-name">' + esc(i.name) + '</span><br><span class="li-sub">' + locShort(i) + ' · ' + esc(i.sku) + ' · ' + money(i.cost) + '</span></span>' +
-      '<span class="li-qty ' + qtyClass(i.qty) + '">' + i.qty + '</span></button>';
-  }
-
   /* ---------- Bin Sheet: a bin's contents as a sheet over the map ---------- */
   function openBinSheet(bin, level) {
     currentBin = bin; currentLevel = (level >= 1 && level <= 4) ? level : 2; selectedBin = bin;
@@ -1435,36 +1442,6 @@
     }
   }
   $('countOverlay').addEventListener('click', function (e) { if (e.target === $('countOverlay')) closeCount(); });
-  function bindItemRows(container) {
-    container.querySelectorAll('[data-open]').forEach(function (el) {
-      el.addEventListener('click', function () { openItem(el.getAttribute('data-open')); });
-    });
-  }
-
-  /* ---------- #19 Supplier Hub ---------- */
-  function renderSuppliers() {
-    var items = D.getItems();
-    $('supplierList').innerHTML = D.getSuppliers().map(function (s) {
-      var mine = items.filter(function (i) { return i.supplier === s.name; });
-      return '<button class="list-item" data-supplier="' + esc(s.name) + '"><span class="li-icon">' + svgIcon('factory') + '</span>' +
-        '<span class="li-main"><span class="li-name">' + esc(s.name) + '</span><br>' +
-        '<span class="li-sub">' + mine.length + ' items · lead ' + esc(s.leadTime) + '<br>' +
-        esc(s.contact) + ' · ' + esc(s.phone) + ' · ' + esc(s.email) + '</span></span></button>';
-    }).join('');
-    $('supplierList').querySelectorAll('[data-supplier]').forEach(function (el) {
-      el.addEventListener('click', function () { selectedSupplier = el.getAttribute('data-supplier'); renderSuppliers(); });
-    });
-    if (selectedSupplier) {
-      var mine2 = items.filter(function (i) { return i.supplier === selectedSupplier; });
-      $('supplierItemsTitle').textContent = selectedSupplier + ' — items';
-      $('supplierItems').innerHTML = mine2.length ? mine2.map(itemRow).join('') : '<p class="muted">No items from this supplier yet.</p>';
-      bindItemRows($('supplierItems'));
-    } else {
-      $('supplierItemsTitle').textContent = '';
-      $('supplierItems').innerHTML = '';
-    }
-  }
-
   /* ---------- #22 Quick Add ---------- */
   var iconTouched = false;      // user picked a category manually — stop auto-assigning
   var pendingAdd = null;        // { data, dup } while the duplicate warning is up
@@ -1477,25 +1454,27 @@
   /* Icon auto-assign by name keywords (until the user picks one manually). */
   function autoIconFor(name) {
     var n = ' ' + String(name || '').toLowerCase() + ' ';
-    if (/brake|controller/.test(n)) return 'controller';
-    if (n.indexOf(' tire') !== -1 || n.indexOf(' tyre') !== -1) return 'tire';
-    if (n.indexOf('light') !== -1 || n.indexOf('lamp') !== -1) return 'light';
+    if (/breaker|panel|disconnect/.test(n)) return 'controller';
+    if (/outlet|receptacle|switch|gfci|afci|dimmer|plate|plug/.test(n)) return 'plug';
+    if (/light|lamp|bulb|led|fixture/.test(n)) return 'light';
+    if (/romex|thhn|wire|cable|coax/.test(n)) return 'link';
+    if (/box|enclosure|junction/.test(n)) return 'box';
+    if (/conduit|emt|elbow|coupling|fitting/.test(n)) return 'hex';
+    if (/screw|bolt|nut|washer|anchor|staple|tape/.test(n)) return 'bolt';
     if (n.indexOf('battery') !== -1) return 'battery';
-    if (n.indexOf('coupler') !== -1 || n.indexOf('hitch') !== -1) return 'link';
-    if (n.indexOf('axle') !== -1) return 'axle';
-    if (n.indexOf('hub') !== -1) return 'hub';
-    if (n.indexOf('jack') !== -1) return 'jack';
-    if (n.indexOf('chain') !== -1) return 'chain';
-    if (n.indexOf('solar') !== -1) return 'solar';
-    if (n.indexOf('plug') !== -1 || n.indexOf('harness') !== -1) return 'plug';
-    if (n.indexOf('spring') !== -1) return 'spring';
-    if (n.indexOf('fender') !== -1) return 'fender';
-    return null;
+    return 'kit';
+  }
+  /* Supplier is a free-text field; the datalist offers the supplier
+   * names already present on items so spelling stays consistent. */
+  function refreshSupplierList() {
+    var dl = $('supplierNames');
+    if (!dl) return;
+    dl.innerHTML = D.getSuppliers().map(function (s) { return '<option value="' + esc(s) + '">'; }).join('');
   }
   function initAddForm() {
     refreshFolderSelect();
+    refreshSupplierList();
     $('addBin').innerHTML = BINS.map(function (b) { return '<option>' + b + '</option>'; }).join('');
-    $('addSupplier').innerHTML = D.getSuppliers().map(function (s) { return '<option>' + esc(s.name) + '</option>'; }).join('');
     $('iconPicker').innerHTML = ICON_KEYS.map(function (key, idx) {
       return '<button type="button" class="icon-choice' + (idx === 0 ? ' sel' : '') + '" data-icon="' + key + '" aria-label="' + key + '">' + svgIcon(key) + '</button>';
     }).join('');
@@ -1648,25 +1627,15 @@
   window.addEventListener('offline', function () { refreshChrome(); renderQueue(); toast('Offline — changes will queue'); });
   document.addEventListener('visibilitychange', function () { if (!document.hidden) maybeAutoFlush(); });
 
-  /* ---------- #24 Sync Health & Settings ---------- */
+  /* ---------- Sync Health & Settings ---------- */
   function renderSync() {
-    var s = D.getSettings();
-    $('setAppId').value = s.appId;
-    $('setTable').value = s.table;
-    if (document.activeElement !== $('setAccessKey') && s.accessKey) $('setAccessKey').value = s.accessKey;
-    var backend = D.getBackend();
     var active = D.activeBackend();
-    document.querySelectorAll('input[name="backendMode"]').forEach(function (r) {
-      r.checked = (r.value === backend);
-    });
-    $('appsheetBlock').classList.toggle('hidden', backend !== 'appsheet');
-    $('sheetBlock').classList.toggle('hidden', backend !== 'sheet');
     if (window.ETSheets) {
       var sc = window.ETSheets.getConfig();
       if (document.activeElement !== $('setSheetUrl')) $('setSheetUrl').value = sc.url;
       if (document.activeElement !== $('setSheetToken')) $('setSheetToken').value = sc.token;
     }
-    $('healthMode').textContent = active === 'sheet' ? 'Live · Google Sheet' : (active === 'appsheet' ? 'Live · AppSheet API' : 'Demo (local data)');
+    $('healthMode').textContent = active === 'sheet' ? 'Live · Google Sheet' : 'Demo (local data)';
     $('healthSheetRows').textContent = D.getMeta().sheetRows == null ? '–' : D.getMeta().sheetRows;
     $('healthRows').textContent = D.getItems().length;
     $('healthQueue').textContent = D.getQueue().filter(function (c) { return !c.synced; }).length + ' pending';
@@ -1674,39 +1643,7 @@
     $('healthError').textContent = D.getMeta().lastError || 'none';
     refreshChrome();
   }
-  $('settingsForm').addEventListener('submit', function (e) {
-    e.preventDefault();
-    D.saveSettings({ appId: $('setAppId').value, table: $('setTable').value, accessKey: $('setAccessKey').value });
-    toast('Settings saved on this device');
-    renderSync();
-  });
-  $('testConnBtn').addEventListener('click', function () {
-    D.saveSettings({ appId: $('setAppId').value, table: $('setTable').value, accessKey: $('setAccessKey').value });
-    var out = $('testResult');
-    out.textContent = 'Testing…'; out.className = 'result';
-    D.testConnection().then(function (r) {
-      out.textContent = r.message; out.className = 'result ' + (r.ok ? 'ok' : 'err');
-      renderSync();
-    });
-  });
 
-  /* ---------- Backend chooser: Demo / AppSheet / Google Sheet ---------- */
-  function importSheetRows(announce) {
-    D.refreshFromBackend().then(function (r) {
-      if (r && r.ok) {
-        renderHome(); renderSync(); refreshChrome();
-        if (announce) toast(r.message);
-      }
-    });
-  }
-  document.querySelectorAll('input[name="backendMode"]').forEach(function (r) {
-    r.addEventListener('change', function () {
-      D.setBackend(r.value);
-      toast(r.value === 'sheet' ? 'Backend: Google Sheet' : (r.value === 'appsheet' ? 'Backend: AppSheet' : 'Backend: Demo (local data)'));
-      renderSync(); refreshChrome();
-      if (r.value === 'sheet') importSheetRows(false);
-    });
-  });
   /* One Connect button: saves the pasted link on this device, then
    * tests it — in Sheet mode testConnection also imports the rows. */
   $('connectSheetBtn').addEventListener('click', function () {
@@ -1733,13 +1670,6 @@
       renderSync();
     });
   });
-  $('resetDemoBtn').addEventListener('click', function () {
-    if (confirm('Reset all local data back to the demo inventory?')) {
-      D.resetDemo(); selectedBin = null; selectedSupplier = null;
-      renderHome(); renderSync(); toast('Demo data reset');
-    }
-  });
-
   /* ---------- init ---------- */
   initTheme();
   initNfcLive();

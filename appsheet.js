@@ -1,18 +1,15 @@
 /* appsheet.js — data layer for Electric Trailer inventory PWA.
+ * (File name kept from the app's first backend; the AppSheet API
+ * provider below is dormant — no Settings UI reaches it anymore.)
  *
- * Backends (Settings → Backend; stored in localStorage 'et-backend'):
- *  - Demo mode (default): items live in localStorage, seeded from DEMO data.
- *    Every change is recorded in a sync queue; "Sync now" marks them synced.
- *  - AppSheet mode: when an AppSheet Access Key + table name are saved in
- *    Settings (stored ONLY in this device's localStorage — never in code),
- *    changes are sent to the AppSheet API and "Test connection" runs a
- *    real Find action against the app.
- *  - Google Sheet mode: syncs directly to the backend spreadsheet via
- *    the Apps Script bridge in sheets.js (window.ETSheets) — rows are
- *    pulled into local items, and the queue flushes as bridge ops.
- *
- * AppSheet API docs: POST https://api.appsheet.com/api/v2/apps/{appId}/tables/{table}/Action
- * Header: ApplicationAccessKey: <key>
+ * Backends (resolved automatically — there is no chooser in Settings):
+ *  - Local mode (default): items live in localStorage only. A fresh
+ *    install starts EMPTY; every change is recorded in a sync queue
+ *    and "Sync now" marks them synced locally.
+ *  - Google Sheet mode: when a Sheet link is saved in Settings, the
+ *    app syncs directly to the inventory spreadsheet via the Apps
+ *    Script bridge in sheets.js (window.ETSheets) — rows are pulled
+ *    into local items, and the queue flushes as bridge ops.
  */
 (function () {
   'use strict';
@@ -32,33 +29,17 @@
     accessKey: ''
   };
 
-  var DEMO_SUPPLIERS = [
-    { id: 'sup-dexter',   name: 'Dexter Axle Supply',  leadTime: '3-5 days',  contact: 'Parts desk',  phone: '(555) 010-2201', email: 'orders@example.com' },
-    { id: 'sup-etrailer', name: 'eTrailer Wholesale',  leadTime: '2-4 days',  contact: 'Sam R.',      phone: '(555) 010-8840', email: 'wholesale@example.com' },
-    { id: 'sup-redneck',  name: 'Redneck Trailer Co.', leadTime: '5-7 days',  contact: 'Dana W.',     phone: '(555) 010-3317', email: 'sales@example.com' },
-    { id: 'sup-solar',    name: 'SunSpark Solar',      leadTime: '7-10 days', contact: 'Priya K.',    phone: '(555) 010-9025', email: 'support@example.com' },
-    { id: 'sup-general',  name: 'General Trailer Parts', leadTime: '1-3 days', contact: 'Front counter', phone: '(555) 010-1173', email: 'counter@example.com' }
-  ];
-
-  var DEMO_ITEMS = [
-    { id: 'brake-controller',  name: 'Brake Controller',        sku: 'ET-BRK-101', qty: 14, bin: 'A1', level: 3, supplier: 'eTrailer Wholesale',   cost: 89.99,  icon: 'controller', nfcId: '', updated: '' },
-    { id: 'wiring-harness-7pin', name: '7-Pin Wiring Harness',  sku: 'ET-WIR-207', qty: 32, bin: 'A2', level: 2, supplier: 'General Trailer Parts', cost: 24.50, icon: 'plug', nfcId: '', updated: '' },
-    { id: 'led-tail-light',    name: 'LED Tail Light',          sku: 'ET-LGT-310', qty: 48, bin: 'A3', level: 3, supplier: 'General Trailer Parts', cost: 18.75, icon: 'light', nfcId: '', updated: '' },
-    { id: 'trailer-tire',      name: 'Trailer Tire ST205/75R15', sku: 'ET-TIR-415', qty: 9,  bin: 'D1', level: 1, supplier: 'Redneck Trailer Co.',  cost: 112.00, icon: 'tire', nfcId: '', updated: '' },
-    { id: 'axle-3500',         name: '3500 lb Axle',            sku: 'ET-AXL-350', qty: 4,  bin: 'D3', level: 1, supplier: 'Dexter Axle Supply',   cost: 289.00, icon: 'axle', nfcId: '', updated: '' },
-    { id: 'coupler-2in',       name: '2" Coupler',              sku: 'ET-CPL-020', qty: 21, bin: 'B1', level: 2, supplier: 'Dexter Axle Supply',   cost: 32.40,  icon: 'link', nfcId: '', updated: '' },
-    { id: 'safety-chains',     name: 'Safety Chains (pair)',    sku: 'ET-CHN-050', qty: 5,  bin: 'B2', level: 2, supplier: 'General Trailer Parts', cost: 21.99, icon: 'chain', nfcId: '', updated: '' },
-    { id: 'tongue-jack',       name: 'Tongue Jack',             sku: 'ET-JCK-700', qty: 7,  bin: 'B3', level: 2, supplier: 'Redneck Trailer Co.',  cost: 64.95,  icon: 'jack', nfcId: '', updated: '' },
-    { id: 'battery-12v',       name: '12V Deep-Cycle Battery',  sku: 'ET-BAT-120', qty: 11, bin: 'C1', level: 1, supplier: 'SunSpark Solar',       cost: 139.00, icon: 'battery', nfcId: '', updated: '' },
-    { id: 'power-inverter',    name: 'Power Inverter 2000W',    sku: 'ET-INV-200', qty: 3,  bin: 'C2', level: 2, supplier: 'SunSpark Solar',       cost: 219.00, icon: 'bolt', nfcId: '', updated: '' },
-    { id: 'solar-kit',         name: 'Solar Panel Kit 200W',    sku: 'ET-SOL-200', qty: 6,  bin: 'C3', level: 1, supplier: 'SunSpark Solar',       cost: 349.00, icon: 'solar', nfcId: '', updated: '' },
-    { id: 'hub-assembly',      name: 'Hub Assembly 5-Lug',      sku: 'ET-HUB-505', qty: 16, bin: 'B4', level: 2, supplier: 'Dexter Axle Supply',   cost: 58.25,  icon: 'hub', nfcId: '', updated: '' },
-    { id: 'leaf-spring',       name: 'Leaf Spring 4-Leaf',      sku: 'ET-SPR-440', qty: 2,  bin: 'D4', level: 1, supplier: 'Dexter Axle Supply',   cost: 74.80,  icon: 'spring', nfcId: '', updated: '' },
-    { id: 'fender-single',     name: 'Single-Axle Fender',      sku: 'ET-FND-010', qty: 8,  bin: 'D2', level: 1, supplier: 'Redneck Trailer Co.',  cost: 46.60,  icon: 'fender', nfcId: '', updated: '' },
-    { id: 'winch-2500',        name: 'Winch 2500 lb',           sku: 'ET-WIN-250', qty: 5,  bin: 'C4', level: 1, supplier: 'eTrailer Wholesale',   cost: 129.99, icon: 'hook', nfcId: '', updated: '' },
-    { id: 'wiring-kit',        name: 'Wiring Kit Complete',     sku: 'ET-WIR-900', qty: 19, bin: 'A4', level: 2, supplier: 'eTrailer Wholesale',   cost: 39.95,  icon: 'kit', nfcId: '', updated: '' },
-    { id: 'breakaway-kit',     name: 'Breakaway Kit',           sku: 'ET-BRK-900', qty: 1,  bin: 'A5', level: 3, supplier: 'eTrailer Wholesale',   cost: 54.30,  icon: 'alert', nfcId: '', updated: '' },
-    { id: 'reflector-set',     name: 'Reflector Set (12 pc)',   sku: 'ET-RFL-012', qty: 0,  bin: 'A6', level: 4, supplier: 'General Trailer Parts', cost: 9.99, icon: 'diamond', nfcId: '', updated: '' }
+  /* No demo inventory anymore: a fresh install starts with zero items
+   * and fills from the connected Google Sheet (or manual adds). The
+   * old demo seed ids are kept ONLY so a successful sheet import can
+   * retire leftover demo stock from devices that ran the old seed
+   * (see the purge in refreshFromBackend). */
+  var DEMO_ITEMS = [];
+  var DEMO_SEED_IDS = [
+    'brake-controller', 'wiring-harness-7pin', 'led-tail-light', 'trailer-tire',
+    'axle-3500', 'coupler-2in', 'safety-chains', 'tongue-jack', 'battery-12v',
+    'power-inverter', 'solar-kit', 'hub-assembly', 'leaf-spring', 'fender-single',
+    'winch-2500', 'wiring-kit', 'breakaway-kit', 'reflector-set'
   ];
 
   /* ---------- Categories (home-screen folders) ----------
@@ -68,40 +49,33 @@
    * 'Uncategorized' is a SYSTEM folder: never in the list, pinned last,
    * shown only while it holds items, not renameable or removable. */
   var UNCAT = 'Uncategorized';
+  /* Fresh-install folder seeds — electrician job-site departments.
+   * Seeded ONLY when no saved list exists; an existing device's
+   * 'et-categories' is never overwritten by a new seed. */
   var DEFAULT_CATEGORIES = [
-    { name: 'Brakes & Control', icon: 'controller' },
-    { name: 'Electrical', icon: 'plug' },
+    { name: 'Wire & Cable', icon: 'link' },
+    { name: 'Conduit & Fittings', icon: 'hex' },
+    { name: 'Breakers & Panels', icon: 'controller' },
+    { name: 'Boxes & Enclosures', icon: 'box' },
+    { name: 'Devices & Plates', icon: 'plug' },
     { name: 'Lighting', icon: 'light' },
-    { name: 'Tires & Wheels', icon: 'tire' },
-    { name: 'Axles & Suspension', icon: 'axle' },
-    { name: 'Couplers & Towing', icon: 'link' },
-    { name: 'Power', icon: 'battery' },
-    { name: 'Body & Hardware', icon: 'fender' }
+    { name: 'Fasteners & Hardware', icon: 'bolt' },
+    { name: 'Tools & Supplies', icon: 'kit' }
   ];
-  var DEMO_CATEGORY = {
-    'brake-controller': 'Brakes & Control', 'breakaway-kit': 'Brakes & Control',
-    'wiring-harness-7pin': 'Electrical',
-    'led-tail-light': 'Lighting', 'reflector-set': 'Lighting',
-    'trailer-tire': 'Tires & Wheels',
-    'axle-3500': 'Axles & Suspension', 'hub-assembly': 'Axles & Suspension', 'leaf-spring': 'Axles & Suspension',
-    'coupler-2in': 'Couplers & Towing', 'safety-chains': 'Couplers & Towing', 'tongue-jack': 'Couplers & Towing', 'winch-2500': 'Couplers & Towing',
-    'battery-12v': 'Power', 'solar-kit': 'Power',
-    'power-inverter': 'Body & Hardware', 'fender-single': 'Body & Hardware', 'wiring-kit': 'Body & Hardware'
-  };
+  /* Fallback folder from an item's icon, for rows that arrive without
+   * a Category value. Conservative on purpose: only unambiguous icons
+   * map ('box' excluded — it is the default icon for everything);
+   * anything else lands in Uncategorized for a human to file. */
   var CATEGORY_BY_ICON = {
-    controller: 'Brakes & Control', plug: 'Electrical', light: 'Lighting', tire: 'Tires & Wheels',
-    axle: 'Axles & Suspension', hub: 'Axles & Suspension', spring: 'Axles & Suspension',
-    link: 'Couplers & Towing', chain: 'Couplers & Towing', jack: 'Couplers & Towing', hook: 'Couplers & Towing',
-    battery: 'Power', solar: 'Power',
-    fender: 'Body & Hardware', bolt: 'Body & Hardware', kit: 'Body & Hardware'
+    link: 'Wire & Cable', hex: 'Conduit & Fittings', controller: 'Breakers & Panels',
+    plug: 'Devices & Plates', light: 'Lighting',
+    bolt: 'Fasteners & Hardware', kit: 'Tools & Supplies'
   };
-  DEMO_ITEMS.forEach(function (it) { it.category = DEMO_CATEGORY[it.id] || UNCAT; });
 
-  /* Resolve an item's folder: its stored category name, else the demo
-   * map by id, else the icon map, else Uncategorized. */
+  /* Resolve an item's folder: its stored category name, else the icon
+   * map, else Uncategorized. */
   function categoryForItem(it) {
     if (it && it.category && String(it.category).trim()) return String(it.category).trim();
-    if (it && DEMO_CATEGORY[it.id]) return DEMO_CATEGORY[it.id];
     if (it && CATEGORY_BY_ICON[it.icon]) return CATEGORY_BY_ICON[it.icon];
     return UNCAT;
   }
@@ -248,26 +222,18 @@
   function seedIfNeeded() {
     var existing = read(LS.items, null);
     if (!existing) {
-      var items = DEMO_ITEMS.map(function (it) {
-        var copy = Object.assign({}, it); copy.updated = nowISO(); return copy;
-      });
-      write(LS.items, items);
+      // Fresh install: zero items. Stock arrives via the Google Sheet
+      // import or manual adds — there is no demo inventory to seed.
+      write(LS.items, DEMO_ITEMS.slice());
     } else {
-      // Location levels (v15): backfill demo items saved before `level`
-      // existed, matched by id from the demo set. Other items keep theirs.
-      var levelsById = {};
-      DEMO_ITEMS.forEach(function (it) { levelsById[it.id] = it.level; });
+      // Backfill items saved before `category` existed — icon map,
+      // else the system folder.
       var changed = false;
       existing.forEach(function (it) {
-        var ok = Number(it.level) >= 1 && Number(it.level) <= 4;
-        if (!ok && levelsById[it.id]) { it.level = levelsById[it.id]; changed = true; }
-        // Categories (folders home): backfill items saved before
-        // `category` existed — demo id map first, then icon, else system.
         if (!it.category || !String(it.category).trim()) { it.category = categoryForItem(it); changed = true; }
       });
       if (changed) write(LS.items, existing);
     }
-    if (!read(LS.suppliers, null)) write(LS.suppliers, DEMO_SUPPLIERS);
     if (!read(LS.queue, null)) write(LS.queue, []);
     if (!read(LS.meta, null)) write(LS.meta, { lastSync: '', lastError: '' });
   }
@@ -293,37 +259,35 @@
     return !!(s.accessKey && s.table && s.appId);
   }
 
-  /* ---------- Backend selection: 'demo' | 'appsheet' | 'sheet' ----------
-   * Stored in localStorage 'et-backend'. With nothing stored, behavior
-   * matches the original app: AppSheet when an Access Key is saved,
-   * Demo otherwise. 'sheet' = the direct Google Sheet bridge (sheets.js,
-   * window.ETSheets). activeBackend() is the EFFECTIVE backend — a
-   * chosen-but-unconfigured backend falls back to 'demo'. */
-  var BACKEND_KEY = 'et-backend';
-  function getBackend() {
-    var m = null;
-    try { m = localStorage.getItem(BACKEND_KEY); } catch (e) { /* storage blocked */ }
-    if (m === 'demo' || m === 'appsheet' || m === 'sheet') return m;
-    return appSheetConfigured() ? 'appsheet' : 'demo';
-  }
-  function setBackend(mode) {
-    if (mode !== 'demo' && mode !== 'appsheet' && mode !== 'sheet') mode = 'demo';
-    try { localStorage.setItem(BACKEND_KEY, mode); } catch (e) { /* storage blocked */ }
-    return mode;
-  }
+  /* ---------- Backend resolution (no chooser UI anymore) ----------
+   * Effective backend: 'sheet' when a Google Sheet link is saved on
+   * this device, else 'demo' (local only). A stored 'et-backend' from
+   * the old chooser — including 'appsheet' — is ignored for routing:
+   * it can never strand a device on a backend with no UI. The
+   * AppSheet API provider below stays in the file but is unreachable. */
   function sheetConfigured() {
     return !!(window.ETSheets && window.ETSheets.isConfigured());
   }
-  function activeBackend() {
-    var m = getBackend();
-    if (m === 'sheet') return sheetConfigured() ? 'sheet' : 'demo';
-    if (m === 'appsheet') return appSheetConfigured() ? 'appsheet' : 'demo';
-    return 'demo';
+  function getBackend() {
+    return sheetConfigured() ? 'sheet' : 'demo';
   }
+  function setBackend(mode) {   // legacy API compat — routing is automatic now
+    return getBackend();
+  }
+  function activeBackend() { return getBackend(); }
   function isLive() { return activeBackend() !== 'demo'; }
 
   function getItems() { return read(LS.items, []); }
-  function getSuppliers() { return read(LS.suppliers, []); }
+  /* Supplier names are derived from the items themselves (the sheet's
+   * Supplier column is free text) — unique, sorted, plain strings. */
+  function getSuppliers() {
+    var seen = {}, names = [];
+    getItems().forEach(function (i) {
+      var s = String(i.supplier || '').trim();
+      if (s && !seen[s]) { seen[s] = true; names.push(s); }
+    });
+    return names.sort();
+  }
   function getItem(id) {
     return getItems().filter(function (i) { return i.id === id; })[0] || null;
   }
@@ -468,7 +432,7 @@
       var seen = {};
       var merged = res.items.map(function (fi) {
         seen[fi.id] = true;
-        fi.category = categoryForItem(fi);   // row value, else demo/icon fallback
+        fi.category = categoryForItem(fi);   // row value, else icon fallback
         var li = localById[fi.id];
         // A category edit (e.g. a folder rename) still queued wins over
         // the sheet's older value until it flushes.
@@ -478,6 +442,24 @@
       });
       getItems().forEach(function (li) {
         if (pendingAdd[li.id] && !seen[li.id]) merged.push(li);
+      });
+      /* Demo purge: a successful import retires leftover DEMO seed
+       * items. A demo id that IS in the import is real now (it's in
+       * `merged` via `seen`); one that is NOT in the import is dropped
+       * — unless it still has pending queue ops, in which case it is
+       * kept (appended here) so those ops flush or fail honestly
+       * instead of vanishing with the item. */
+      var seedIds = {};
+      DEMO_SEED_IDS.forEach(function (id) { seedIds[id] = true; });
+      var pendingAny = {};
+      getQueue().forEach(function (c) { if (!c.synced) pendingAny[c.itemId] = true; });
+      var inMerged = {};
+      merged.forEach(function (it) { inMerged[it.id] = true; });
+      getItems().forEach(function (li) {
+        if (seedIds[li.id] && !seen[li.id] && pendingAny[li.id] && !inMerged[li.id]) merged.push(li);
+      });
+      merged = merged.filter(function (it) {
+        return !(seedIds[it.id] && !seen[it.id] && !pendingAny[it.id]);
       });
       write(LS.items, merged);
       setMeta({ lastSync: nowISO(), lastError: '', sheetRows: res.rows });
@@ -490,8 +472,7 @@
   }
 
   function testConnection() {
-    var active = activeBackend();
-    if (active === 'sheet') {
+    if (activeBackend() === 'sheet') {
       return window.ETSheets.testConnection().then(function (r) {
         if (!r.ok) { setMeta({ lastError: r.message }); return r; }
         setMeta({ lastError: '' });
@@ -499,19 +480,7 @@
         return refreshFromBackend().then(function () { return r; });
       });
     }
-    if (active !== 'appsheet') {
-      return Promise.resolve({ ok: false, mode: 'demo', message: 'Demo mode — pick AppSheet or Google Sheet under Backend in Settings, add its connection details, then test again.' });
-    }
-    return apiAction('Find', [])
-      .then(function (body) {
-        var rows = Array.isArray(body) ? body.length : (body && body.Rows ? body.Rows.length : 0);
-        setMeta({ lastError: '', lastSync: nowISO() });
-        return { ok: true, mode: 'live', message: 'Connected. AppSheet returned ' + rows + ' row(s) from "' + getSettings().table + '".', rows: rows };
-      })
-      .catch(function (err) {
-        setMeta({ lastError: String(err.message || err) });
-        return { ok: false, mode: 'live', message: String(err.message || err) + ' — If AppSheet says the app is not deployed / plan upgrade needed, a deployment check needs to be run in AppSheet first (see SETUP.md).' };
-      });
+    return Promise.resolve({ ok: false, mode: 'demo', message: 'No Google Sheet connected yet — paste the Sheet link in Settings → Google Sheet, then tap Connect.' });
   }
 
   /* Sheet-mode flush: translate pending queue entries into bridge ops

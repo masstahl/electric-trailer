@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#8f0112">
-<meta name="description" content="Electric Trailer — fast AppSheet-backed inventory front-end with NFC stickers. Photo grid, bin map, offline-first, supplier hub.">
+<meta name="description" content="Electric Trailer — job-site electrical parts inventory in a fast, phone-first PWA. Photo grid, shelf map, offline-first, Google Sheet sync, NFC stickers.">
 <title>Electric Trailer — Inventory</title>
 <script>
 /* Apply the saved theme before first paint (no flash). Key: 'et-theme'.
@@ -109,20 +109,11 @@
     <div class="legend"><span><i class="dot dot-ok"></i>Stocked</span><span><i class="dot dot-low"></i>▲ Low / Critical</span><span><i class="dot dot-out"></i>✕ Out</span><span>· Empty</span></div>
   </section>
 
-  <!-- ============ SUPPLIERS · #19 Supplier Hub ============ -->
-  <section id="view-suppliers" class="view">
-    <h2>Supplier Hub</h2>
-    <p class="muted">Tap a supplier to see its items, lead time and contact.</p>
-    <div id="supplierList" class="list"></div>
-    <h3 id="supplierItemsTitle"></h3>
-    <div id="supplierItems" class="list"></div>
-  </section>
-
   <!-- ============ ADD · #22 Quick Add ============ -->
   <section id="view-add" class="view">
     <h2>Quick Add New Item</h2>
     <form id="addForm" class="card form">
-      <label>Item name<input id="addName" required placeholder="e.g. Brake Controller"></label>
+      <label>Item name<input id="addName" required placeholder="e.g. 20A Breaker"></label>
       <label>Part number / SKU<input id="addSku" placeholder="e.g. 40123" autocomplete="off"></label>
       <div id="skuLookup" class="sku-lookup hidden">
         <span class="sku-lookup-label">Look up this part number:</span>
@@ -145,7 +136,8 @@
         </select></label>
       </div>
       <label>Folder<select id="addFolder"></select></label>
-      <label>Supplier<select id="addSupplier"></select></label>
+      <label>Supplier<input id="addSupplier" list="supplierNames" placeholder="e.g. Graybar" autocomplete="off"></label>
+      <datalist id="supplierNames"></datalist>
       <label>Item icon</label>
       <div id="iconPicker" class="icon-picker"></div>
       <div id="addDupWarn" class="dup-warn hidden">
@@ -168,7 +160,7 @@
     </div>
   </section>
 
-  <!-- ============ SETTINGS · Queue (#16) + Sync Health (#24) + Appearance ============ -->
+  <!-- ============ SETTINGS · Queue (#16) + Sync Health + Appearance ============ -->
   <section id="view-sync" class="view">
     <h2>Settings</h2>
 
@@ -229,12 +221,6 @@
       </div>
     </div>
 
-    <div class="card">
-      <h3 style="margin-top:0">NFC Live</h3>
-      <p class="muted small"><strong>Android (Chrome):</strong> NFC Live listens continuously while the app is open — turn it on once from the <strong>NFC chip in the header</strong>. It pauses while the app is in the background and resumes on the first touch after the app is reopened.</p>
-      <p class="muted small"><strong>iPhone (Safari):</strong> there is no in-app NFC listening — Safari does not support Web NFC. Stickers still open items directly when tapped, because iOS itself opens each sticker's URL.</p>
-      <p class="small">This device: <strong id="nfcDeviceStatus">checking…</strong></p>
-    </div>
     <div class="card stats-card">
       <div class="kv"><span>Connection mode</span><strong id="healthMode">Demo</strong></div>
       <div class="kv"><span>Google Sheet rows fetched</span><strong id="healthSheetRows">–</strong></div>
@@ -243,37 +229,13 @@
       <div class="kv"><span>Last sync</span><strong id="healthLastSync">never</strong></div>
       <div class="kv"><span>Last error</span><strong id="healthError" class="error-text">none</strong></div>
     </div>
-    <div class="card">
-      <h3 style="margin-top:0">Backend</h3>
-      <p class="muted small">Where this device syncs its inventory data. <strong>Demo</strong> keeps everything on this device only.</p>
-      <div role="radiogroup" aria-label="Backend">
-        <label class="backend-opt"><input type="radio" name="backendMode" value="demo"> Demo <span>— sample data, local only</span></label>
-        <label class="backend-opt"><input type="radio" name="backendMode" value="appsheet"> AppSheet <span>— via the AppSheet API</span></label>
-        <label class="backend-opt"><input type="radio" name="backendMode" value="sheet"> Google Sheet <span>— direct to the spreadsheet, no AppSheet</span></label>
-      </div>
-    </div>
-    <div id="appsheetBlock">
-    <form id="settingsForm" class="card form">
-      <label>AppSheet App ID<input id="setAppId" value="bd77482b-d437-4804-a3ef-fc2815feff2e"></label>
-      <label>Table name<input id="setTable" value="Inventory"></label>
-      <label>Access Key<input id="setAccessKey" type="password" placeholder="Paste Access Key (stays on this device)" autocomplete="off"></label>
-      <p class="muted small">Settings — including the Access Key — are stored <strong>only in this device's browser (localStorage)</strong>. They are never in the code or the GitHub repo. Get the key in AppSheet: Manage → Integrations → “IN: from cloud services to your app” → AppSheet API.</p>
-      <button type="submit" class="btn btn-primary">Save settings</button>
-      <button type="button" id="testConnBtn" class="btn">Test connection</button>
-      <p id="testResult" class="result"></p>
-    </form>
-    </div>
-    <div id="sheetBlock" class="card form hidden">
+    <div id="sheetBlock" class="card form">
+      <h3 style="margin-top:0">Google Sheet</h3>
       <label>Sheet link<input id="setSheetUrl" placeholder="https://script.google.com/macros/s/…/exec" autocomplete="off"></label>
       <label>Token<input id="setSheetToken" type="password" placeholder="Only if the script has a TOKEN set" autocomplete="off"></label>
-      <p class="muted small">Paste the Web app link from Deploy (ends in /exec). If the script has a <strong>TOKEN</strong> set at the top, type the same token here — it must match exactly. If the script's TOKEN is blank, leave this blank. Both are stored <strong>only in this device's browser</strong>. Anyone who has the link (and token, if set) can read and write this inventory, so keep them among the people using it. Setup steps: <a href="https://github.com/masstahl/electric-trailer/blob/main/SETUP.md" target="_blank" rel="noopener">SETUP.md → Option B</a>.</p>
+      <p class="muted small">Paste the Web app link from Deploy (ends in /exec). If the script has a <strong>TOKEN</strong> set at the top, type the same token here — it must match exactly. If the script's TOKEN is blank, leave this blank. Both are stored <strong>only in this device's browser</strong>. Anyone who has the link (and token, if set) can read and write this inventory, so keep them among the people using it. Setup steps: <a href="https://github.com/masstahl/electric-trailer/blob/main/SETUP.md" target="_blank" rel="noopener">SETUP.md</a>.</p>
       <button type="button" id="connectSheetBtn" class="btn btn-primary">Connect</button>
       <p id="sheetTestResult" class="result"></p>
-    </div>
-    <div class="card">
-      <h3>App status note</h3>
-      <p class="muted">This AppSheet app is currently in <strong>test mode / blocked</strong> (“plan upgrade needed”). Live sync will fail until a deployment check has been run in AppSheet and the account plan enables the API. Until then, Demo mode works fully offline. See <strong>SETUP.md</strong> in the repo.</p>
-      <button type="button" id="resetDemoBtn" class="btn btn-danger">Reset demo data</button>
     </div>
   </section>
 </main>
@@ -419,7 +381,6 @@
 <nav class="tabbar" aria-label="Main">
   <button class="tab active" data-view="home" aria-current="page"><span><svg class="icon-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="miter" stroke-linecap="square" aria-hidden="true" focusable="false"><path d="M3 11 L12 3 L21 11"/><path d="M6 9.5 V21 H18 V9.5"/><path d="M10 21 V14 H14 V21"/></svg></span>Home</button>
   <button class="tab" data-view="map"><span><svg class="icon-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="miter" stroke-linecap="square" aria-hidden="true" focusable="false"><path d="M12 21.5 L5 13.8 V6.8 L12 2.8 L19 6.8 V13.8 Z"/><path d="M12 12.5 L9.3 9.8 L12 7.2 L14.7 9.8 Z"/></svg></span>Map</button>
-  <button class="tab" data-view="suppliers"><span><svg class="icon-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="miter" stroke-linecap="square" aria-hidden="true" focusable="false"><path d="M3 21 V10 L9 13.2 V10 L15 13.2 V5.5 H21 V21"/><path d="M2.5 21 H21.5"/></svg></span>Suppliers</button>
   <button class="tab tab-add" data-view="add"><span><svg class="icon-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="miter" stroke-linecap="square" aria-hidden="true" focusable="false"><path d="M8 3.5 H16 L20.5 8 V16 L16 20.5 H8 L3.5 16 V8 Z"/><path d="M12 8 V16 M8 12 H16"/></svg></span>Add</button>
   <button class="tab" data-view="sync"><span><svg class="icon-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="miter" stroke-linecap="square" aria-hidden="true" focusable="false"><path d="M12 2.8 L20 7.4 V16.6 L12 21.2 L4 16.6 V7.4 Z"/><path d="M12 15.8 L8.3 9.4 H15.7 Z"/></svg></span>Settings<em id="tabQueueCount" class="tab-count hidden">0</em></button>
 </nav>

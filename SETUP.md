@@ -1,238 +1,244 @@
 # SETUP — Going live with Electric Trailer
 
-Going live takes about 10 minutes. There are **two ways** to connect a
-live backend — pick one:
+Going live takes about 10 minutes. The inventory lives in a **Google
+Sheet**; the app connects to it through a small **Apps Script bridge**
+installed in the sheet itself — no server, no extra accounts. Follow
+the four steps in order: publish the app, connect the Sheet, match
+your columns, then do NFC stickers.
 
-- **Option A (steps 2–4):** sync through the **AppSheet API**. Requires
-  the AppSheet app to be deployed with API access on its plan.
-- **Option B (right after step 1):** sync **directly to the Google
-  Sheet** behind AppSheet, through a small script bridge. Skips
-  AppSheet entirely — no API plan needed.
-
-The app runs in **Demo mode** until a backend is connected — safe to
-share the link and try everything before then. Steps 5 (columns) and 6
-(NFC stickers) apply to both options.
+Connection details (the Sheet link, and a token if you use one) are
+stored **only in each device's browser**. Nothing secret lives in this
+repo or in the app code — which is why every phone connects once,
+separately: a link pasted on one device does not appear on another.
 
 ---
 
-## Step 1 — Turn on GitHub Pages
+## Step 1 — Publish the app (GitHub Pages)
 
-1. Open the repo: https://github.com/masstahl/electric-trailer
-2. **Settings → Pages** (left sidebar, “Code and automation”).
-3. Under **Build and deployment → Source**, choose **Deploy from a branch**.
-4. Branch: **main**, folder: **/ (root)** → **Save**.
-5. Wait ~1 minute, refresh the Pages settings — it will show:
-   **https://masstahl.github.io/electric-trailer/**
-6. Open that link on your phone → browser menu → **Add to Home Screen**.
-   It now behaves like an installed app and works offline.
+The app is live at https://masstahl.github.io/electric-trailer/
+(Settings → Pages → Deploy from branch `main`, folder `/ (root)`).
 
-## Option B — Connect the Google Sheet directly (no AppSheet)
+On a phone, open that link and **Add to Home Screen** — it installs
+like a normal app and works offline.
 
-The inventory data lives in a Google Sheet (AppSheet sits on top of
-it). This option has the app talk to that sheet directly, through a
-small **Apps Script bridge** installed in the sheet. No AppSheet API,
-no deployment check, no plan requirement. If you use this option, skip
-steps 2–4 and continue at step 5.
+Until the Sheet is connected (Step 2), the app runs on **local data
+only and starts empty** — add items by hand, or just connect the
+sheet first.
 
-> **Before you start — this step needs a computer (steps 1–4).**
-> Installing the bridge happens in the sheet's **Apps Script** editor,
-> which Google only provides in a **desktop browser**, and only to
-> people with **Editor** access to the sheet:
->
-> - The Google Sheets **phone/tablet app does not have Apps Script at
->   all** — no menu, regardless of your permissions. Use a computer
->   (an iPad in Safari can work via **aA → Request Desktop Website**).
-> - If the sheet opens as **“View only”**, you don't have Editor
->   access yet: ask the sheet's owner to share it to you as **Editor**,
->   or have the owner (or any Editor) do steps 1–4 and just hand you
->   the Web app link from step 4 — that's all the app needs.
-> - Open the spreadsheet itself from Drive / sheets.google.com. The
->   preview inside AppSheet never shows the Extensions menu.
-> - The menu lives in the top row: File · Edit · View · Insert ·
->   Format · Data · Tools · **Extensions** · Help. (On an older UI
->   it's **Tools → Script editor** — same destination.)
+---
 
-1. Open the inventory **Google Sheet** in a desktop browser.
-2. **Extensions → Apps Script.** Delete any default code in the editor,
-   then paste in the whole contents of **`apps-script.gs`** from this
-   repo. Nothing in the code needs editing — unless the inventory tab
-   is not the first tab in the sheet, in which case set **`SHEET_NAME`**
-   near the top to that tab's exact name. Save the project.
-3. **Deploy → New deployment.** Type: **Web app**.
+## Step 2 — Connect the Google Sheet (the live route)
+
+The app talks straight to the spreadsheet through a small script that
+lives *inside* the sheet (an Apps Script "bridge"), so live data
+needs no other service. It takes about 5 minutes, needs to be done
+once per spreadsheet, and then each phone pastes the resulting link
+once.
+
+> ⚠️ **Do this from a computer, in a desktop browser — not the
+> phone.** Two hard limits: the Google Sheets **phone app has no Apps
+> Script at all** (no Extensions → Apps Script menu — it simply isn't
+> there), and the sheet must open with **Editor access**, not "View
+> only" (Apps Script is hidden for viewers). On a computer with edit
+> access, everything below is in the sheet's own menus.
+
+1. Open your inventory **Google Sheet** (the spreadsheet behind the
+   inventory). If you don't have Editor access, ask the owner to share
+   it with you as an Editor first — or make your own copy (File → Make
+   a copy) and work in the copy.
+2. **Extensions → Apps Script.** A code editor opens with a stub
+   `function myFunction()`. Delete the stub, then paste the **entire**
+   contents of [`apps-script.gs`](apps-script.gs) from this repo.
+   (Optional: set a `TOKEN` at the top — see "Token" below.) Save (💾).
+3. **Deploy → New deployment → ⚙ → Web app**, with:
    - **Execute as:** Me
    - **Who has access:** Anyone
-   Click **Deploy**, approve the authorization prompts (the script
-   needs permission to read/write its own spreadsheet — see the next
-   section if Google warns you), and copy the **Web app URL** — it
-   ends in `/exec`.
-4. In the app on your phone: **Settings → Backend → Google Sheet**.
-   Paste the link into **Sheet link**.
-5. Tap **Connect**. Success reports how many rows the sheet returned —
-   those rows are imported and the header badge switches to
-   “Live · Google Sheet”. Quantity edits and new items now write
-   straight back to the sheet.
-6. Repeat steps 4–5 on each phone that needs live access (the link is
-   saved per-device by design). Anyone who has the link can connect a
-   device the same way.
+   Click **Deploy**.
+4. Google asks you to authorize the script. Because this is your own
+   unpublished script, Google shows its generic **"this app isn't
+   verified"** warning — that screen is expected here:
+   - Click **Advanced** at the bottom, then **Go to \<project name\>
+     (unsafe)**.
+   - On the permissions screen, click **Allow**.
+   - ⚠️ Do this in a browser window signed into **only the sheet
+     owner's Google account**. If several Google accounts are signed
+     in, Google refuses with **"This app is blocked"** instead — open
+     a private/incognito window, sign in with just the owner's
+     account, and repeat Deploy there.
+5. Copy the **Web app URL** — it ends in **`/exec`**. That is the
+   **Sheet link** — the app will reject the spreadsheet's own link,
+   so if it contains `docs.google.com/spreadsheets`, it's the wrong
+   one; go back to Deploy and copy the Web app URL.
+6. In the app: **Settings → Google Sheet** → paste the Sheet link
+   (and the Token, if the script has one set) → **Connect**.
+   A good connect **imports the sheet's rows immediately**, and Sync
+   Health shows **Mode: Live · Google Sheet**. Repeat this paste on
+   **each phone/tablet** that uses the app — links don't sync between
+   devices.
+7. **Sync now** on the Settings screen pushes queued changes back to
+   the sheet (quantities, new items, folder assignments). In Sheet
+   mode the app also **auto-syncs** when it comes back online or to
+   the foreground. Edits in the sheet itself appear in the app the
+   next time it opens or syncs.
 
-### When Google says “this app isn't verified” / “isn't safe”
+**Updating the script later:** pasting new code into the editor does
+**not** change the live Web app by itself — the deployment keeps
+running the version it was created with. After changing the code:
+**Deploy → Manage deployments → ✏️ Edit → Version: New version →
+Deploy**. The `/exec` link stays the same.
 
-During step 3, Google shows a warning like **“Google hasn't verified
-this app”** or **“this app may be unsafe.”** This is expected: Google
-shows it for *every* personal Apps Script that hasn't gone through
-Google's review process, which is normal for a script you just pasted
-into your own sheet. It appears only during this one-time
-authorization, not when using the app afterwards. To continue:
+**Token (security note):** the bridge ships with `const TOKEN = '';`
+at the top of `apps-script.gs`. With it blank, **anyone who has the
+`/exec` link can read and change the inventory through the bridge** —
+the same trust model as a sheet shared by link, and the right fit
+when the link stays among the people using the inventory. To require
+a token instead, set `TOKEN` to a long random string in the script,
+redeploy a **New version** (see above), and type the same token into
+**Settings → Google Sheet → Token** on each device — the two must
+match exactly, or the app answers "Bad token".
 
-1. On the warning screen, click **Advanced** (bottom left).
-2. Click **“Go to <your project name>”** (the link that appears).
-3. Click **Allow**.
+---
 
-If instead you see **“This app is blocked”** and there is no Advanced
-link, the browser is usually signed into several Google accounts at
-once and Google refuses to authorize. Sign out of the other accounts
-— or open a private/incognito window, sign in with only the sheet
-owner's account, and redo the Deploy step there.
+## Step 3 — Match your sheet's columns
 
-**About the link:** with no token (the default), anyone who has the
-Web app link can read **and write** this inventory through the bridge.
-That's fine as long as the link stays among the people using it —
-treat it like a house key, not a public web page. The bridge script
-runs as the sheet owner's Google account and only ever touches its
-own spreadsheet. If the link ever needs to stop working, delete the
-deployment (Apps Script → Deploy → Manage deployments) or re-deploy
-for a fresh link. A shared-secret token is available if that ever
-changes: set `TOKEN` in `apps-script.gs`, re-deploy (a new deployment
-version — code edits alone don't go live), and enter the same value in
-the app's **Token** field (Settings → Backend → Google Sheet) on each
-device — the bridge then rejects requests that don't carry it, and
-"Bad token" means the two don't match.
+The bridge maps columns **by header name** (trimmed,
+case-insensitive), so column order doesn't matter and extra columns
+are ignored. Headers the app understands:
 
-Expected sheet columns are the same as step 5 (including the optional
-**`Photo`** column — an image URL per item; the app shows it on the
-item's plate when present, and falls back to the item's icon if the
-image can't load).
+| Column | Used for | Example |
+|---|---|---|
+| `Id` | Stable item id (recommended) | `breaker-20a` |
+| `Name` | Display name | `20A Breaker` |
+| `SKU` | Part number | `QO120` |
+| `Qty` | Quantity on hand (numeric) | `14` |
+| `Bin` | Shelf + position, e.g. `B5` = shelf B, position 5 (blank = `A1`) | `B5` |
+| `Level` | Shelf level 1–4 (1 = floor, 4 = top; blank = 2) | `4` |
+| `Supplier` | Supplier name (free text, shown on the item) | `Graybar` |
+| `Cost` | Unit cost (numeric, optional) | `8.49` |
+| `Category` | Folder name (optional — blank rows land in Uncategorized, see below) | `Breakers & Panels` |
+| `Icon` | Icon key from the app's angular set (optional, see below) | `controller` |
+| `NFC ID` | The NFC tag's id for this row (optional; filled when a sticker is written) | (blank) |
+| `Photo` | Image URL for the item's photo (optional — see below) | (Drive link) |
+| `Updated` | Last-change stamp (the app writes it when the column exists) | (auto) |
 
-**Folders (Categories home):** the app opens on a folders screen driven
-by the optional **`Category`** column (step 5). Renaming a folder in
-the app rewrites the `Category` value on every row in that folder —
-the bridge applies it like any other field edit. Without a `Category`
-column, the app derives each item's folder from its `Icon` and keeps
-renames on the device only.
+If your real columns are named differently, either rename the headers
+in the sheet to match, or adjust the mapping in code: row import in
+`sheets.js` (`normalizeRow` + the `pick()` lists), write-back in
+`appsheet.js` (`sheetFields`).
 
-## Step 2 — Unblock and deploy the AppSheet app ⚠️ REQUIRED for Option A
+### Item photos
 
-The AppSheet app is currently **blocked in test mode (“plan upgrade
-needed”)** — while it is, its API cannot be used at all, by any app.
+A **`Photo`** column with an image URL renders that photo on the
+item's card, detail sheet and bin rows (laid over the icon — if the
+image fails to load, the icon simply shows through). Practical notes:
 
-App: https://www.appsheet.com/start/bd77482b-d437-4804-a3ef-fc2815feff2e
-App ID: `bd77482b-d437-4804-a3ef-fc2815feff2e`
+- Photos hotlinked from supplier websites may break over time
+  (hotlink protection, moved images) — for photos that must last,
+  upload them to Google Drive, set sharing to "anyone with the
+  link", and use the Drive file link as the value.
+- One photo per row. Leave the cell blank for icon-only items.
 
-1. Sign in to https://www.appsheet.com with an account that can edit the app.
-2. Open the app → **Manage → Deploy → Deployment Check → Run deployment
-   check**, and fix anything it flags.
-3. Deploy the app (Manage → Deploy). If it still says a plan upgrade is
-   needed, the AppSheet account needs a plan that includes deployed apps
-   and API access — that's an AppSheet account decision, not something the
-   front-end can work around.
-4. Leave the underlying Google Sheet as-is; it stays the source of truth.
+### Folders (categories)
 
-## Step 3 — Get the AppSheet API Access Key
+The app's home screen organizes items into **folders**. A row's folder
+comes from its **`Category`** value when the column exists. Rows with
+no Category (or with the column missing entirely) open in an
+**Uncategorized** system folder, and the app offers tools to file
+them: **Auto-sort** (keyword suggestions you review and apply) and
+**Sort mode** (tap a folder per item) on the folder home, plus a
+folder picker on every item. Folder *names* live on each device (they
+start from a built-in set: Wire & Cable, Conduit & Fittings, Breakers
+& Panels, Boxes & Enclosures, Devices & Plates, Lighting, Fasteners &
+Hardware, Tools & Supplies), so renaming a folder is a device-level
+label; the Category values written back to the sheet are what the
+sheet's other readers see. Renaming a folder in the app queues a
+Category update for each of its items and pushes them on the next
+sync.
 
-1. In AppSheet: **Manage → Integrations**.
-2. Open **“IN: from cloud services to your app” → AppSheet API**.
-3. Make sure the API is **enabled** for the app, and copy the
-   **Application Access Key** (create one if none exists).
-4. ⚠️ Treat the key like a password: **never** put it in GitHub, a text
-   message thread you don't control, or a shared note. You will paste it
-   only into the app on your own phone (step 4) — it is stored only in
-   that phone's browser storage.
+### Bin + Level addressing
 
-## Step 4 — Connect the app on your phone
+Every item lives at **Shelf · Level · Position**: the `Bin` value
+(`B5`) carries the shelf letter (A–D) and position (1–6) along it;
+`Level` (1–4, 1 = floor) carries the height. The Map screen draws
+each shelf as an elevation — levels stacked L4 (top) down to L1 —
+and the item sheet shows its address both short (`B · L4 · P5`) and
+long (`Shelf B · Level 4 · Position 5`).
 
-1. Open Electric Trailer → **Sync** tab.
-2. Check the fields:
-   - **AppSheet App ID:** `bd77482b-d437-4804-a3ef-fc2815feff2e` (pre-filled)
-   - **Table name:** `Inventory` by default — change it to the exact name
-     of your inventory table in AppSheet if it's different.
-   - **Access Key:** paste the key from step 3.
-3. Tap **Save settings**, then **Test connection**.
-   - Success: it reports how many rows AppSheet returned. You're live —
-     the header badge switches to “Live · AppSheet”.
-   - Failure: the message includes AppSheet's actual response. If it says
-     the app is not deployed / plan upgrade needed, repeat step 2. If it
-     says the table wasn't found, fix the table name (case-sensitive).
-4. Repeat on each phone that needs live access (keys are per-device by
-   design, so a lost phone doesn't mean changing the code or the repo).
+### Icon keys for the `Icon` column
 
-The Categories (folders) home screen works the same with this option:
-the optional **`Category`** column (step 5) names each item's folder,
-and renaming a folder in the app sends an edit for every item in it,
-so the new name lands in AppSheet too.
+Items store an icon *key* from the app's angular set: `box`,
+`controller`, `plug`, `light`, `bolt`, `battery`, `solar`, `tire`,
+`axle`, `hub`, `link`, `chain`, `hook`, `kit`, `spring`, `diamond`,
+`hex`. Blank or unknown values fall back to `box`. (Legacy rows with
+old emoji values in this column still render — the app maps them to
+keys automatically.)
 
-## Step 5 — Match your table's columns
+---
 
-The front-end expects these columns (names are what it sends/expects —
-rename your AppSheet columns to match, or adjust the
-mapping in `appsheet.js`):
+## Step 4 — NFC stickers (tap-to-open)
 
-| Column   | Type    | Notes                                  |
-|----------|---------|----------------------------------------|
-| `Id`     | Text (key) | Stable item id, e.g. `brake-controller` — also used in NFC sticker links |
-| `Name`   | Text    | Display name                           |
-| `SKU`    | Text    |                                        |
-| `Qty`    | Number  | On-hand quantity                       |
-| `Bin`    | Text    | e.g. `A1`…`D6` — shelf + position; drives the Shelf Map |
-| `Level`  | Number  | `1`–`4` — shelf level (`1` = floor, `4` = top); with `Bin` it shows as e.g. `B · L4 · P5` |
-| `Supplier` | Text  | Must match the supplier name           |
-| `Cost`   | Decimal / Price | Per-unit cost                  |
-| `Icon`   | Text (optional) | Angular icon key, e.g. `bolt` — one of: `box`, `controller`, `plug`, `light`, `bolt`, `battery`, `solar`, `tire`, `axle`, `hub`, `link`, `chain`, `hook`, `kit`, `spring`, `diamond`, `fender`, `jack`, `alert`. Legacy emoji values still render (mapped automatically) |
-| `NFC ID` | Text (optional) | Physical sticker serial, if you track them |
-| `Photo`  | Text (optional) | Image URL for the item — shown on the item's plate (grid card, item sheet, bin rows, count mode) when present; the icon shows if the image is empty or fails to load |
-| `Category` | Text (optional) | Folder name for the Categories home screen, e.g. `Electrical`. Renaming a folder in the app rewrites this value on every item in the folder; removing a folder moves its items to `Uncategorized`. Without this column, the app derives folders from `Icon` and keeps renames on-device |
+Works on iPhone and Android with ordinary NFC tags — no special app
+needed, because the tag stores a plain URL.
 
-If your real columns have different names, either rename them in the
-Sheet/AppSheet (simplest) or edit the `row` object in `flushQueue()` and
-the demo data shape in `appsheet.js`.
+**Tag choice:** NTAG213 (cheap, plenty for a URL) or NTAG216 (longer
+URLs / bigger custom text). Stickers or cards both fine.
 
-## Step 6 — NFC stickers
+**Writing a tag:**
 
-See the **NFC sticker guide in README.md**. Short version: NTAG213/216
-stickers, one per item/bin, each written with
-`https://masstahl.github.io/electric-trailer/?item=ITEM_ID`.
+- **Android:** in the app, open **Quick Add**, fill in the item, then
+  use **Write to NFC sticker** and hold the phone against the tag.
+  (Or use any NFC writer app to write the URL below.)
+- **iPhone:** install the free "NFC Tools" app (or similar). Write a
+  URL record:
+  `https://masstahl.github.io/electric-trailer/?item=<id>`
+  where `<id>` is the item's Id in the sheet (e.g.
+  `?item=breaker-20a`). Names for new items are turned into an id from
+  the name when added (e.g. `20a-breaker`).
 
-**NFC Live (Android Chrome):** tap the **NFC chip in the app header** once
-to turn on always-on listening while the app is open — after that, tapping
-any sticker opens its item with no other presses. It pauses when the app
-is backgrounded and resumes on the first touch after reopening (tap the
-chip if it shows “Paused”). On iPhone there is no in-app listening (a
-Safari limitation) — stickers open items directly through their URL
-instead. Stickers are always written as URLs because the URL works on
-both platforms, and the Android listener reads the URL records too.
+Then stick the tag on the item's bin. Tapping it with any phone opens
+the app straight to that item.
+
+---
 
 ## Troubleshooting
 
-- **“Test connection” fails with a plan/deployment error** → step 2 isn't
-  finished; no front-end setting can bypass it. (Or switch to Option B
-  and connect the Google Sheet directly.)
-- **Sheet mode says “Bad token”** → only possible when a `TOKEN` is
-  set in `apps-script.gs`: the **Token** field in the app
-  (Settings → Backend → Google Sheet) must match it exactly — and the
-  script must have been redeployed (Deploy → Manage deployments → new
-  version) after the token was set; editing the code alone doesn't
-  update the live web app.
-- **Connect fails / the link opens a Google sign-in page** → the
-  deployment's **Who has access** isn't set to **Anyone**. In Apps
-  Script: Deploy → Manage deployments → edit → set it to **Anyone**
-  and save (redeploy if asked).
-- **App opens but shows demo items** → no Access Key saved on this device
-  yet (Demo mode). Keys don't sync between phones on purpose.
-- **Changes made offline didn't appear in AppSheet** → open the **Queue**
-  tab and tap **Sync now** while online; the Settings tab shows the last
-  error if AppSheet rejected anything.
-- **NFC chip shows "Paused" on Android** → tap the chip (or tap anywhere in the app) to resume listening; NFC Live needs one tap to (re)start after the app is reopened.
-- **Sticker tap opens the site but not the item** → the sticker URL must
-  end with `?item=ITEM_ID` using the item's exact Id (copy it from the
-  item card — don't type it by hand).
-- **Start over locally** → Settings tab → **Reset demo data** (device only;
-  doesn't touch AppSheet).
+- **Settings says "Demo (local data)"** → no Sheet link saved in
+  *this* browser yet (links are per-device). Step 2, item 6.
+- **Connect says the link is wrong** → you pasted the spreadsheet's
+  own link. The Sheet link is the **Web app URL** from Deploy and
+  ends in `/exec` (Step 2, item 5).
+- **"Google Sheet is not connected" when syncing** → same as above:
+  the link isn't saved on this device, or storage was cleared.
+- **"Bad token"** → the script has a TOKEN set but the app's Token
+  field is blank or different (or the script was edited without
+  redeploying a New version, so the live bridge still runs the old
+  code). Make the two match, redeploy, reconnect.
+- **App opens empty, or shows only items added by hand** → this
+  device hasn't connected to the sheet yet (see above), or the
+  import found no data rows — check the sheet has rows under the
+  header row.
+- **Items on the shelf map sit at the wrong height** → the `Level`
+  column is blank for those rows (blank = level 2). Fill in 1–4 in
+  the sheet, or set the level in Quick Add when adding.
+- **Changes made in the app didn't appear in the sheet** → in Sheet
+  mode changes push on **Sync now** (Settings), or automatically when
+  the app comes back online / to the foreground. A change whose row
+  can't be found in the sheet (for example a row with a blank `Id`)
+  is reported honestly and stays queued — give the row a real `Id`
+  in the sheet.
+- **Deploy blocked: "Google hasn't verified this app" / "This app is
+  blocked"** → that's the authorization step (Step 2, item 4):
+  **Advanced → Go to project → Allow**, in a window signed into only
+  the sheet owner's account.
+- **No Extensions → Apps Script menu** → you're in the Sheets phone
+  app or a "View only" copy. Use a desktop browser with Editor
+  access (see the callout in Step 2).
+- **NFC tap does nothing** → make sure the tag actually has the URL
+  written (read it with NFC Tools to check), the phone has NFC on,
+  and the tag is NTAG (MIFARE Classic tags don't work with iPhones).
+- **App looks stale after an update** → the service worker caches the
+  app shell; close and reopen the app (or remove and re-add the home
+  screen icon) to pick up the new version.
+- **Start over on one device** → clear the site's data in that
+  browser (removes the link, token, local items and queue on that
+  device only). The sheet itself is untouched.

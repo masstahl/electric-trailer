@@ -1,10 +1,10 @@
 /* sheets.js — Google Sheet provider for Electric Trailer (window.ETSheets).
  *
- * Alternative backend to the AppSheet API: talks directly to the
- * inventory Google Sheet through a small Apps Script bridge installed
- * in the sheet itself (apps-script.gs in this repo — see SETUP.md,
- * "Option B"). The bridge link is stored ONLY in this device's
- * localStorage ('et-sheet-config') — never in code, never in the repo.
+ * The live backend: talks directly to the inventory Google Sheet
+ * through a small Apps Script bridge installed in the sheet itself
+ * (apps-script.gs in this repo — see SETUP.md). The bridge link is
+ * stored ONLY in this device's localStorage ('et-sheet-config') —
+ * never in code, never in the repo.
  *
  * The link alone connects when the bridge's TOKEN is blank. If the
  * script has a TOKEN set, the same token entered in Settings is sent
@@ -95,7 +95,7 @@
 
   function notConfigured() {
     return { ok: false, mode: 'sheet', rows: 0, items: [],
-             message: 'Google Sheet is not connected — paste the Sheet link (the Web app link from Deploy, ending in /exec) in Settings → Backend → Google Sheet.' };
+             message: 'Google Sheet is not connected — paste the Sheet link (the Web app link from Deploy, ending in /exec) in Settings → Google Sheet.' };
   }
 
   function fetchRows() {
