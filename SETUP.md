@@ -34,7 +34,25 @@ small **Apps Script bridge** installed in the sheet. No AppSheet API,
 no deployment check, no plan requirement. If you use this option, skip
 steps 2–4 and continue at step 5.
 
-1. Open the inventory **Google Sheet**.
+> **Before you start — this step needs a computer (steps 1–4).**
+> Installing the bridge happens in the sheet's **Apps Script** editor,
+> which Google only provides in a **desktop browser**, and only to
+> people with **Editor** access to the sheet:
+>
+> - The Google Sheets **phone/tablet app does not have Apps Script at
+>   all** — no menu, regardless of your permissions. Use a computer
+>   (an iPad in Safari can work via **aA → Request Desktop Website**).
+> - If the sheet opens as **“View only”**, you don't have Editor
+>   access yet: ask the sheet's owner to share it to you as **Editor**,
+>   or have the owner do steps 1–4 themselves and just hand you the
+>   Web app URL + TOKEN from step 4 — that's all the app needs.
+> - Open the spreadsheet itself from Drive / sheets.google.com. The
+>   preview inside AppSheet never shows the Extensions menu.
+> - The menu lives in the top row: File · Edit · View · Insert ·
+>   Format · Data · Tools · **Extensions** · Help. (On an older UI
+>   it's **Tools → Script editor** — same destination.)
+
+1. Open the inventory **Google Sheet** in a desktop browser.
 2. **Extensions → Apps Script.** Delete any default code in the editor,
    then paste in the whole contents of **`apps-script.gs`** from this
    repo.
