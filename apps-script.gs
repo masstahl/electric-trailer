@@ -13,10 +13,11 @@
  * API (JSON in, JSON out):
  *   GET  ?action=rows             → { ok:true, rows:[ {Header: value, …} ] }
  *   POST { ops:[…] }              → { ok:true, results:[ {id, ok, error?} ] }
- * Each op: { id, kind: 'qty' | 'edit' | 'add', fields: { Qty: 12, … } }.
- * 'qty'/'edit' find the row whose Id column matches op.id and apply the
- * given fields (by header name); 'add' appends a full row. If an
- * 'Updated' column exists it is stamped with the current time per write.
+ * Each op: { id, kind: 'qty' | 'edit' | 'add', fields: { Quantity: 12, … } }.
+ * 'qty'/'edit' find the row whose id column matches op.id — the id
+ * column may be headed 'Id' or 'Item ID' — and apply the given fields
+ * (by header name); 'add' appends a full row. If an 'Updated' column
+ * exists it is stamped with the current time per write.
  *
  * TOKEN is optional and OFF by default — leave it blank unless you
  * want a shared secret. With it blank, anyone who has the deployed
@@ -71,7 +72,7 @@ function setField_(rowValues, hmap, name, value) {
   var idx = hmap[String(name).trim().toLowerCase()];
   if (idx == null) return;  // sheet has no such column — skip gracefully
   var key = String(name).trim().toLowerCase();
-  if (key === 'qty' || key === 'level') {
+  if (key === 'qty' || key === 'quantity' || key === 'level') {
     var n = parseInt(value, 10);
     value = isNaN(n) ? 0 : n;
   } else if (key === 'cost') {
@@ -134,7 +135,8 @@ function doPost(e) {
       var headers = headersOf_(sh);
       var hmap = headerMap_(headers);
       var idIdx = hmap['id'];
-      if (idIdx == null) throw new Error('No "Id" column found in the sheet header row.');
+      if (idIdx == null) idIdx = hmap['item id'];  // the inventory sheet heads it 'Item ID'
+      if (idIdx == null) throw new Error('No "Id" (or "Item ID") column found in the sheet header row.');
 
       // Map Id → sheet row number (1-based), read once per batch.
       var lastRow = sh.getLastRow();
@@ -169,7 +171,7 @@ function applyOp_(sh, headers, hmap, rowById, op) {
 
   if (kind === 'add' && !rowNum) {
     var newRow = headers.map(function () { return ''; });
-    setField_(newRow, hmap, 'Id', id);
+    setField_(newRow, hmap, hmap['id'] != null ? 'Id' : 'Item ID', id);
     Object.keys(fields).forEach(function (k) { setField_(newRow, hmap, k, fields[k]); });
     stampUpdated_(newRow, hmap);
     sh.appendRow(newRow);

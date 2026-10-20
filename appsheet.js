@@ -22,7 +22,8 @@
     settings: 'et.settings.v1',
     meta: 'et.meta.v1',
     categories: 'et-categories',
-    folderMigration: 'et-folder-migration'
+    folderMigration: 'et-folder-migration',
+    mapVersion: 'et-map-v'
   };
 
   var DEFAULT_SETTINGS = {
@@ -298,6 +299,29 @@
     if (!read(LS.queue, null)) write(LS.queue, []);
     if (!read(LS.meta, null)) write(LS.meta, { lastSync: '', lastError: '' });
   }
+  /* ---------- One-time storage reset for the real sheet mapping ----------
+   * Before v26 the sheet import guessed the generic headers (Id / Qty /
+   * Bin / Supplier), so devices that connected the REAL sheet hold
+   * items whose ids are row-number syntheses and whose quantities,
+   * locations and suppliers never arrived. Those local copies can't be
+   * repaired in place — a re-import under the mapped ids ('Item ID')
+   * would sit NEXT to the broken copies and duplicate every item — so
+   * once, on load: clear the stored items + queue (and nothing else),
+   * and let the next sheet import rebuild them under the real ids.
+   * Preserved on purpose: the sheet config ('et-sheet-config' — the
+   * connection itself), the folder list + the elec1 migration flag,
+   * the user-added suppliers, settings, theme and NFC preferences
+   * (those live outside this file's keys and are untouched).
+   * Gated by localStorage 'et-map-v' = 'real1'; runs exactly once. */
+  function resetForRealMap() {
+    if (read(LS.mapVersion, '') === 'real1') return;
+    try {
+      localStorage.removeItem(LS.items);
+      localStorage.removeItem(LS.queue);
+    } catch (e) { /* storage blocked — flag still set so we don't loop */ }
+    write(LS.mapVersion, 'real1');
+  }
+  resetForRealMap();
   seedIfNeeded();
   migrateFoldersElec1();
 
@@ -596,19 +620,20 @@
   }
 
   /* Sheet-mode flush: translate pending queue entries into bridge ops
-   * and send them in one POST. Qty ops send just the new Qty (the
-   * bridge stamps Updated); adds/edits send the full field set.
+   * and send them in one POST. Ops carry CANONICAL, item-shaped
+   * fields; sheets.js translates them to the sheet's real header
+   * names at the bridge boundary (its toSheetFields). Qty ops carry
+   * just the qty; adds/edits carry the full field set.
    * An op is marked synced only when the bridge's per-op result says
    * ok — partial progress is kept, failures stay queued. */
   function sheetFields(item, full) {
-    if (!full) return { Qty: item.qty };
+    if (!full) return { qty: item.qty };
     var f = {
-      Name: item.name, SKU: item.sku, Qty: item.qty, Bin: item.bin,
-      Level: item.level || 2, Supplier: item.supplier, Cost: item.cost,
-      Category: categoryForItem(item),
-      Icon: item.icon || 'box', 'NFC ID': item.nfcId || ''
+      name: item.name, sku: item.sku, qty: item.qty, bin: item.bin,
+      supplier: item.supplier, category: categoryForItem(item),
+      icon: item.icon || 'box', nfcId: item.nfcId || ''
     };
-    if (item.photo) f.Photo = item.photo;
+    if (item.photo) f.photo = item.photo;
     return f;
   }
   function flushViaSheet(q, pending) {

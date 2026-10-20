@@ -124,6 +124,12 @@ body{
   font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
   background:var(--bg); color:var(--text);
   padding-bottom:120px; -webkit-tap-highlight-color:transparent;
+  /* Nothing may widen the page past the viewport: a single overflowing
+     element makes mobile browsers widen the layout viewport and paint
+     full-width backgrounds (the header) at a fraction of the screen.
+     'clip' is preferred — unlike 'hidden' it creates no scroll
+     container, so position:sticky keeps working. */
+  overflow-x:hidden; overflow-x:clip;
 }
 h2{font-size:1.25rem;margin:.4rem 0 .35rem}
 h3{font-size:1.02rem;margin:1.1rem 0 .5rem}
@@ -131,8 +137,11 @@ h3{font-size:1.02rem;margin:1.1rem 0 .5rem}
 .error-text{color:var(--red);font-weight:600}
 a{color:var(--accent)}
 
-/* Header */
-.app-header{background:var(--header-bg);color:var(--header-text);position:sticky;top:0;z-index:20;box-shadow:0 2px 10px rgba(0,0,0,.25)}
+/* Header — the background lives on the header element itself and spans
+   the full viewport width; only .header-inner is width-capped (960px,
+   centered) so the brand/badges align with the page column on wide
+   screens while the color band never stops short. */
+.app-header{background:var(--header-bg);color:var(--header-text);position:sticky;top:0;z-index:20;width:100%;box-shadow:0 2px 10px rgba(0,0,0,.25)}
 .header-inner{max-width:960px;margin:0 auto;display:flex;justify-content:space-between;align-items:center;gap:.5rem;padding:.65rem 1rem;flex-wrap:wrap}
 .brand{display:flex;align-items:center;gap:.6rem}
 .brand-icon{font-size:1.8rem}
@@ -184,11 +193,15 @@ main{max-width:960px;margin:0 auto;padding:1rem}
 .stat.warn strong{color:var(--danger)}
 .stat.active{background:color-mix(in srgb,var(--danger) 18%,transparent);box-shadow:inset 0 0 0 2px var(--danger)}
 
-/* #08 Photo grid */
-.photo-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:.55rem}
+/* #08 Photo grid — tracks are minmax(0,1fr): plain 1fr is
+   minmax(auto,1fr), so one card's unbreakable min-content (a long
+   part code in a nowrap line) could stretch its whole track and push
+   the grid past the viewport. min-width:0 on the card lets the
+   clamped/ellipsized text lines actually shrink. */
+.photo-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:.55rem}
 .photo-card{
   background:var(--surface);border:var(--bw) solid var(--border);border-radius:var(--radius);
-  padding:.45rem .4rem .4rem;text-align:center;cursor:pointer;position:relative;
+  padding:.45rem .4rem .4rem;text-align:center;cursor:pointer;position:relative;min-width:0;
   box-shadow:var(--card-shadow);transition:transform .08s ease;
 }
 .photo-card:active{transform:scale(.97)}
@@ -704,7 +717,10 @@ html[data-theme="electric"] body.folders-bg{
 .tab-add .icon-svg{width:24px;height:24px}
 .photo-card .pc-icon{
   display:flex;align-items:center;justify-content:center;width:100%;height:44px;margin:0 auto;position:relative;
-  color:var(--accent);background:var(--surface2);font-size:1rem;line-height:1;
+  /* SPEC PLATE: the plate is WHITE in every theme (same as the item
+     sheet's hero plate) — the fallback angular icon inks dark on it,
+     and a real photo covers the whole plate (object-fit:cover below). */
+  color:#23262b;background:#ffffff;font-size:1rem;line-height:1;
   clip-path:polygon(14% 0,100% 0,100% 86%,86% 100%,0 100%,0 14%);
 }
 /* Photo covers the plate; the icon stays underneath as the fallback */

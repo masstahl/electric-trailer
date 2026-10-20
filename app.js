@@ -14,15 +14,29 @@
   var AISLES = ['A', 'B', 'C', 'D'];
   var BINS = [];
   AISLES.forEach(function (a) { for (var i = 1; i <= 6; i++) BINS.push(a + i); });
-  /* Location model: item.bin stays "B5" (shelf + position, sheet-friendly);
-   * item.level (1-4, 1 = floor, 4 = top) is the vertical dimension.
-   * One notation system: short "B · L4 · P5", long "Shelf B · Level 4 · Position 5". */
+  /* Location model, two realities: an item added in the app (or a
+   * sheet row whose Location matches the bin pattern) carries a coded
+   * bin "B5" — shelf letter A–D + position 1–6 — plus item.level
+   * (1-4, 1 = floor, 4 = top), shown in the notation short
+   * "B · L4 · P5" / long "Shelf B · Level 4 · Position 5". A sheet
+   * Location in free text ('Shelf 59', 'EC42', 'Shelf 58 Kit_5') is
+   * NOT parsed or re-homed: cards and sheets show it verbatim, and
+   * the shelf map simply has no A–D cell for it. */
   var LEVELS_TOP_DOWN = [4, 3, 2, 1];
+  var BIN_PATTERN = /^[A-Da-d][1-6]$/;
   function levelOf(item) { var l = parseInt(item && item.level, 10); return (l >= 1 && l <= 4) ? l : 2; }
   function shelfOf(bin) { return String(bin || 'A1').charAt(0).toUpperCase(); }
   function posOf(bin) { return parseInt(String(bin || 'A1').slice(1), 10) || 1; }
-  function locShort(item) { return shelfOf(item.bin) + ' · L' + levelOf(item) + ' · P' + posOf(item.bin); }
-  function locLong(item) { return 'Shelf ' + shelfOf(item.bin) + ' · Level ' + levelOf(item) + ' · Position ' + posOf(item.bin); }
+  function locShort(item) {
+    var bin = String((item && item.bin) || '');
+    if (BIN_PATTERN.test(bin)) return shelfOf(bin) + ' · L' + levelOf(item) + ' · P' + posOf(bin);
+    return bin;   // free-text location, shown exactly as the sheet has it
+  }
+  function locLong(item) {
+    var bin = String((item && item.bin) || '');
+    if (BIN_PATTERN.test(bin)) return 'Shelf ' + shelfOf(bin) + ' · Level ' + levelOf(item) + ' · Position ' + posOf(bin);
+    return bin;
+  }
   function locShortParts(bin, level) { return shelfOf(bin) + ' · L' + level + ' · P' + posOf(bin); }
   function locLongParts(bin, level) { return 'Shelf ' + shelfOf(bin) + ' · Level ' + level + ' · Position ' + posOf(bin); }
   function cellKey(bin, level) { return bin + '-L' + level; }
@@ -435,7 +449,7 @@
       return '<div class="photo-card st-' + st + '" data-card="' + esc(i.id) + '" role="button" tabindex="0" aria-label="' + esc(i.name) + ', ' + qtyLabel(i.qty) + '">' +
         '<span class="pc-icon">' + iconPlate(i) + '</span>' +
         '<div class="pc-name">' + esc(i.name) + '</div>' +
-        '<div class="pc-loc">' + locShort(i) + '</div>' +
+        '<div class="pc-loc">' + esc(locShort(i)) + '</div>' +
         '<div class="pc-bin">' + esc(i.sku) + '</div>' +
         pill +
         '<div class="stepper-strip">' +
@@ -717,7 +731,7 @@
       }).join('');
       return '<div class="list-item row-item"><span class="li-icon">' + iconPlate(i) + '</span>' +
         '<span class="li-main"><span class="li-name">' + esc(i.name) + '</span><br>' +
-        '<span class="li-sub">' + esc(i.sku || 'No SKU') + ' · ' + locShort(i) + '</span></span>' +
+        '<span class="li-sub">' + esc(i.sku || 'No SKU') + ' · ' + esc(locShort(i)) + '</span></span>' +
         '<select class="autosort-select' + (sug ? '' : ' no-guess') + '" data-autosort="' + esc(i.id) + '" aria-label="Folder for ' + esc(i.name) + '">' + opts + '</select></div>';
     }).join('');
     $('autoSortList').querySelectorAll('[data-autosort]').forEach(function (sel) {
@@ -1401,7 +1415,7 @@
     $('supplierItems').innerHTML = mine.map(function (i) {
       return '<div class="list-item row-item"><span class="li-icon">' + iconPlate(i) + '</span>' +
         '<button type="button" class="li-main row-open" data-sopen="' + esc(i.id) + '"><span class="li-name">' + esc(i.name) + '</span><br>' +
-        '<span class="li-sub">' + esc(i.sku) + ' · ' + locShort(i) + '</span></button>' +
+        '<span class="li-sub">' + esc(i.sku) + ' · ' + esc(locShort(i)) + '</span></button>' +
         '<span class="qty-pill ' + qtyClass(i.qty) + '">' + qtyLabel(i.qty) + '</span>' +
         '<span class="row-stepper">' +
           '<button type="button" data-sdec="' + esc(i.id) + '" aria-label="Remove one from ' + esc(i.name) + '">−</button>' +

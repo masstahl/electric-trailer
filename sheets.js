@@ -55,13 +55,28 @@
   function str(v) { return v == null ? '' : String(v).trim(); }
 
   /* Bridge row (keyed by the sheet's header names) → the same item
-   * shape the rest of the app uses. */
+   * shape the rest of the app uses. Headers are matched by NAME,
+   * trimmed and case-insensitive (see pick()). The real inventory
+   * sheet's headers are its own, so each field lists the real header
+   * first and the legacy aliases after it:
+   *   Item ID → id · Description → name (the human-readable name),
+   *   with Name (the part code) becoming the item's sku · Image →
+   *   photo · Location → bin (the RAW string — 'Shelf 59', 'EC42' —
+   *   never parsed, never defaulted) · Vendor → supplier ·
+   *   Quantity → qty (blank = 0) · Category → category.
+   * When a row has no Description, Name is the display name and the
+   * sku falls back to the legacy SKU / Part Number columns. */
   function normalizeRow(row, idx, usedIds) {
-    var name = str(pick(row, ['name']));
-    var id = str(pick(row, ['id']));
+    var desc = str(pick(row, ['description']));
+    var code = str(pick(row, ['name']));
+    var legacySku = str(pick(row, ['sku', 'part number', 'partnumber']));
+    var name, sku;
+    if (desc) { name = desc; sku = code || legacySku; }
+    else { name = code; sku = legacySku; }
+    var id = str(pick(row, ['item id', 'id']));
     if (!id) {
       id = (name || 'item').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') || 'item';
-      id = id + '-r' + (idx + 2);   // no Id in the sheet — synthesize one from the row
+      id = id + '-r' + (idx + 2);   // no id in the sheet — synthesize one from the row
     }
     if (usedIds[id]) { var base = id, n = 2; while (usedIds[base + '-' + n]) n++; id = base + '-' + n; }
     usedIds[id] = true;
@@ -70,18 +85,46 @@
     return {
       id: id,
       name: name || id,
-      sku: str(pick(row, ['sku'])),
-      qty: Math.max(0, Math.floor(num(pick(row, ['qty']), 0))),
-      bin: str(pick(row, ['bin'])) || 'A1',
+      sku: sku,
+      qty: Math.max(0, Math.floor(num(pick(row, ['quantity', 'qty']), 0))),
+      bin: str(pick(row, ['location', 'bin'])),
       level: level,
-      supplier: str(pick(row, ['supplier'])),
+      supplier: str(pick(row, ['vendor', 'supplier'])),
       cost: num(pick(row, ['cost', 'price']), 0),
       icon: str(pick(row, ['icon'])) || 'box',
       category: str(pick(row, ['category', 'folder'])),
       nfcId: str(pick(row, ['nfc id', 'nfcid', 'nfc'])),
-      photo: str(pick(row, ['photo', 'image', 'photo url', 'image url'])),
+      photo: str(pick(row, ['image', 'photo', 'photo url', 'image url'])),
       updated: str(pick(row, ['updated', 'last updated']))
     };
+  }
+
+  /* Canonical op fields (from ETData — item-shaped: name, sku, qty,
+   * bin, supplier, category, icon, nfcId, photo) → this sheet's
+   * header names, applied at the bridge boundary so the rest of the
+   * app never has to know the sheet's column titles. A qty op posts
+   * ONLY { Quantity } (the bridge stamps Updated if that column
+   * exists). Edit/add post the full set: the human name goes back to
+   * Description and the part code to Name — the mirror of the read
+   * mapping. Guard: an item with no part code (its name came FROM
+   * the Name column) writes its name to Name and leaves Description
+   * untouched, instead of blanking the code column. The bridge
+   * applies each field by header name and skips any column the sheet
+   * doesn't have (Icon / NFC ID on sheets without those columns). */
+  function toSheetFields(op) {
+    var f = (op && op.fields) || {};
+    if (op && op.kind === 'qty') return { Quantity: f.qty };
+    var out = {};
+    if (f.sku) { out.Description = f.name; out.Name = f.sku; }
+    else if (f.name != null) out.Name = f.name;
+    out.Quantity = f.qty;
+    out.Location = f.bin;
+    out.Vendor = f.supplier;
+    if (f.photo) out.Image = f.photo;
+    out.Category = f.category;
+    out.Icon = f.icon;
+    out['NFC ID'] = f.nfcId;
+    return out;
   }
 
   /* A failed fetch surfaces as a raw platform string ("Load failed" on
@@ -118,13 +161,17 @@
     });
   }
 
-  /* ops: [{ id, kind: 'qty'|'edit'|'add', fields: { Qty: n, … } }]
+  /* ops: [{ id, kind: 'qty'|'edit'|'add', fields: {canonical fields} }]
+   * Fields are translated to the sheet's header names here
+   * (toSheetFields) before anything is sent.
    * Sent as text/plain on purpose: Apps Script web apps don't answer
    * CORS preflight (OPTIONS), and a "simple" content type avoids one. */
   function flushOps(ops) {
     if (!isConfigured()) return Promise.resolve({ ok: false, results: [], message: notConfigured().message });
     var c = getConfig();
-    var payload = { ops: ops || [] };
+    var payload = { ops: (ops || []).map(function (op) {
+      return { id: op.id, kind: op.kind, fields: toSheetFields(op) };
+    }) };
     if (c.token) payload.token = c.token;  // legacy setups only
     return fetch(c.url, {
       method: 'POST',
@@ -149,6 +196,7 @@
 
   window.ETSheets = {
     getConfig: getConfig, saveConfig: saveConfig, isConfigured: isConfigured,
-    fetchRows: fetchRows, flushOps: flushOps, testConnection: testConnection
+    fetchRows: fetchRows, flushOps: flushOps, testConnection: testConnection,
+    toSheetFields: toSheetFields
   };
 })();

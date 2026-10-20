@@ -103,32 +103,42 @@ match exactly, or the app answers "Bad token".
 
 The bridge maps columns **by header name** (trimmed,
 case-insensitive), so column order doesn't matter and extra columns
-are ignored. Headers the app understands:
+are ignored. The inventory sheet's own headers are the ones the app
+is built around:
 
 | Column | Used for | Example |
 |---|---|---|
-| `Id` | Stable item id (recommended) | `breaker-20a` |
-| `Name` | Display name | `20A Breaker` |
-| `SKU` | Part number | `QO120` |
-| `Qty` | Quantity on hand (numeric) | `14` |
-| `Bin` | Shelf + position, e.g. `B5` = shelf B, position 5 (blank = `A1`) | `B5` |
-| `Level` | Shelf level 1–4 (1 = floor, 4 = top; blank = 2) | `4` |
-| `Supplier` | Supplier name (free text, shown on the item) | `Graybar` |
-| `Cost` | Unit cost (numeric, optional) | `8.49` |
+| `Item ID` | Stable item id — rows are matched by this on every sync | `131` |
+| `Description` | Display name (the human-readable name) | `3/4 PVC Coupling` |
+| `Name` | Part code — shown as the small code line on the card, and written back when the app edits the row | `PVC CPL-3/4` |
+| `Image` | Image URL for the item's photo (optional — see below) | (Drive link) |
+| `Location` | Where it lives, free text — shown exactly as written (see "Locations" below) | `Shelf 59` |
+| `Vendor` | Supplier name (free text, shown on the item) | `Amazon` |
+| `Quantity` | Quantity on hand (numeric; blank reads as 0) | `14` |
 | `Category` | Folder name (optional — blank rows land in Uncategorized, see below) | `Breakers & Panels` |
-| `Icon` | Icon key from the app's angular set (optional, see below) | `controller` |
-| `NFC ID` | The NFC tag's id for this row (optional; filled when a sticker is written) | (blank) |
-| `Photo` | Image URL for the item's photo (optional — see below) | (Drive link) |
-| `Updated` | Last-change stamp (the app writes it when the column exists) | (auto) |
 
-If your real columns are named differently, either rename the headers
-in the sheet to match, or adjust the mapping in code: row import in
-`sheets.js` (`normalizeRow` + the `pick()` lists), write-back in
-`appsheet.js` (`sheetFields`).
+**Aliases:** older/generic headers are still understood, so a sheet
+set up for an earlier version keeps working — `Id` (for `Item ID`),
+`Qty` (for `Quantity`), `Bin` (for `Location`), `Supplier` (for
+`Vendor`), `Photo` (for `Image`), plus optional `SKU` / `Part Number`,
+`Level`, `Cost`, `Icon`, `NFC ID` and `Updated` columns (the bridge
+stamps `Updated` on writes when the column exists).
+
+A row with no `Description` uses its `Name` as the display name.
+Edits made in the app write back to the same columns: quantity
+changes post just `Quantity`; item edits post `Description`,
+`Name`, `Quantity`, `Location`, `Vendor`, `Image`, `Category`,
+`Icon` and `NFC ID` — and the bridge applies each by header name,
+skipping any column the sheet doesn't have.
+
+If your columns are named differently again, either rename the
+headers in the sheet to match, or adjust the mapping in code: row
+import and write-back translation both live in `sheets.js`
+(`normalizeRow`, `pick()`, `toSheetFields`).
 
 ### Item photos
 
-A **`Photo`** column with an image URL renders that photo on the
+An **`Image`** column with an image URL renders that photo on the
 item's card, detail sheet and bin rows (laid over the icon — if the
 image fails to load, the icon simply shows through). Practical notes:
 
@@ -161,19 +171,23 @@ launch — items filed in them follow their folder.)
 
 The **Suppliers** tab starts empty. Add your own suppliers there
 (name + optional note), and any supplier named in the sheet's
-`Supplier` column — or typed in Quick Add — shows up in the tab too,
+`Vendor` column — or typed in Quick Add — shows up in the tab too,
 with live counts of that supplier's items. Hand-added entries can be
 removed from the tab's Edit mode; items always keep their own
 supplier name.
 
-### Bin + Level addressing
+### Locations
 
-Every item lives at **Shelf · Level · Position**: the `Bin` value
-(`B5`) carries the shelf letter (A–D) and position (1–6) along it;
-`Level` (1–4, 1 = floor) carries the height. The Map screen draws
-each shelf as an elevation — levels stacked L4 (top) down to L1 —
-and the item sheet shows its address both short (`B · L4 · P5`) and
-long (`Shelf B · Level 4 · Position 5`).
+The `Location` column is **free text** and the app shows it exactly
+as written — `Shelf 59`, `EC42`, `Shelf 58 Kit_5`. One special case:
+a value that is exactly a shelf letter **A–D** plus a position
+**1–6** (like `B5`) is treated as a coded bin on the app's shelf map,
+and displayed in the app's notation — short `B · L4 · P5`, long
+`Shelf B · Level 4 · Position 5` — together with the item's level
+(the `Level` column, 1 = floor … 4 = top, blank = 2). The Map screen
+draws each shelf A–D as an elevation, levels stacked L4 (top) down
+to L1. Free-text locations don't land in those cells; they stay
+fully searchable and show verbatim on the item's card and sheet.
 
 ### Icon keys for the `Icon` column
 
@@ -234,8 +248,9 @@ the app straight to that item.
 - **Changes made in the app didn't appear in the sheet** → in Sheet
   mode changes push on **Sync now** (Settings), or automatically when
   the app comes back online / to the foreground. A change whose row
-  can't be found in the sheet (for example a row with a blank `Id`)
-  is reported honestly and stays queued — give the row a real `Id`
+  can't be found in the sheet (for example a row with a blank
+  `Item ID`) is reported honestly and stays queued — give the row a
+  real `Item ID`
   in the sheet.
 - **Deploy blocked: "Google hasn't verified this app" / "This app is
   blocked"** → that's the authorization step (Step 2, item 4):
