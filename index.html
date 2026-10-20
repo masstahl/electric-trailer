@@ -68,6 +68,13 @@
       <span class="air-meta" id="allItemsMeta">–</span>
       <span class="air-chev" aria-hidden="true">›</span>
     </button>
+    <div id="sortBanner" class="sort-banner hidden">
+      <span class="sort-banner-text" id="sortBannerText">0 items need a folder</span>
+      <span class="sort-banner-btns">
+        <button type="button" id="autoSortBtn" class="btn">Auto-sort</button>
+        <button type="button" id="sortModeBtn" class="btn">Sort mode</button>
+      </span>
+    </div>
     <div id="folderGrid" class="folder-grid"></div>
     <div id="folderBar" class="folder-bar hidden">
       <button type="button" id="folderBack" class="btn folder-back">‹ Folders</button>
@@ -116,6 +123,14 @@
     <h2>Quick Add New Item</h2>
     <form id="addForm" class="card form">
       <label>Item name<input id="addName" required placeholder="e.g. Brake Controller"></label>
+      <label>Part number / SKU<input id="addSku" placeholder="e.g. 40123" autocomplete="off"></label>
+      <div id="skuLookup" class="sku-lookup hidden">
+        <span class="sku-lookup-label">Look up this part number:</span>
+        <a id="lkWeb" class="btn sku-lk" href="#" target="_blank" rel="noopener">Web</a>
+        <a id="lkImages" class="btn sku-lk" href="#" target="_blank" rel="noopener">Images</a>
+        <a id="lkAmazon" class="btn sku-lk" href="#" target="_blank" rel="noopener">Amazon</a>
+      </div>
+      <p id="skuLookupHint" class="muted small hidden">Opens in a new tab — check the part name and photo, then come back.</p>
       <div class="form-row">
         <label>Quantity<input id="addQty" type="number" min="0" value="1" required></label>
         <label>Cost $<input id="addCost" type="number" min="0" step="0.01" value="0"></label>
@@ -272,9 +287,10 @@
     <p class="muted" id="dMeta">SKU · Bin · Supplier</p>
     <div class="sheet-chips">
       <span class="bin-chip" id="dBinChip">A · L2 · P1</span>
-      <button type="button" class="folder-chip" id="dFolderChip" aria-label="Open this item's folder">Folder</button>
       <span class="qty-pill qty-ok" id="dStatus">0 in stock</span>
     </div>
+    <p class="small-label folder-rail-label">Folder — tap to file here</p>
+    <div id="dFolderRail" class="folder-rail" role="group" aria-label="File this item in a folder"></div>
     <button type="button" id="showOnShelfBtn" class="btn show-shelf-btn"><svg class="icon-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="miter" stroke-linecap="square" aria-hidden="true" focusable="false"><path d="M12 21.5 L5 13.8 V6.8 L12 2.8 L19 6.8 V13.8 Z"/><path d="M12 12.5 L9.3 9.8 L12 7.2 L14.7 9.8 Z"/></svg> Show on shelf</button>
     <div class="qty-display">
       <button type="button" id="dQtyBtn" class="qty-num" title="Tap to type a new quantity" aria-label="Quantity 0 for Item — tap to type a new quantity"><span id="dQty">0</span></button>
@@ -359,6 +375,42 @@
     <p id="frText" class="muted"></p>
     <button type="button" id="frConfirm" class="btn btn-primary btn-big">Move items &amp; remove folder</button>
     <button type="button" id="frCancel" class="btn btn-big">Cancel</button>
+  </div>
+</div>
+
+<!-- ============ AUTO-SORT · propose folders, review, apply ============ -->
+<div id="autoSortOverlay" class="overlay hidden" role="dialog" aria-modal="true" aria-labelledby="autoSortTitle">
+  <div class="sheet autosort-sheet">
+    <button type="button" id="closeAutoSort" class="close-btn" aria-label="Close auto-sort">✕</button>
+    <h2 id="autoSortTitle">Auto-sort</h2>
+    <p class="muted small">A folder is proposed for each unfiled item — change any guess, or leave a row on “No folder” to skip it.</p>
+    <div id="autoSortList" class="list"></div>
+    <div class="sheet-footer">
+      <button type="button" id="autoSortApply" class="btn btn-primary btn-big">File items</button>
+    </div>
+  </div>
+</div>
+
+<!-- ============ SORT MODE · one item, one tap on a folder icon ============ -->
+<div id="sortOverlay" class="overlay hidden" role="dialog" aria-modal="true" aria-labelledby="sName">
+  <div class="sheet sort-sheet">
+    <div id="sMain">
+      <button type="button" id="sClose" class="close-btn" aria-label="Close sort mode">✕</button>
+      <p class="muted small" id="sProgress">Sort · 1 of 1</p>
+      <div class="sheet-hero"><span class="detail-icon" id="sHero"></span></div>
+      <h2 id="sName">Item</h2>
+      <p class="muted" id="sMeta"></p>
+      <div id="sFolders" class="sort-folders"></div>
+      <div class="count-nav">
+        <button type="button" id="sBack" class="btn">Back</button>
+        <button type="button" id="sSkip" class="btn">Skip</button>
+      </div>
+    </div>
+    <div id="sDone" class="hidden">
+      <h2>Sorting done</h2>
+      <p id="sDoneText" class="muted"></p>
+      <button type="button" id="sDoneBtn" class="btn btn-primary btn-big">Done</button>
+    </div>
   </div>
 </div>
 

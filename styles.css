@@ -310,6 +310,51 @@ html[data-theme="electric"] body.folders-bg{
   background:var(--surface2);color:var(--text);border:1.5px solid var(--border);border-left:4px solid var(--danger);
   font-weight:800;font-size:.9rem;padding:.35rem .65rem;border-radius:8px;cursor:pointer;font-family:inherit;
 }
+/* ---------- Sorting Kit: banner, auto-sort, sort mode, rail, lookup ---------- */
+.sort-banner{
+  display:flex;align-items:center;gap:.6rem;flex-wrap:wrap;margin-top:.55rem;
+  padding:.6rem .75rem;border-radius:16px;background:var(--surface);
+  border:var(--bw) solid var(--border);box-shadow:var(--card-shadow);
+}
+.sort-banner-text{font-weight:700;font-size:.92rem;flex:1;min-width:130px}
+.sort-banner-btns{display:flex;gap:.5rem}
+.sort-banner-btns .btn{min-height:44px}
+.autosort-sheet .list{margin:.55rem 0 .3rem}
+.autosort-select{
+  flex:none;width:44%;min-height:44px;padding:.5rem .45rem;font-size:.9rem;font-family:inherit;
+  border:1.5px solid var(--border);border-radius:10px;background:var(--input-bg);color:var(--text);
+}
+.autosort-select.no-guess{border-style:dashed;color:var(--muted)}
+#autoSortApply[disabled]{opacity:.45}
+.sort-folders{display:grid;grid-template-columns:1fr 1fr;gap:.6rem;margin:.85rem 0 .35rem}
+.sort-folder-btn{
+  display:flex;align-items:center;gap:.55rem;min-height:56px;padding:.55rem .7rem;border-radius:14px;
+  border:1.5px solid var(--border);background:var(--surface2);color:var(--text);
+  font:inherit;font-weight:700;font-size:.92rem;cursor:pointer;text-align:left;
+}
+.sort-folder-btn:active{transform:scale(.97)}
+.sort-folder-btn .sfb-icon{display:inline-flex;color:var(--muted);flex:none}
+.sort-folder-btn .sfb-icon .icon-svg{width:24px;height:24px}
+.sort-folder-btn.sel{border-color:var(--accent);background:var(--accent-soft);box-shadow:0 0 0 2px var(--accent)}
+.sort-folder-btn.sel .sfb-icon{color:var(--accent)}
+#sBack[disabled]{opacity:.45}
+/* Item-sheet folder rail: horizontal chips, current folder accent-filled */
+.folder-rail-label{margin-top:.5rem}
+.folder-rail{display:flex;gap:.45rem;overflow-x:auto;padding:.1rem .05rem .35rem;-webkit-overflow-scrolling:touch}
+.folder-rail-chip{
+  display:inline-flex;align-items:center;gap:.4rem;flex:none;min-height:44px;padding:.4rem .7rem;
+  border-radius:999px;border:1.5px solid var(--border);background:var(--surface2);color:var(--text);
+  font:inherit;font-weight:700;font-size:.86rem;cursor:pointer;
+}
+.folder-rail-chip:active{transform:scale(.96)}
+.folder-rail-chip .frc-icon{display:inline-flex}
+.folder-rail-chip .frc-icon .icon-svg{width:19px;height:19px}
+.folder-rail-chip.sel{background:var(--accent);border-color:var(--accent);color:var(--accent-text)}
+/* Quick Add part-number lookup row */
+.sku-lookup{display:flex;align-items:center;gap:.45rem;flex-wrap:wrap;margin:-.2rem 0 .3rem}
+.sku-lookup-label{font-size:.82rem;font-weight:700;color:var(--muted)}
+.sku-lookup .btn{text-decoration:none;display:inline-flex;align-items:center;min-height:44px}
+
 /* FAB — red glass disc, lower right, ~18px clear above the dock */
 .fab-btn{
   position:fixed;right:16px;bottom:calc(96px + env(safe-area-inset-bottom));z-index:28;

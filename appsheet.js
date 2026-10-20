@@ -174,6 +174,30 @@
     }
     return { ok: true, moved: movedIds.length };
   }
+  /* File ONE item into a folder (Sorting Kit: the auto-sort review,
+   * Sort Mode, and the item-sheet folder rail all go through here).
+   * Mirrors renameCategory's queueing: one 'edit' op per change — a
+   * flush sends the item's full current row, Category included. The
+   * op carries no `kind`, so a pending qty op for the same item (found
+   * by kind 'qty') is never merged into or disturbed by it; both ops
+   * survive side by side and both flush (see flushViaSheet). */
+  function setCategory(id, folderName) {
+    folderName = String(folderName == null ? '' : folderName).trim() || UNCAT;
+    var items = getItems();
+    var item = null;
+    items.forEach(function (it) { if (it.id === id) item = it; });
+    if (!item) return null;
+    if (item.category === folderName && categoryForItem(item) === folderName) return item;   // already filed there
+    var before = categoryForItem(item);
+    item.category = folderName;
+    item.updated = nowISO();
+    saveItems(items);
+    // Only queue when the item's effective folder actually changed —
+    // materializing a fallback-resolved folder is a local tidy-up,
+    // not a backend change.
+    if (before !== folderName) queueChange('edit', id, 'Filed in ' + folderName + ': ' + item.name);
+    return item;
+  }
   /* SPEC PLATE status tiers, mirrored for folder summaries:
    * 0 = OUT, 1–2 = CRITICAL, 3–5 = LOW, 6+ = OK. */
   function statusTier(q) { return q <= 0 ? 'out' : (q <= 2 ? 'crit' : (q <= 5 ? 'low' : 'ok')); }
@@ -523,11 +547,18 @@
     }
     return window.ETSheets.flushOps(jobs.map(function (j) { return j.op; })).then(function (res) {
       if (!res.ok) throw new Error(res.message || 'Sheet bridge unreachable.');
-      var byId = {};
-      (res.results || []).forEach(function (r) { if (r && r.id && !byId[r.id]) byId[r.id] = r; });
+      /* Results come back in op order, but pair them by consuming each
+       * result once: an item can have TWO jobs in one flush (e.g. a
+       * qty op plus a category 'edit' op), and a first-match-by-id map
+       * would hand both jobs the same result — marking a rejected
+       * second op synced and silently dropping it from the queue. */
+      var pool = (res.results || []).slice();
       var failed = [];
       jobs.forEach(function (j) {
-        var r = byId[j.op.id];
+        var r = null;
+        for (var k = 0; k < pool.length; k++) {
+          if (pool[k] && pool[k].id === j.op.id) { r = pool.splice(k, 1)[0]; break; }
+        }
         if (r && r.ok) { j.entry.synced = true; j.entry.syncedAt = nowISO(); }
         else failed.push(j.op.id + (r && r.error ? ' (' + r.error + ')' : ' (no result)'));
       });
@@ -594,7 +625,7 @@
     getItems: getItems, getSuppliers: getSuppliers, getItem: getItem,
     getQueue: getQueue, getMeta: getMeta,
     getCategories: getCategories, addCategory: addCategory,
-    renameCategory: renameCategory, removeCategory: removeCategory,
+    renameCategory: renameCategory, removeCategory: removeCategory, setCategory: setCategory,
     folderStats: folderStats, categoryFor: categoryForItem, UNCAT: UNCAT,
     updateQty: updateQty, setQty: setQty, addItem: addItem,
     testConnection: testConnection, flushQueue: flushQueue, resetDemo: resetDemo,

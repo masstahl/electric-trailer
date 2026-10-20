@@ -394,6 +394,12 @@
     $('folderEditBtn').classList.toggle('hidden', folderEdit);
     $('folderDoneBtn').classList.toggle('hidden', !folderEdit);
     $('allItemsRow').classList.toggle('hidden', !browseFolders || folderEdit);
+    /* Sorting Kit entry: while unfiled items exist, the browse state
+     * carries a banner offering Auto-sort and Sort mode. */
+    var uncatCount = 0;
+    if (browseFolders) D.folderStats().forEach(function (s) { if (s.system) uncatCount = s.count; });
+    $('sortBanner').classList.toggle('hidden', !browseFolders || folderEdit || !uncatCount);
+    if (uncatCount) $('sortBannerText').textContent = uncatCount + (uncatCount === 1 ? ' item needs' : ' items need') + ' a folder';
     $('folderGrid').classList.toggle('hidden', !browseFolders);
     $('folderBar').classList.toggle('hidden', searching || homeFolder === null);
     $('photoGrid').classList.toggle('hidden', browseFolders);
@@ -623,6 +629,182 @@
   $('allItemsRow').addEventListener('click', function () { openFolder('ALL'); });
   $('folderBack').addEventListener('click', function () { homeFolder = null; renderHome(); window.scrollTo(0, 0); });
 
+  /* ---------- Sorting Kit: file the Uncategorized pile ----------
+   * suggestCategory proposes a folder from ordered phrase rules over
+   * the item's name + SKU. ORDER IS THE WHOLE GAME: specific phrases
+   * run before the generic words inside them — 'charge controller'
+   * (Power) before 'brake' (Brakes) before a bare 'controller'
+   * (Brakes, the common case here), 'u-bolt' (Axles) before 'bolt'
+   * (Body), 'lug' (Tires) before 'nut' (Body). No keyword hit falls
+   * back to the item's icon family (the v18 icon→folder map); still
+   * nothing → null, and the row asks a human. A suggestion is only
+   * offered while its folder exists in the saved list (a renamed
+   * folder never resurrects its old name as a guess). */
+  var SUGGEST_RULES = [
+    ['charge controller', 'Power'],
+    ['brake', 'Brakes & Control'], ['breakaway', 'Brakes & Control'], ['actuator', 'Brakes & Control'],
+    ['coupler', 'Couplers & Towing'], ['coupling', 'Couplers & Towing'], ['hitch ball', 'Couplers & Towing'],
+    ['hitch', 'Couplers & Towing'], ['chain', 'Couplers & Towing'], ['jack', 'Couplers & Towing'],
+    ['hook', 'Couplers & Towing'], ['winch', 'Couplers & Towing'], ['ball mount', 'Couplers & Towing'],
+    ['latch', 'Couplers & Towing'], ['tow', 'Couplers & Towing'],
+    ['axle', 'Axles & Suspension'], ['hub', 'Axles & Suspension'], ['spring', 'Axles & Suspension'],
+    ['bearing', 'Axles & Suspension'], ['u-bolt', 'Axles & Suspension'], ['suspension', 'Axles & Suspension'],
+    ['shackle', 'Axles & Suspension'], ['spindle', 'Axles & Suspension'], ['drum', 'Axles & Suspension'],
+    ['tire', 'Tires & Wheels'], ['tyre', 'Tires & Wheels'], ['wheel', 'Tires & Wheels'],
+    ['lug', 'Tires & Wheels'], ['rim', 'Tires & Wheels'], ['valve stem', 'Tires & Wheels'],
+    ['light', 'Lighting'], ['lamp', 'Lighting'], ['led', 'Lighting'], ['marker', 'Lighting'], ['reflector', 'Lighting'],
+    ['harness', 'Electrical'], ['plug', 'Electrical'], ['wire', 'Electrical'], ['wiring', 'Electrical'],
+    ['socket', 'Electrical'], ['charger', 'Electrical'], ['converter', 'Electrical'], ['fuse', 'Electrical'],
+    ['switch', 'Electrical'], ['7-pin', 'Electrical'], ['7 pin', 'Electrical'], ['4-pin', 'Electrical'],
+    ['battery', 'Power'], ['solar', 'Power'], ['inverter', 'Power'],
+    ['fender', 'Body & Hardware'], ['bolt', 'Body & Hardware'], ['bracket', 'Body & Hardware'],
+    ['mount', 'Body & Hardware'], ['hardware', 'Body & Hardware'], ['washer', 'Body & Hardware'],
+    ['screw', 'Body & Hardware'], ['nut', 'Body & Hardware'], ['cap', 'Body & Hardware'],
+    ['controller', 'Brakes & Control']
+  ];
+  var ICON_FOLDER = {
+    controller: 'Brakes & Control', plug: 'Electrical', light: 'Lighting', tire: 'Tires & Wheels',
+    axle: 'Axles & Suspension', hub: 'Axles & Suspension', spring: 'Axles & Suspension',
+    link: 'Couplers & Towing', chain: 'Couplers & Towing', jack: 'Couplers & Towing', hook: 'Couplers & Towing',
+    battery: 'Power', solar: 'Power',
+    fender: 'Body & Hardware', bolt: 'Body & Hardware', kit: 'Body & Hardware'
+  };
+  function suggestCategory(item) {
+    if (!item) return null;
+    var known = {};
+    D.getCategories().forEach(function (c) { known[c.name] = true; });
+    var hay = (' ' + (item.name || '') + ' ' + (item.sku || '') + ' ').toLowerCase();
+    for (var r = 0; r < SUGGEST_RULES.length; r++) {
+      if (hay.indexOf(SUGGEST_RULES[r][0]) !== -1) return known[SUGGEST_RULES[r][1]] ? SUGGEST_RULES[r][1] : null;
+    }
+    var byIcon = ICON_FOLDER[iconKeyFor(item)];
+    return (byIcon && known[byIcon]) ? byIcon : null;
+  }
+  function uncatItems() {
+    return D.getItems().filter(function (i) { return itemCategory(i) === D.UNCAT; });
+  }
+  $('autoSortBtn').addEventListener('click', openAutoSort);
+  $('sortModeBtn').addEventListener('click', startSort);
+
+  /* ----- Auto-sort: propose every unfiled item, review, apply ----- */
+  function openAutoSort() {
+    var list = uncatItems();
+    if (!list.length) { toast('Nothing to sort — everything has a folder'); return; }
+    var catOpts = D.getCategories().map(function (c) { return c.name; });
+    $('autoSortList').innerHTML = list.map(function (i) {
+      var sug = suggestCategory(i);
+      var opts = '<option value="">' + (sug ? 'No folder — skip' : 'No guess — choose') + '</option>' + catOpts.map(function (n) {
+        return '<option value="' + esc(n) + '"' + (sug === n ? ' selected' : '') + '>' + esc(n) + '</option>';
+      }).join('');
+      return '<div class="list-item row-item"><span class="li-icon">' + iconPlate(i) + '</span>' +
+        '<span class="li-main"><span class="li-name">' + esc(i.name) + '</span><br>' +
+        '<span class="li-sub">' + esc(i.sku || 'No SKU') + ' · ' + locShort(i) + '</span></span>' +
+        '<select class="autosort-select' + (sug ? '' : ' no-guess') + '" data-autosort="' + esc(i.id) + '" aria-label="Folder for ' + esc(i.name) + '">' + opts + '</select></div>';
+    }).join('');
+    $('autoSortList').querySelectorAll('[data-autosort]').forEach(function (sel) {
+      sel.addEventListener('change', function () { sel.classList.remove('no-guess'); updateAutoSortApply(); });
+    });
+    updateAutoSortApply();
+    $('autoSortOverlay').classList.remove('hidden');
+  }
+  function autoSortPicks() {
+    var picks = [];
+    $('autoSortList').querySelectorAll('[data-autosort]').forEach(function (sel) {
+      if (sel.value) picks.push({ id: sel.getAttribute('data-autosort'), folder: sel.value });
+    });
+    return picks;
+  }
+  function updateAutoSortApply() {
+    var n = autoSortPicks().length;
+    $('autoSortApply').textContent = n ? 'File ' + n + ' item' + (n === 1 ? '' : 's') : 'File items';
+    $('autoSortApply').disabled = !n;
+  }
+  function closeAutoSort() { $('autoSortOverlay').classList.add('hidden'); }
+  $('closeAutoSort').addEventListener('click', closeAutoSort);
+  $('autoSortOverlay').addEventListener('click', function (e) { if (e.target === $('autoSortOverlay')) closeAutoSort(); });
+  $('autoSortApply').addEventListener('click', function () {
+    var picks = autoSortPicks();
+    if (!picks.length) { closeAutoSort(); return; }
+    var prev = {};
+    picks.forEach(function (p) { var it = D.getItem(p.id); prev[p.id] = it ? itemCategory(it) : D.UNCAT; });
+    picks.forEach(function (p) { D.setCategory(p.id, p.folder); });
+    closeAutoSort();
+    renderHome(); refreshChrome();
+    /* Batch undo: file everything back where it was. The reverse
+     * setCategory calls queue their own edit ops, which land on the
+     * backend as the items' original Category values. */
+    showUndoToast('Filed ' + picks.length + ' item' + (picks.length === 1 ? '' : 's'), function () {
+      picks.forEach(function (p) { D.setCategory(p.id, prev[p.id]); });
+      renderHome(); refreshChrome();
+    });
+  });
+
+  /* ----- Sort Mode: one item, one tap on a folder icon ----- */
+  var sortSession = null;   // { entries: [{ id, filedTo }], idx }
+  function startSort() {
+    var list = uncatItems();
+    if (!list.length) { toast('Nothing to sort — everything has a folder'); return; }
+    sortSession = { entries: list.map(function (i) { return { id: i.id, filedTo: null }; }), idx: 0 };
+    $('sDone').classList.add('hidden');
+    $('sMain').classList.remove('hidden');
+    $('sortOverlay').classList.remove('hidden');
+    showSortStep();
+  }
+  function sortFiledCount() {
+    return sortSession ? sortSession.entries.filter(function (e) { return !!e.filedTo; }).length : 0;
+  }
+  function showSortStep() {
+    if (!sortSession) return;
+    var en = sortSession.entries[sortSession.idx];
+    var item = en && D.getItem(en.id);
+    if (!item) { finishSort(); return; }
+    $('sProgress').textContent = 'Sort · ' + (sortSession.idx + 1) + ' of ' + sortSession.entries.length;
+    $('sHero').innerHTML = iconPlate(item);
+    $('sName').textContent = item.name;
+    $('sMeta').textContent = (item.sku ? item.sku + ' · ' : '') + locShort(item) + ' · ' + qtyLabel(item.qty);
+    $('sFolders').innerHTML = D.getCategories().map(function (c) {
+      var on = en.filedTo === c.name;
+      return '<button type="button" class="sort-folder-btn' + (on ? ' sel' : '') + '" data-sort-folder="' + esc(c.name) + '" aria-pressed="' + (on ? 'true' : 'false') + '" aria-label="File ' + esc(item.name) + ' in ' + esc(c.name) + '">' +
+        '<span class="sfb-icon">' + svgIcon(c.icon) + '</span><span class="sfb-name">' + esc(c.name) + '</span></button>';
+    }).join('');
+    $('sFolders').querySelectorAll('[data-sort-folder]').forEach(function (b) {
+      b.addEventListener('click', function () {
+        var en2 = sortSession && sortSession.entries[sortSession.idx];
+        if (!en2) return;
+        D.setCategory(en2.id, b.getAttribute('data-sort-folder'));
+        en2.filedTo = b.getAttribute('data-sort-folder');
+        advanceSort();
+      });
+    });
+    $('sBack').disabled = sortSession.idx === 0;
+  }
+  function advanceSort() {
+    if (!sortSession) return;
+    if (sortSession.idx < sortSession.entries.length - 1) { sortSession.idx++; showSortStep(); }
+    else finishSort();
+  }
+  function finishSort() {
+    if (!sortSession) return;
+    var filed = sortFiledCount();
+    $('sDoneText').textContent = 'Done — ' + filed + ' filed, ' + (sortSession.entries.length - filed) + ' skipped.';
+    $('sMain').classList.add('hidden');
+    $('sDone').classList.remove('hidden');
+  }
+  function closeSort(fromDone) {
+    var filed = sortFiledCount();
+    $('sortOverlay').classList.add('hidden');
+    sortSession = null;
+    renderHome(); refreshChrome();
+    if (!fromDone && filed) toast('Filed ' + filed + ' — progress saved');
+  }
+  $('sSkip').addEventListener('click', function () { advanceSort(); });
+  $('sBack').addEventListener('click', function () {
+    if (sortSession && sortSession.idx > 0) { sortSession.idx--; showSortStep(); }
+  });
+  $('sClose').addEventListener('click', function () { closeSort(false); });
+  $('sDoneBtn').addEventListener('click', function () { closeSort(true); });
+  $('sortOverlay').addEventListener('click', function (e) { if (e.target === $('sortOverlay')) closeSort(false); });
+
   /* ---------- FAB: red glass +, lower right, clear of the dock ---------- */
   function syncFab() {
     var show = $('view-home').classList.contains('active') && !folderEdit;
@@ -667,7 +849,7 @@
   /* Quick Add's Folder picker: the saved folder list + Uncategorized.
    * Rebuilt whenever the Add view opens (folders may have been
    * renamed); defaults to the folder you're standing in. */
-  function prepAddForm() { refreshFolderSelect(); }
+  function prepAddForm() { refreshFolderSelect(); updateSkuLookup(); }
   function refreshFolderSelect() {
     var sel = $('addFolder');
     if (!sel) return;
@@ -696,8 +878,7 @@
     $('dMeta').textContent = item.sku + ' · ' + item.supplier;
     $('dBinChip').textContent = locShort(item);
     $('dBinChip').setAttribute('aria-label', locLong(item));
-    $('dFolderChip').textContent = itemCategory(item);
-    $('dFolderChip').setAttribute('aria-label', 'Open the ' + itemCategory(item) + ' folder');
+    renderFolderRail(item);
     $('dCost').textContent = money(item.cost) + ' each';
     $('dStickerLink').value = D.stickerUrl(item.id);
     syncSheetQty();
@@ -768,15 +949,34 @@
     } else { document.execCommand('copy'); done(); }
   }
   $('dCopyBtn').addEventListener('click', function () { copyText($('dStickerLink'), 'Sticker link copied'); });
-  /* Folder chip in the item sheet: jump Home into this item's folder. */
-  $('dFolderChip').addEventListener('click', function () {
-    if (!currentItemId) return;
-    var item = D.getItem(currentItemId);
+  /* Folder rail in the item sheet (Sorting Kit): one chip per folder
+   * plus Uncategorized, the item's current folder filled with the
+   * accent. Tapping a chip files the item there on the spot — this
+   * replaces the old folder chip that only jumped Home into the
+   * folder; filing from wherever the item was found matters more. */
+  function renderFolderRail(item) {
     if (!item) return;
-    homeFolder = itemCategory(item);
-    closeItem();
-    showView('home');
-  });
+    var cur = itemCategory(item);
+    var names = D.getCategories().map(function (c) { return { name: c.name, icon: c.icon }; });
+    names.push({ name: D.UNCAT, icon: 'box' });
+    $('dFolderRail').innerHTML = names.map(function (f) {
+      var on = f.name === cur;
+      return '<button type="button" class="folder-rail-chip' + (on ? ' sel' : '') + '" data-rail-folder="' + esc(f.name) + '" aria-pressed="' + (on ? 'true' : 'false') + '" aria-label="File ' + esc(item.name) + ' in ' + esc(f.name) + '">' +
+        '<span class="frc-icon">' + svgIcon(f.icon) + '</span>' + esc(f.name) + '</button>';
+    }).join('');
+    $('dFolderRail').querySelectorAll('[data-rail-folder]').forEach(function (b) {
+      b.addEventListener('click', function () {
+        if (!currentItemId) return;
+        var name = b.getAttribute('data-rail-folder');
+        var it = D.getItem(currentItemId);
+        if (!it || itemCategory(it) === name) return;
+        D.setCategory(currentItemId, name);
+        renderFolderRail(D.getItem(currentItemId));
+        refreshChrome();
+        toast('Filed in ' + name);
+      });
+    });
+  }
 
   /* ---------- NFC Live: always-on listening while the app is open ----------
    * Android Chrome (Web NFC): a single NDEFReader.scan() keeps firing
@@ -1307,6 +1507,33 @@
       var key = autoIconFor($('addName').value);
       if (key) selectIcon(key);
     });
+    $('addSku').addEventListener('input', updateSkuLookup);
+    $('addName').addEventListener('input', updateSkuLookup);
+    updateSkuLookup();
+  }
+  /* Part-number lookup: with a part number typed, offer one-tap web
+   * searches for it (query = part number + name when present). The
+   * links open in a new tab; the app itself never fetches the results
+   * — supplier sites block programmatic reads, and an honest shortcut
+   * beats a scraper that breaks. */
+  function lookupHref(kind, query) {
+    var q = encodeURIComponent(query);
+    if (kind === 'images') return 'https://www.google.com/search?tbm=isch&q=' + q;
+    if (kind === 'amazon') return 'https://www.amazon.com/s?k=' + q;
+    return 'https://www.google.com/search?q=' + q;
+  }
+  function updateSkuLookup() {
+    var skuEl = $('addSku');
+    if (!skuEl) return;
+    var sku = skuEl.value.trim();
+    var show = !!sku;
+    $('skuLookup').classList.toggle('hidden', !show);
+    $('skuLookupHint').classList.toggle('hidden', !show);
+    if (!show) return;
+    var query = (sku + ' ' + $('addName').value.trim()).trim();
+    $('lkWeb').href = lookupHref('web', query);
+    $('lkImages').href = lookupHref('images', query);
+    $('lkAmazon').href = lookupHref('amazon', query);
   }
   function normName(s) { return String(s || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim(); }
   function doAdd(data) {
@@ -1326,6 +1553,7 @@
     e.preventDefault();
     var data = {
       name: $('addName').value.trim(),
+      sku: $('addSku').value.trim(),
       qty: $('addQty').value, cost: $('addCost').value,
       bin: $('addBin').value, level: $('addLevel').value, supplier: $('addSupplier').value, icon: selectedIcon,
       category: $('addFolder').value || D.UNCAT
@@ -1367,6 +1595,7 @@
     $('addSuccess').classList.add('hidden');
     $('addForm').classList.remove('hidden');
     $('addForm').reset(); $('addQty').value = 1;
+    updateSkuLookup();
     iconTouched = false; pendingAdd = null;
     $('addDupWarn').classList.add('hidden');
     selectIcon(ICON_KEYS[0]);
