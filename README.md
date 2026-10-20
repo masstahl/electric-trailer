@@ -49,7 +49,8 @@ From the 25-concept mockup gallery, these were chosen and all are built:
 | 03 | Warehouse / Bin Map | **Shelf elevation map**: 4 shelves × 4 levels × 6 positions; each cell shows a status glyph colored by its lowest-stock item, tap a cell for that spot's contents, plus a Count Mode for stocktakes. **Blink-on-search**: an item opened from search (or its "Show on shelf" button) pulses its map cell 3× and keeps a ring + caption until dismissed. |
 | 08 | Photo-First Grid | **Categories home**: renameable red-glass folders on tinted black glass (tap to drill into that folder's photo grid, with an "All Items" escape row) + red glass **+** button (New Folder / New Item). White unclipped photo plates, icon fallback, quantity stepper + status pill on every card, tap-to-edit quantity keypad. Search and the LOW filter stay global across folders. |
 | 16 | Offline-First Field Mode | Every quantity change is saved locally first and lands in a **sync queue** (Settings tab, with a pending-count badge on the tab). Works fully offline; auto-syncs when back online / app foregrounded (in Sheet mode). |
-| 22 | Quick Add | Form for a new item: real part number / SKU field (pre-filled from a name duplicate check), **part-number lookup buttons** (Google / Google Images / Amazon, new tab), name, quantity, shelf + position **and level**, folder picker, supplier (free text, with suggestions from suppliers already in use), cost, icon picker with auto-suggest from the name ("breaker" → panel icon, "outlet" → plug…), optional NFC tag id, and a **Write to NFC sticker** button on Android. |
+| 19 | Supplier Hub | A Suppliers tab that starts **empty** — no demo suppliers. Add your own (name + optional note), and any supplier named on an item (sheet import or Quick Add) appears here too, tagged "from items", with live item/unit counts. Tap a supplier to drill into its items with inline steppers. Removing a hand-added entry never touches items — a name items still carry stays on as a derived row. |
+| 22 | Quick Add | Form for a new item: real part number / SKU field (pre-filled from a name duplicate check), **part-number lookup buttons** (Google / Google Images / Amazon, new tab), name, quantity, shelf + position **and level**, folder picker, supplier (free text, with suggestions from the Suppliers hub), cost, icon picker with auto-suggest from the name ("breaker" → panel icon, "outlet" → plug…), optional NFC tag id, and a **Write to NFC sticker** button on Android. |
 | 24 | Sync Health | Settings screen: backend mode, row counts, pending queue count, last sync time, last error — plus the Google Sheet connection card. |
 
 Layout follows the **SPEC PLATE** design system: safety orange marks
@@ -78,9 +79,9 @@ the app UI.
 
 ## Screens
 
-Four tabs in the floating glass dock — **Home · Map · Add · Settings**
-— plus the item detail as a bottom sheet over Home, and the bin sheet
-over the Map.
+Five tabs in the floating glass dock — **Home · Map · Suppliers ·
+Add · Settings** — plus the item detail as a bottom sheet over Home,
+and the bin sheet over the Map.
 
 ## Local mode vs Live mode
 

@@ -261,6 +261,7 @@
     if (currentItemId === id && !$('itemOverlay').classList.contains('hidden')) syncSheetQty();
     if (currentBin && !$('binOverlay').classList.contains('hidden')) renderBinSheetItems();
     if ($('view-map').classList.contains('active')) renderMap();
+    if ($('view-suppliers').classList.contains('active')) renderSuppliers();
     if ($('view-sync').classList.contains('active')) renderQueue();
   }
 
@@ -362,6 +363,7 @@
     if (name === 'home') renderHome();
     if (name === 'add') prepAddForm();
     if (name === 'map') { renderMap(); if (locateTarget) setTimeout(activateLocate, 40); }
+    if (name === 'suppliers') renderSuppliers();
     if (name === 'sync') { renderQueue(); renderSync(); }
     window.scrollTo(0, 0);
   }
@@ -1331,6 +1333,134 @@
   });
   $('binCountBtn').addEventListener('click', function () { startCount(currentBin, currentLevel); });
 
+  /* ---------- #19 Supplier Hub ----------
+   * The list is ETData's union: suppliers the user added by hand plus
+   * any supplier named on an item, each with live counts. It starts
+   * EMPTY — no demo suppliers. Tapping a row drills into that
+   * supplier's items (bin-sheet row pattern: open area + steppers
+   * through the shared changeQty path). Edit mode reveals a remove ✕
+   * on hand-added rows only; removing one never touches items, so a
+   * name items still carry stays on as a "from items" row. */
+  var selectedSupplier = null;   // drilled-in supplier name, or null = list
+  var supplierEdit = false;
+  function supplierEntry(name) {
+    return D.getSuppliers().filter(function (s) { return s.name === name; })[0] || null;
+  }
+  function renderSuppliers() {
+    var hub = D.getSuppliers();
+    var drilled = selectedSupplier ? supplierEntry(selectedSupplier) : null;
+    if (selectedSupplier && !drilled) {
+      // The drilled supplier vanished (entry removed, no items left).
+      selectedSupplier = null; supplierEdit = false;
+    }
+    $('supplierListWrap').classList.toggle('hidden', !!selectedSupplier);
+    $('supplierDetail').classList.toggle('hidden', !selectedSupplier);
+    $('supplierEditBtn').classList.toggle('hidden', !!selectedSupplier || supplierEdit || !hub.some(function (s) { return s.explicit; }));
+    $('supplierDoneBtn').classList.toggle('hidden', !!selectedSupplier || !supplierEdit);
+    if (selectedSupplier) { renderSupplierItems(drilled); return; }
+    $('supplierEmpty').classList.toggle('hidden', hub.length > 0);
+    $('supplierList').innerHTML = hub.map(function (s) {
+      var counts = s.items + (s.items === 1 ? ' item' : ' items') + ' · ' + s.units + ' units';
+      var sub = s.blurb ? esc(s.blurb) : '';
+      var main = '<span class="li-main"><span class="li-name">' + esc(s.name) + '</span>' +
+        (s.explicit ? '' : ' <span class="sup-tag">from items</span>') +
+        (sub ? '<br><span class="li-sub">' + sub + '</span>' : '') + '</span>';
+      var tail = '<span class="sup-counts">' + counts + '</span><span class="air-chev" aria-hidden="true">›</span>';
+      if (supplierEdit && s.explicit) {
+        return '<div class="list-item supplier-row"><span class="li-icon">' + svgIcon('factory') + '</span>' + main + tail +
+          '<button type="button" class="sup-x" data-sup-remove="' + esc(s.name) + '" aria-label="Remove supplier ' + esc(s.name) + '">✕</button></div>';
+      }
+      return '<button type="button" class="list-item supplier-row" data-supplier="' + esc(s.name) + '" aria-label="Open supplier ' + esc(s.name) + ', ' + counts + '">' +
+        '<span class="li-icon">' + svgIcon('factory') + '</span>' + main + tail + '</button>';
+    }).join('');
+    var list = $('supplierList');
+    list.querySelectorAll('[data-supplier]').forEach(function (row) {
+      row.addEventListener('click', function () {
+        selectedSupplier = row.getAttribute('data-supplier');
+        renderSuppliers();
+        window.scrollTo(0, 0);
+      });
+    });
+    list.querySelectorAll('[data-sup-remove]').forEach(function (b) {
+      b.addEventListener('click', function () {
+        var name = b.getAttribute('data-sup-remove');
+        D.removeSupplier(name);
+        toast('Removed ' + name + ' — items keep their supplier name', 2600);
+        renderSuppliers();
+      });
+    });
+  }
+  function renderSupplierItems(entry) {
+    var name = selectedSupplier;
+    var mine = D.getItems().filter(function (i) { return String(i.supplier || '').trim() === name; });
+    $('supTitle').textContent = name;
+    $('supMeta').textContent = mine.length + (mine.length === 1 ? ' item' : ' items') + ' · ' +
+      mine.reduce(function (s, i) { return s + i.qty; }, 0) + ' units' +
+      (entry && entry.blurb ? ' · ' + entry.blurb : '');
+    $('supplierItemsEmpty').classList.toggle('hidden', mine.length > 0);
+    $('supplierItems').innerHTML = mine.map(function (i) {
+      return '<div class="list-item row-item"><span class="li-icon">' + iconPlate(i) + '</span>' +
+        '<button type="button" class="li-main row-open" data-sopen="' + esc(i.id) + '"><span class="li-name">' + esc(i.name) + '</span><br>' +
+        '<span class="li-sub">' + esc(i.sku) + ' · ' + locShort(i) + '</span></button>' +
+        '<span class="qty-pill ' + qtyClass(i.qty) + '">' + qtyLabel(i.qty) + '</span>' +
+        '<span class="row-stepper">' +
+          '<button type="button" data-sdec="' + esc(i.id) + '" aria-label="Remove one from ' + esc(i.name) + '">−</button>' +
+          '<button type="button" class="row-qty-btn" data-sup-qty-btn="' + esc(i.id) + '" aria-label="Quantity ' + i.qty + ' for ' + esc(i.name) + ' — tap to type a new quantity">' + i.qty + '</button>' +
+          '<button type="button" data-sinc="' + esc(i.id) + '" aria-label="Add one to ' + esc(i.name) + '">+</button>' +
+        '</span></div>';
+    }).join('');
+    var box = $('supplierItems');
+    box.querySelectorAll('[data-sopen]').forEach(function (el) {
+      el.addEventListener('click', function () { openItem(el.getAttribute('data-sopen')); });
+    });
+    box.querySelectorAll('[data-sdec]').forEach(function (b) {
+      b.addEventListener('click', function () { changeQty(b.getAttribute('data-sdec'), -1); });
+    });
+    box.querySelectorAll('[data-sinc]').forEach(function (b) {
+      b.addEventListener('click', function () { changeQty(b.getAttribute('data-sinc'), 1); });
+    });
+    box.querySelectorAll('[data-sup-qty-btn]').forEach(function (b) {
+      b.addEventListener('click', function () {
+        var id = b.getAttribute('data-sup-qty-btn');
+        var item = D.getItem(id);
+        if (!item) return;
+        openQtyEditor({
+          value: item.qty, itemName: item.name,
+          returnAttr: 'data-sup-qty-btn', returnValue: id,
+          onCommit: function (qty) { setQtyWithUndo(id, qty); }
+        });
+      });
+    });
+  }
+  $('supBack').addEventListener('click', function () { selectedSupplier = null; renderSuppliers(); window.scrollTo(0, 0); });
+  $('supplierEditBtn').addEventListener('click', function () { supplierEdit = true; renderSuppliers(); });
+  $('supplierDoneBtn').addEventListener('click', function () { supplierEdit = false; renderSuppliers(); });
+  /* Add-supplier sheet */
+  function openSupplierForm() {
+    $('supName').value = '';
+    $('supBlurb').value = '';
+    $('supError').classList.add('hidden');
+    $('supplierOverlay').classList.remove('hidden');
+    $('supName').focus();
+  }
+  function closeSupplierForm() { $('supplierOverlay').classList.add('hidden'); }
+  $('addSupplierBtn').addEventListener('click', openSupplierForm);
+  $('supCancelBtn').addEventListener('click', closeSupplierForm);
+  $('supplierOverlay').addEventListener('click', function (e) { if (e.target === $('supplierOverlay')) closeSupplierForm(); });
+  $('supSaveBtn').addEventListener('click', function () {
+    var res = D.addSupplier($('supName').value, $('supBlurb').value);
+    if (!res.ok) {
+      $('supError').textContent = res.message || 'Couldn\'t add that supplier.';
+      $('supError').classList.remove('hidden');
+      return;
+    }
+    closeSupplierForm();
+    supplierEdit = false;
+    renderSuppliers();
+    refreshSupplierList();
+    toast('Supplier added');
+  });
+
   /* ---------- Count Mode: walk a bin item by item, then apply ---------- */
   var countSession = null;
   function startCount(bin, level) {
@@ -1464,12 +1594,13 @@
     if (n.indexOf('battery') !== -1) return 'battery';
     return 'kit';
   }
-  /* Supplier is a free-text field; the datalist offers the supplier
-   * names already present on items so spelling stays consistent. */
+  /* Supplier is a free-text field; the datalist offers the Suppliers
+   * hub names (hand-added entries + names already on items) so
+   * spelling stays consistent. */
   function refreshSupplierList() {
     var dl = $('supplierNames');
     if (!dl) return;
-    dl.innerHTML = D.getSuppliers().map(function (s) { return '<option value="' + esc(s) + '">'; }).join('');
+    dl.innerHTML = D.getSuppliers().map(function (s) { return '<option value="' + esc(s.name) + '">'; }).join('');
   }
   function initAddForm() {
     refreshFolderSelect();

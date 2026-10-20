@@ -17,10 +17,12 @@
   var LS = {
     items: 'et.items.v1',
     suppliers: 'et.suppliers.v1',
+    explicitSuppliers: 'et-suppliers',
     queue: 'et.queue.v1',
     settings: 'et.settings.v1',
     meta: 'et.meta.v1',
-    categories: 'et-categories'
+    categories: 'et-categories',
+    folderMigration: 'et-folder-migration'
   };
 
   var DEFAULT_SETTINGS = {
@@ -148,6 +150,65 @@
     }
     return { ok: true, moved: movedIds.length };
   }
+  /* ---------- One-time folder migration 'elec1' ----------
+   * Devices set up before the electrician reframe still carry the OLD
+   * default folder names (from the trailer-parts era). v24 only seeded
+   * the new names on fresh installs, so this migration renames the old
+   * defaults IN PLACE on devices that already have them — same
+   * positions, new icons, and the renameCategory cascade (items follow,
+   * one queued 'edit' op per moved item) so a connected backend
+   * rewrites those Category values too. Folders NOT in the map —
+   * anything the user created or already renamed — are untouched.
+   * If the target name already exists as its own folder, the old
+   * folder's items merge into it and the old entry is dropped (never a
+   * duplicate). Runs once; the flag is localStorage 'et-folder-
+   * migration' = 'elec1'. */
+  var FOLDER_MIGRATION_ELEC1 = {
+    'Brakes & Control': { name: 'Breakers & Panels', icon: 'controller' },
+    'Electrical': { name: 'Wire & Cable', icon: 'link' },
+    'Lighting': { name: 'Lighting', icon: 'light' },
+    'Tires & Wheels': { name: 'Tools & Supplies', icon: 'kit' },
+    'Axles & Suspension': { name: 'Boxes & Enclosures', icon: 'box' },
+    'Couplers & Towing': { name: 'Conduit & Fittings', icon: 'hex' },
+    'Power': { name: 'Devices & Plates', icon: 'plug' },
+    'Body & Hardware': { name: 'Fasteners & Hardware', icon: 'bolt' }
+  };
+  function migrateFoldersElec1() {
+    if (read(LS.folderMigration, '') === 'elec1') return;
+    Object.keys(FOLDER_MIGRATION_ELEC1).forEach(function (oldName) {
+      var map = FOLDER_MIGRATION_ELEC1[oldName];
+      var cats = getCategories();
+      var idx = -1;
+      cats.forEach(function (c, i) { if (c.name === oldName) idx = i; });
+      if (idx === -1) return;   // this device never had that folder
+      if (map.name === oldName) {
+        // Name unchanged ('Lighting') — refresh the icon only.
+        if (cats[idx].icon !== map.icon) { cats[idx].icon = map.icon; saveCategories(cats); }
+        return;
+      }
+      var targetExists = cats.some(function (c) { return c.name === map.name; });
+      if (targetExists) {
+        // Merge: cascade the items onto the existing target folder
+        // (renameCategory would reject the taken name), then drop the
+        // old folder entry.
+        var items = getItems(), movedIds = [];
+        items.forEach(function (it) {
+          if (categoryForItem(it) === oldName) { it.category = map.name; movedIds.push(it.id); }
+        });
+        if (movedIds.length) {
+          saveItems(items);
+          movedIds.forEach(function (id) { queueChange('edit', id, 'Folder renamed: ' + oldName + ' → ' + map.name); });
+        }
+        saveCategories(getCategories().filter(function (c) { return c.name !== oldName; }));
+        return;
+      }
+      renameCategory(oldName, map.name);
+      var after = getCategories();
+      after.forEach(function (c) { if (c.name === map.name) c.icon = map.icon; });
+      saveCategories(after);
+    });
+    write(LS.folderMigration, 'elec1');
+  }
   /* File ONE item into a folder (Sorting Kit: the auto-sort review,
    * Sort Mode, and the item-sheet folder rail all go through here).
    * Mirrors renameCategory's queueing: one 'edit' op per change — a
@@ -238,6 +299,7 @@
     if (!read(LS.meta, null)) write(LS.meta, { lastSync: '', lastError: '' });
   }
   seedIfNeeded();
+  migrateFoldersElec1();
 
   function getSettings() {
     var s = read(LS.settings, null) || {};
@@ -278,15 +340,65 @@
   function isLive() { return activeBackend() !== 'demo'; }
 
   function getItems() { return read(LS.items, []); }
-  /* Supplier names are derived from the items themselves (the sheet's
-   * Supplier column is free text) — unique, sorted, plain strings. */
+  /* ---------- Suppliers hub ----------
+   * The hub list is a UNION of two sources:
+   *  - explicit entries the user added by hand ({name, blurb} in
+   *    localStorage 'et-suppliers') — these exist even with zero items;
+   *  - supplier names that arrive on items (the sheet's Supplier column
+   *    is free text) — derived entries with no blurb.
+   * Every entry carries LIVE item/unit counts computed from the items.
+   * removeSupplier only removes the explicit entry: a name that items
+   * still carry stays visible as a derived entry. */
+  function getExplicitSuppliers() {
+    var list = read(LS.explicitSuppliers, []);
+    return Array.isArray(list) ? list : [];
+  }
+  function saveExplicitSuppliers(list) { write(LS.explicitSuppliers, list); }
   function getSuppliers() {
-    var seen = {}, names = [];
-    getItems().forEach(function (i) {
-      var s = String(i.supplier || '').trim();
-      if (s && !seen[s]) { seen[s] = true; names.push(s); }
+    var byKey = {}, order = [];
+    function ensure(name) {
+      var key = name.toLowerCase();
+      if (!byKey[key]) {
+        byKey[key] = { name: name, blurb: '', explicit: false, items: 0, units: 0 };
+        order.push(byKey[key]);
+      }
+      return byKey[key];
+    }
+    getExplicitSuppliers().forEach(function (e) {
+      var n = String((e && e.name) || '').trim();
+      if (!n) return;
+      var s = ensure(n);
+      s.name = n; s.blurb = String(e.blurb || ''); s.explicit = true;
     });
-    return names.sort();
+    getItems().forEach(function (i) {
+      var n = String(i.supplier || '').trim();
+      if (!n) return;
+      var s = ensure(n);
+      s.items++; s.units += Number(i.qty) || 0;
+    });
+    return order.sort(function (a, b) {
+      var x = a.name.toLowerCase(), y = b.name.toLowerCase();
+      return x < y ? -1 : (x > y ? 1 : 0);
+    });
+  }
+  function addSupplier(name, blurb) {
+    name = String(name || '').trim();
+    if (!name) return { ok: false, error: 'empty', message: 'Supplier name can\'t be empty' };
+    var key = name.toLowerCase();
+    var list = getExplicitSuppliers();
+    var already = list.some(function (e) { return String(e.name || '').trim().toLowerCase() === key; });
+    if (already) return { ok: false, error: 'duplicate', message: '“' + name + '” is already in the list' };
+    list.push({ name: name, blurb: String(blurb || '').trim() });
+    saveExplicitSuppliers(list);
+    return { ok: true };
+  }
+  function removeSupplier(name) {
+    var key = String(name || '').trim().toLowerCase();
+    var list = getExplicitSuppliers();
+    var next = list.filter(function (e) { return String(e.name || '').trim().toLowerCase() !== key; });
+    if (next.length === list.length) return { ok: false };
+    saveExplicitSuppliers(next);
+    return { ok: true };
   }
   function getItem(id) {
     return getItems().filter(function (i) { return i.id === id; })[0] || null;
@@ -584,14 +696,15 @@
   }
 
   function resetDemo() {
-    [LS.items, LS.suppliers, LS.queue, LS.meta, LS.categories].forEach(function (k) { localStorage.removeItem(k); });
+    [LS.items, LS.suppliers, LS.explicitSuppliers, LS.queue, LS.meta, LS.categories, LS.folderMigration].forEach(function (k) { localStorage.removeItem(k); });
     seedIfNeeded();
+    migrateFoldersElec1();
   }
 
   window.ETData = {
     getSettings: getSettings, saveSettings: saveSettings, isLive: isLive,
     getBackend: getBackend, setBackend: setBackend, activeBackend: activeBackend,
-    getItems: getItems, getSuppliers: getSuppliers, getItem: getItem,
+    getItems: getItems, getSuppliers: getSuppliers, addSupplier: addSupplier, removeSupplier: removeSupplier, getItem: getItem,
     getQueue: getQueue, getMeta: getMeta,
     getCategories: getCategories, addCategory: addCategory,
     renameCategory: renameCategory, removeCategory: removeCategory, setCategory: setCategory,

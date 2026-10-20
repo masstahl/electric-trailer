@@ -153,7 +153,18 @@ Hardware, Tools & Supplies), so renaming a folder is a device-level
 label; the Category values written back to the sheet are what the
 sheet's other readers see. Renaming a folder in the app queues a
 Category update for each of its items and pushes them on the next
-sync.
+sync. (Devices that still carry the older default folder names are
+migrated to the electrician names automatically, once, on first
+launch — items filed in them follow their folder.)
+
+### Suppliers
+
+The **Suppliers** tab starts empty. Add your own suppliers there
+(name + optional note), and any supplier named in the sheet's
+`Supplier` column — or typed in Quick Add — shows up in the tab too,
+with live counts of that supplier's items. Hand-added entries can be
+removed from the tab's Edit mode; items always keep their own
+supplier name.
 
 ### Bin + Level addressing
 
