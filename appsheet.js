@@ -22,7 +22,8 @@
     suppliers: 'et.suppliers.v1',
     queue: 'et.queue.v1',
     settings: 'et.settings.v1',
-    meta: 'et.meta.v1'
+    meta: 'et.meta.v1',
+    categories: 'et-categories'
   };
 
   var DEFAULT_SETTINGS = {
@@ -60,6 +61,155 @@
     { id: 'reflector-set',     name: 'Reflector Set (12 pc)',   sku: 'ET-RFL-012', qty: 0,  bin: 'A6', level: 4, supplier: 'General Trailer Parts', cost: 9.99, icon: 'diamond', nfcId: '', updated: '' }
   ];
 
+  /* ---------- Categories (home-screen folders) ----------
+   * An item's folder is its `category` NAME — a plain string, so a
+   * Category column in either backend maps 1:1. The folder list itself
+   * lives in localStorage 'et-categories' as [{name, icon}].
+   * 'Uncategorized' is a SYSTEM folder: never in the list, pinned last,
+   * shown only while it holds items, not renameable or removable. */
+  var UNCAT = 'Uncategorized';
+  var DEFAULT_CATEGORIES = [
+    { name: 'Brakes & Control', icon: 'controller' },
+    { name: 'Electrical', icon: 'plug' },
+    { name: 'Lighting', icon: 'light' },
+    { name: 'Tires & Wheels', icon: 'tire' },
+    { name: 'Axles & Suspension', icon: 'axle' },
+    { name: 'Couplers & Towing', icon: 'link' },
+    { name: 'Power', icon: 'battery' },
+    { name: 'Body & Hardware', icon: 'fender' }
+  ];
+  var DEMO_CATEGORY = {
+    'brake-controller': 'Brakes & Control', 'breakaway-kit': 'Brakes & Control',
+    'wiring-harness-7pin': 'Electrical',
+    'led-tail-light': 'Lighting', 'reflector-set': 'Lighting',
+    'trailer-tire': 'Tires & Wheels',
+    'axle-3500': 'Axles & Suspension', 'hub-assembly': 'Axles & Suspension', 'leaf-spring': 'Axles & Suspension',
+    'coupler-2in': 'Couplers & Towing', 'safety-chains': 'Couplers & Towing', 'tongue-jack': 'Couplers & Towing', 'winch-2500': 'Couplers & Towing',
+    'battery-12v': 'Power', 'solar-kit': 'Power',
+    'power-inverter': 'Body & Hardware', 'fender-single': 'Body & Hardware', 'wiring-kit': 'Body & Hardware'
+  };
+  var CATEGORY_BY_ICON = {
+    controller: 'Brakes & Control', plug: 'Electrical', light: 'Lighting', tire: 'Tires & Wheels',
+    axle: 'Axles & Suspension', hub: 'Axles & Suspension', spring: 'Axles & Suspension',
+    link: 'Couplers & Towing', chain: 'Couplers & Towing', jack: 'Couplers & Towing', hook: 'Couplers & Towing',
+    battery: 'Power', solar: 'Power',
+    fender: 'Body & Hardware', bolt: 'Body & Hardware', kit: 'Body & Hardware'
+  };
+  DEMO_ITEMS.forEach(function (it) { it.category = DEMO_CATEGORY[it.id] || UNCAT; });
+
+  /* Resolve an item's folder: its stored category name, else the demo
+   * map by id, else the icon map, else Uncategorized. */
+  function categoryForItem(it) {
+    if (it && it.category && String(it.category).trim()) return String(it.category).trim();
+    if (it && DEMO_CATEGORY[it.id]) return DEMO_CATEGORY[it.id];
+    if (it && CATEGORY_BY_ICON[it.icon]) return CATEGORY_BY_ICON[it.icon];
+    return UNCAT;
+  }
+  function getCategories() {
+    var cats = read(LS.categories, null);
+    if (!Array.isArray(cats)) {
+      cats = DEFAULT_CATEGORIES.map(function (c) { return { name: c.name, icon: c.icon }; });
+      write(LS.categories, cats);
+    }
+    return cats;
+  }
+  function saveCategories(cats) { write(LS.categories, cats); }
+  function categoryNameTaken(name, except) {
+    var n = String(name || '').trim().toLowerCase();
+    if (!n) return false;
+    var ex = String(except || '').trim().toLowerCase();
+    if (n === UNCAT.toLowerCase() && ex !== n) return true;   // reserved system name
+    return getCategories().some(function (c) {
+      return c.name.toLowerCase() === n && c.name.toLowerCase() !== ex;
+    });
+  }
+  function addCategory(name, icon) {
+    var cats = getCategories();
+    var base = String(name || '').trim() || 'New Folder';
+    var candidate = base, n = 2;
+    while (categoryNameTaken(candidate)) candidate = base + ' ' + (n++);
+    var cat = { name: candidate, icon: icon || 'kit' };
+    cats.push(cat);
+    saveCategories(cats);
+    return cat;
+  }
+  /* Rename a folder: updates the folder list AND every item in it, and
+   * queues an 'edit' op per moved item so a live backend rewrites the
+   * Category value on those rows. Empty/duplicate names are rejected. */
+  function renameCategory(oldName, newName) {
+    oldName = String(oldName || '').trim();
+    newName = String(newName || '').trim();
+    if (oldName === UNCAT) return { ok: false, error: 'system', message: 'The Uncategorized folder can\'t be renamed.' };
+    if (!newName) return { ok: false, error: 'empty', message: 'Name can\'t be empty' };
+    if (newName === oldName) return { ok: true, count: 0 };
+    if (categoryNameTaken(newName, oldName)) return { ok: false, error: 'duplicate', message: 'A folder named “' + newName + '” already exists' };
+    var cats = getCategories();
+    var found = false;
+    cats.forEach(function (c) { if (c.name === oldName) { c.name = newName; found = true; } });
+    if (!found) cats.push({ name: newName, icon: 'box' });   // folder existed only via item values
+    saveCategories(cats);
+    var items = getItems(), movedIds = [];
+    items.forEach(function (it) {
+      if (categoryForItem(it) === oldName) { it.category = newName; movedIds.push(it.id); }
+    });
+    if (movedIds.length) {
+      saveItems(items);
+      movedIds.forEach(function (id) { queueChange('edit', id, 'Folder renamed: ' + oldName + ' → ' + newName); });
+    }
+    return { ok: true, count: movedIds.length };
+  }
+  /* Remove a folder: its items move to Uncategorized (never deleted),
+   * each with a queued 'edit' op so the backend follows. */
+  function removeCategory(name) {
+    name = String(name || '').trim();
+    if (name === UNCAT) return { ok: false, error: 'system', message: 'The Uncategorized folder can\'t be removed.' };
+    saveCategories(getCategories().filter(function (c) { return c.name !== name; }));
+    var items = getItems(), movedIds = [];
+    items.forEach(function (it) {
+      if (categoryForItem(it) === name) { it.category = UNCAT; movedIds.push(it.id); }
+    });
+    if (movedIds.length) {
+      saveItems(items);
+      movedIds.forEach(function (id) { queueChange('edit', id, 'Moved to Uncategorized (folder removed: ' + name + ')'); });
+    }
+    return { ok: true, moved: movedIds.length };
+  }
+  /* SPEC PLATE status tiers, mirrored for folder summaries:
+   * 0 = OUT, 1–2 = CRITICAL, 3–5 = LOW, 6+ = OK. */
+  function statusTier(q) { return q <= 0 ? 'out' : (q <= 2 ? 'crit' : (q <= 5 ? 'low' : 'ok')); }
+  var TIER_RANK = { out: 0, crit: 1, low: 2, ok: 3 };
+  /* One summary per folder: the saved list first, then any category a
+   * backend row introduced, with Uncategorized pinned last and shown
+   * only while it holds items. worst/worstCount = the worst attention
+   * tier present and how many items sit at it. */
+  function folderStats() {
+    var items = getItems();
+    var order = getCategories().map(function (c) { return { name: c.name, icon: c.icon, system: false }; });
+    var seen = {};
+    order.forEach(function (o) { seen[o.name] = true; });
+    items.forEach(function (it) {
+      var n = categoryForItem(it);
+      if (!seen[n]) { seen[n] = true; order.push({ name: n, icon: 'box', system: n === UNCAT }); }
+    });
+    order.sort(function (a, b) { return (a.system ? 1 : 0) - (b.system ? 1 : 0); });   // stable: system last
+    return order.map(function (o) {
+      var mine = items.filter(function (it) { return categoryForItem(it) === o.name; });
+      var worst = null, worstCount = 0, rank = 3;
+      mine.forEach(function (it) {
+        var t = statusTier(it.qty);
+        if (t === 'ok') return;
+        if (TIER_RANK[t] < rank) { rank = TIER_RANK[t]; worst = t; worstCount = 1; }
+        else if (t === worst) worstCount++;
+      });
+      return {
+        name: o.name, icon: o.icon, system: o.system,
+        count: mine.length,
+        units: mine.reduce(function (s, i) { return s + i.qty; }, 0),
+        worst: worst, worstCount: worstCount
+      };
+    }).filter(function (s) { return !s.system || s.count > 0; });
+  }
+
   function read(key, fallback) {
     try {
       var raw = localStorage.getItem(key);
@@ -87,6 +237,9 @@
       existing.forEach(function (it) {
         var ok = Number(it.level) >= 1 && Number(it.level) <= 4;
         if (!ok && levelsById[it.id]) { it.level = levelsById[it.id]; changed = true; }
+        // Categories (folders home): backfill items saved before
+        // `category` existed — demo id map first, then icon, else system.
+        if (!it.category || !String(it.category).trim()) { it.category = categoryForItem(it); changed = true; }
       });
       if (changed) write(LS.items, existing);
     }
@@ -234,6 +387,7 @@
       name: data.name, sku: data.sku || ('ET-' + Math.floor(100 + Math.random() * 900)),
       qty: Number(data.qty) || 0, bin: data.bin || 'A1', level: Math.min(4, Math.max(1, Number(data.level) || 2)),
       supplier: data.supplier || '', cost: Number(data.cost) || 0,
+      category: (data.category && String(data.category).trim()) || UNCAT,
       icon: data.icon || 'box', nfcId: '', updated: nowISO()
     };
     items.push(item);
@@ -278,18 +432,23 @@
     }
     return window.ETSheets.fetchRows().then(function (res) {
       if (!res.ok) { setMeta({ lastError: res.message }); return res; }
-      var pendingQty = {}, pendingAdd = {};
+      var pendingQty = {}, pendingAdd = {}, pendingEdit = {};
       getQueue().forEach(function (c) {
         if (c.synced) return;
         if (c.type === 'add') pendingAdd[c.itemId] = true;
         else if (c.kind === 'qty' || c.type === 'qty') pendingQty[c.itemId] = true;
+        else if (c.type === 'edit') pendingEdit[c.itemId] = true;
       });
       var localById = {};
       getItems().forEach(function (i) { localById[i.id] = i; });
       var seen = {};
       var merged = res.items.map(function (fi) {
         seen[fi.id] = true;
+        fi.category = categoryForItem(fi);   // row value, else demo/icon fallback
         var li = localById[fi.id];
+        // A category edit (e.g. a folder rename) still queued wins over
+        // the sheet's older value until it flushes.
+        if (li && pendingEdit[fi.id] && li.category) fi.category = li.category;
         if (li && pendingQty[fi.id]) return Object.assign({}, fi, { qty: li.qty, updated: li.updated });
         return fi;
       });
@@ -341,6 +500,7 @@
     var f = {
       Name: item.name, SKU: item.sku, Qty: item.qty, Bin: item.bin,
       Level: item.level || 2, Supplier: item.supplier, Cost: item.cost,
+      Category: categoryForItem(item),
       Icon: item.icon || 'box', 'NFC ID': item.nfcId || ''
     };
     if (item.photo) f.Photo = item.photo;
@@ -404,7 +564,7 @@
       chain = chain.then(function () {
         var item = itemsById[c.itemId];
         if (!item) { c.synced = true; c.syncedAt = nowISO(); return; }
-        var row = { Id: item.id, Name: item.name, SKU: item.sku, Qty: item.qty, Bin: item.bin, Level: item.level || 2, Supplier: item.supplier, Cost: item.cost };
+        var row = { Id: item.id, Name: item.name, SKU: item.sku, Qty: item.qty, Bin: item.bin, Level: item.level || 2, Supplier: item.supplier, Cost: item.cost, Category: categoryForItem(item) };
         return apiAction(c.type === 'add' ? 'Add' : 'Edit', [row]).then(function () {
           c.synced = true; c.syncedAt = nowISO();
         });
@@ -424,7 +584,7 @@
   }
 
   function resetDemo() {
-    [LS.items, LS.suppliers, LS.queue, LS.meta].forEach(function (k) { localStorage.removeItem(k); });
+    [LS.items, LS.suppliers, LS.queue, LS.meta, LS.categories].forEach(function (k) { localStorage.removeItem(k); });
     seedIfNeeded();
   }
 
@@ -433,6 +593,9 @@
     getBackend: getBackend, setBackend: setBackend, activeBackend: activeBackend,
     getItems: getItems, getSuppliers: getSuppliers, getItem: getItem,
     getQueue: getQueue, getMeta: getMeta,
+    getCategories: getCategories, addCategory: addCategory,
+    renameCategory: renameCategory, removeCategory: removeCategory,
+    folderStats: folderStats, categoryFor: categoryForItem, UNCAT: UNCAT,
     updateQty: updateQty, setQty: setQty, addItem: addItem,
     testConnection: testConnection, flushQueue: flushQueue, resetDemo: resetDemo,
     refreshFromBackend: refreshFromBackend,

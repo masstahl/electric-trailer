@@ -71,6 +71,13 @@ Expected sheet columns are the same as step 5 (including the optional
 item's plate when present, and falls back to the item's icon if the
 image can't load).
 
+**Folders (Categories home):** the app opens on a folders screen driven
+by the optional **`Category`** column (step 5). Renaming a folder in
+the app rewrites the `Category` value on every row in that folder —
+the bridge applies it like any other field edit. Without a `Category`
+column, the app derives each item's folder from its `Icon` and keeps
+renames on the device only.
+
 ## Step 2 — Unblock and deploy the AppSheet app ⚠️ REQUIRED for Option A
 
 The AppSheet app is currently **blocked in test mode (“plan upgrade
@@ -116,6 +123,11 @@ App ID: `bd77482b-d437-4804-a3ef-fc2815feff2e`
 4. Repeat on each phone that needs live access (keys are per-device by
    design, so a lost phone doesn't mean changing the code or the repo).
 
+The Categories (folders) home screen works the same with this option:
+the optional **`Category`** column (step 5) names each item's folder,
+and renaming a folder in the app sends an edit for every item in it,
+so the new name lands in AppSheet too.
+
 ## Step 5 — Match your table's columns
 
 The front-end expects these columns (names are what it sends/expects —
@@ -135,6 +147,7 @@ mapping in `appsheet.js`):
 | `Icon`   | Text (optional) | Angular icon key, e.g. `bolt` — one of: `box`, `controller`, `plug`, `light`, `bolt`, `battery`, `solar`, `tire`, `axle`, `hub`, `link`, `chain`, `hook`, `kit`, `spring`, `diamond`, `fender`, `jack`, `alert`. Legacy emoji values still render (mapped automatically) |
 | `NFC ID` | Text (optional) | Physical sticker serial, if you track them |
 | `Photo`  | Text (optional) | Image URL for the item — shown on the item's plate (grid card, item sheet, bin rows, count mode) when present; the icon shows if the image is empty or fails to load |
+| `Category` | Text (optional) | Folder name for the Categories home screen, e.g. `Electrical`. Renaming a folder in the app rewrites this value on every item in the folder; removing a folder moves its items to `Uncategorized`. Without this column, the app derives folders from `Icon` and keeps renames on-device |
 
 If your real columns have different names, either rename them in the
 Sheet/AppSheet (simplest) or edit the `row` object in `flushQueue()` and

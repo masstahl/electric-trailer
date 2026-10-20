@@ -71,6 +71,7 @@
       supplier: str(pick(row, ['supplier'])),
       cost: num(pick(row, ['cost', 'price']), 0),
       icon: str(pick(row, ['icon'])) || 'box',
+      category: str(pick(row, ['category', 'folder'])),
       nfcId: str(pick(row, ['nfc id', 'nfcid', 'nfc'])),
       photo: str(pick(row, ['photo', 'image', 'photo url', 'image url'])),
       updated: str(pick(row, ['updated', 'last updated']))

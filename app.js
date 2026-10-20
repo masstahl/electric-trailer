@@ -114,6 +114,13 @@
   var selectedSupplier = null;
   var selectedIcon = ICON_KEYS[0];
   var lowFilter = false;
+  /* Categories home state: null = folder browse · 'ALL' = all items ·
+   * '<folder name>' = drilled into that folder. */
+  var homeFolder = null;
+  var folderEdit = false;          // folder rename/remove edit mode
+  var pendingRemoveFolder = null;
+  var fabMenuOpen = false;
+  function itemCategory(i) { return D.categoryFor(i); }
 
   function esc(s) {
     return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
@@ -353,7 +360,9 @@
       if (on) t.setAttribute('aria-current', 'page'); else t.removeAttribute('aria-current');
     });
     if (name !== 'map' && locateTarget) { locateTarget = null; $('locateCaption').classList.add('hidden'); }
+    if (name !== 'home') document.body.classList.remove('folders-bg');
     if (name === 'home') renderHome();
+    if (name === 'add') prepAddForm();
     if (name === 'map') { renderMap(); if (locateTarget) setTimeout(activateLocate, 40); }
     if (name === 'suppliers') renderSuppliers();
     if (name === 'sync') { renderQueue(); renderSync(); }
@@ -375,6 +384,32 @@
     $('statSegLow').classList.toggle('active', lowFilter);
     $('statSegLow').setAttribute('aria-pressed', lowFilter ? 'true' : 'false');
     $('filterHint').classList.toggle('hidden', !lowFilter);
+    /* Home states: folder browse (default) · drilled folder / All Items ·
+     * global results whenever a search or the LOW filter is active. */
+    var searching = !!q || lowFilter;
+    var browseFolders = !searching && homeFolder === null;
+    document.body.classList.toggle('folders-bg', browseFolders && $('view-home').classList.contains('active'));
+    $('folderCaption').classList.toggle('hidden', !searching);
+    $('folderHead').classList.toggle('hidden', !browseFolders);
+    $('folderEditBtn').classList.toggle('hidden', folderEdit);
+    $('folderDoneBtn').classList.toggle('hidden', !folderEdit);
+    $('allItemsRow').classList.toggle('hidden', !browseFolders || folderEdit);
+    $('folderGrid').classList.toggle('hidden', !browseFolders);
+    $('folderBar').classList.toggle('hidden', searching || homeFolder === null);
+    $('photoGrid').classList.toggle('hidden', browseFolders);
+    if (browseFolders) {
+      $('gridEmpty').classList.add('hidden');
+      $('allItemsMeta').textContent = items.length + ' items · ' + totalUnits + ' units';
+      renderFolders();
+      syncFab();
+      refreshChrome();
+      return;
+    }
+    if (!searching && homeFolder !== null) {
+      var inFolder = homeFolder === 'ALL' ? items : items.filter(function (i) { return itemCategory(i) === homeFolder; });
+      $('folderTitle').textContent = homeFolder === 'ALL' ? 'All Items' : homeFolder;
+      $('folderMeta').textContent = inFolder.length + ' items · ' + inFolder.reduce(function (s, i) { return s + i.qty; }, 0) + ' units';
+    }
     var filtered = items.filter(function (i) {
       if (lowFilter && i.qty > 5) return false;
       if (!q) return true;
@@ -383,6 +418,9 @@
       var compact = q.replace(/[\s·\-]/g, '');
       return compact.length > 1 && locShort(i).toLowerCase().replace(/[\s·]/g, '').indexOf(compact) !== -1;
     });
+    if (!searching && homeFolder !== null && homeFolder !== 'ALL') {
+      filtered = filtered.filter(function (i) { return itemCategory(i) === homeFolder; });
+    }
     if (lowFilter) filtered = filtered.slice().sort(function (a, b) { return a.qty - b.qty; });  // worst first: 0s, then 1–2, then 3–5
     $('photoGrid').innerHTML = filtered.map(function (i) {
       var st = statusOf(i.qty);
@@ -401,7 +439,8 @@
           '<button type="button" data-inc="' + esc(i.id) + '" aria-label="Add one to ' + esc(i.name) + '">+</button>' +
         '</div></div>';
     }).join('');
-    $('gridEmpty').textContent = lowFilter && !q ? 'Nothing is low right now.' : 'No items match your search.';
+    $('gridEmpty').textContent = (lowFilter && !q) ? 'Nothing is low right now.'
+      : (homeFolder && homeFolder !== 'ALL' && !q ? 'This folder is empty — tap + to add an item here.' : 'No items match your search.');
     $('gridEmpty').classList.toggle('hidden', filtered.length > 0);
     var grid = $('photoGrid');
     grid.querySelectorAll('[data-card]').forEach(function (card) {
@@ -434,7 +473,213 @@
       });
     });
     refreshChrome();
+    syncFab();
   }
+  /* ---------- Categories home: red glass folders ----------
+   * Folders are category NAMES on the items (ETData owns the list and
+   * the rename/remove cascades). Tiles are red glass; edit mode turns
+   * each name into an inline field. Entry: the Edit pill, or a 450ms
+   * long-press on a tile (which focuses that folder's field). */
+  function folderPillHtml(s) {
+    if (!s.worst) return '';
+    var label = s.worstCount + ' ' + (s.worst === 'out' ? 'OUT' : (s.worst === 'crit' ? 'CRITICAL' : 'LOW'));
+    return '<span class="folder-notch"><span class="attn-pill attn-' + s.worst + '">' + label + '</span></span>';
+  }
+  function renderFolders() {
+    $('folderGrid').innerHTML = D.folderStats().map(function (s) {
+      var meta = s.count + (s.count === 1 ? ' item' : ' items') + ' · ' + s.units + ' units';
+      if (folderEdit && !s.system) {
+        return '<div class="folder-wrap" data-wrap="' + esc(s.name) + '">' +
+          '<div class="folder-tile editing">' + folderPillHtml(s) +
+            '<span class="folder-icon">' + svgIcon(s.icon) + '</span>' +
+            '<input class="folder-name-input" data-folder-input data-old="' + esc(s.name) + '" value="' + esc(s.name) + '" aria-label="Rename folder ' + esc(s.name) + '" autocomplete="off">' +
+            '<span class="folder-meta">' + meta + '</span>' +
+          '</div>' +
+          '<button type="button" class="folder-x" data-remove="' + esc(s.name) + '" aria-label="Remove folder ' + esc(s.name) + '">✕</button>' +
+        '</div>';
+      }
+      return '<div class="folder-wrap" data-wrap="' + esc(s.name) + '">' +
+        '<div class="folder-tile" data-folder="' + esc(s.name) + '" role="button" tabindex="0" aria-label="Open folder ' + esc(s.name) + ', ' + meta + '">' +
+          folderPillHtml(s) +
+          '<span class="folder-icon">' + svgIcon(s.icon) + '</span>' +
+          '<span class="folder-name">' + esc(s.name) + '</span>' +
+          '<span class="folder-meta">' + meta + (s.system ? ' · system folder' : '') + '</span>' +
+        '</div></div>';
+    }).join('');
+    var grid = $('folderGrid');
+    if (folderEdit) {
+      grid.querySelectorAll('[data-remove]').forEach(function (b) {
+        b.addEventListener('click', function (e) { e.stopPropagation(); askRemoveFolder(b.getAttribute('data-remove')); });
+      });
+      grid.querySelectorAll('[data-folder-input]').forEach(function (inp) {
+        inp.addEventListener('blur', function () { commitFolderRename(inp); });
+        inp.addEventListener('keydown', function (e) {
+          if (e.key === 'Enter') { e.preventDefault(); inp.blur(); }
+          else if (e.key === 'Escape') { inp.value = inp.getAttribute('data-old'); inp.blur(); }
+        });
+      });
+    } else {
+      grid.querySelectorAll('[data-folder]').forEach(function (tile) {
+        attachFolderPress(tile, tile.getAttribute('data-folder'));
+      });
+    }
+  }
+  function openFolder(name) { homeFolder = name; renderHome(); window.scrollTo(0, 0); }
+  /* Tap opens the folder; a 450ms hold enters edit mode on it instead.
+   * The press timer + fired-flag keep the two from fighting. */
+  var lpTimer = null, lpFiredAt = 0;
+  function attachFolderPress(tile, name) {
+    tile.addEventListener('pointerdown', function () {
+      clearTimeout(lpTimer);
+      lpTimer = setTimeout(function () {
+        lpFiredAt = Date.now();
+        if (navigator.vibrate) { try { navigator.vibrate(30); } catch (e) { /* unsupported */ } }
+        enterFolderEdit(name);
+      }, 450);
+    });
+    ['pointerup', 'pointerleave', 'pointercancel'].forEach(function (ev) {
+      tile.addEventListener(ev, function () { clearTimeout(lpTimer); });
+    });
+    tile.addEventListener('click', function () {
+      if (Date.now() - lpFiredAt < 700) return;   // the long-press already acted
+      openFolder(name);
+    });
+    tile.addEventListener('keydown', function (e) {
+      if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openFolder(name); }
+    });
+  }
+  function enterFolderEdit(focusName) {
+    folderEdit = true;
+    closeFabMenu();
+    renderHome();
+    if (focusName) {
+      var target = null;
+      $('folderGrid').querySelectorAll('[data-folder-input]').forEach(function (el) {
+        if (el.getAttribute('data-old') === focusName) target = el;
+      });
+      if (target) { target.focus(); target.select(); }
+    }
+  }
+  function exitFolderEdit() {
+    commitAllFolderInputs();
+    folderEdit = false;
+    renderHome();
+  }
+  function commitAllFolderInputs() {
+    $('folderGrid').querySelectorAll('[data-folder-input]').forEach(function (inp) { commitFolderRename(inp); });
+  }
+  /* Commit on blur/Enter/Done. A valid rename updates the data in place
+   * (the input already shows the new name, so no re-render — focus stays
+   * put); a rejected one reverts the field and says why. */
+  function commitFolderRename(inp) {
+    if (!folderEdit) return;
+    var oldName = inp.getAttribute('data-old');
+    var newName = inp.value.trim();
+    if (newName === oldName) return;
+    var r = D.renameCategory(oldName, newName);
+    if (!r.ok) {
+      inp.value = oldName;
+      toast(r.message || 'Could not rename folder');
+      return;
+    }
+    inp.setAttribute('data-old', newName);
+    inp.value = newName;
+    var wrap = inp.closest('[data-wrap]');
+    if (wrap) wrap.setAttribute('data-wrap', newName);
+    toast('Folder renamed' + (r.count ? ' — ' + r.count + ' item(s) updated' : ''));
+  }
+  /* Remove: empty folders go instantly; folders with items ask first —
+   * items move to Uncategorized, they are never deleted. */
+  function askRemoveFolder(name) {
+    var s = D.folderStats().filter(function (x) { return x.name === name; })[0];
+    var count = s ? s.count : 0;
+    if (!count) {
+      D.removeCategory(name);
+      toast('Folder removed');
+      renderHome();
+      return;
+    }
+    pendingRemoveFolder = name;
+    $('frTitle').textContent = 'Remove “' + name + '”?';
+    $('frText').textContent = 'Move ' + count + ' item(s) to Uncategorized? Items are never deleted.';
+    $('folderRemoveOverlay').classList.remove('hidden');
+  }
+  function closeRemoveConfirm() {
+    pendingRemoveFolder = null;
+    $('folderRemoveOverlay').classList.add('hidden');
+  }
+  $('frCancel').addEventListener('click', closeRemoveConfirm);
+  $('folderRemoveOverlay').addEventListener('click', function (e) { if (e.target === $('folderRemoveOverlay')) closeRemoveConfirm(); });
+  $('frConfirm').addEventListener('click', function () {
+    if (!pendingRemoveFolder) return;
+    var name = pendingRemoveFolder;
+    closeRemoveConfirm();
+    var r = D.removeCategory(name);
+    toast('Folder removed — ' + (r.moved || 0) + ' item(s) moved to Uncategorized');
+    renderHome();
+  });
+  $('folderEditBtn').addEventListener('click', function () { enterFolderEdit(null); });
+  $('folderDoneBtn').addEventListener('click', function () { exitFolderEdit(); });
+  $('allItemsRow').addEventListener('click', function () { openFolder('ALL'); });
+  $('folderBack').addEventListener('click', function () { homeFolder = null; renderHome(); window.scrollTo(0, 0); });
+
+  /* ---------- FAB: red glass +, lower right, clear of the dock ---------- */
+  function syncFab() {
+    var show = $('view-home').classList.contains('active') && !folderEdit;
+    $('fabBtn').classList.toggle('hidden', !show);
+    if (!show) closeFabMenu();
+  }
+  function closeFabMenu() {
+    fabMenuOpen = false;
+    $('fabMenu').classList.add('hidden');
+    $('fabScrim').classList.add('hidden');
+    $('fabBtn').classList.remove('open');
+    $('fabBtn').setAttribute('aria-expanded', 'false');
+  }
+  $('fabBtn').addEventListener('click', function () {
+    if (fabMenuOpen) { closeFabMenu(); return; }
+    fabMenuOpen = true;
+    $('fabMenu').classList.remove('hidden');
+    $('fabScrim').classList.remove('hidden');
+    $('fabBtn').classList.add('open');
+    $('fabBtn').setAttribute('aria-expanded', 'true');
+  });
+  $('fabScrim').addEventListener('click', closeFabMenu);
+  $('fabNewFolder').addEventListener('click', function () {
+    closeFabMenu();
+    var cat = D.addCategory();
+    homeFolder = null;
+    lowFilter = false;
+    $('searchInput').value = '';
+    enterFolderEdit(cat.name);
+    toast('New folder — rename it now');
+  });
+  $('fabNewItem').addEventListener('click', function () {
+    closeFabMenu();
+    openQuickAdd();
+  });
+  function openQuickAdd() {
+    showView('add');
+    $('addSuccess').classList.add('hidden');
+    $('addForm').classList.remove('hidden');
+    $('addName').focus();
+  }
+  /* Quick Add's Folder picker: the saved folder list + Uncategorized.
+   * Rebuilt whenever the Add view opens (folders may have been
+   * renamed); defaults to the folder you're standing in. */
+  function prepAddForm() { refreshFolderSelect(); }
+  function refreshFolderSelect() {
+    var sel = $('addFolder');
+    if (!sel) return;
+    var prev = sel.value;
+    var names = D.getCategories().map(function (c) { return c.name; });
+    names.push(D.UNCAT);
+    sel.innerHTML = names.map(function (n) { return '<option>' + esc(n) + '</option>'; }).join('');
+    if (homeFolder && homeFolder !== 'ALL' && names.indexOf(homeFolder) !== -1) sel.value = homeFolder;
+    else if (names.indexOf(prev) !== -1) sel.value = prev;
+    else sel.value = names[0];
+  }
+
   $('searchInput').addEventListener('input', renderHome);
   /* Stat bar tap-to-filter: LOW toggles the low-only view; Items/Units clear it. */
   $('statSegLow').addEventListener('click', function () { lowFilter = !lowFilter; renderHome(); });
@@ -451,6 +696,8 @@
     $('dMeta').textContent = item.sku + ' · ' + item.supplier;
     $('dBinChip').textContent = locShort(item);
     $('dBinChip').setAttribute('aria-label', locLong(item));
+    $('dFolderChip').textContent = itemCategory(item);
+    $('dFolderChip').setAttribute('aria-label', 'Open the ' + itemCategory(item) + ' folder');
     $('dCost').textContent = money(item.cost) + ' each';
     $('dStickerLink').value = D.stickerUrl(item.id);
     syncSheetQty();
@@ -521,6 +768,15 @@
     } else { document.execCommand('copy'); done(); }
   }
   $('dCopyBtn').addEventListener('click', function () { copyText($('dStickerLink'), 'Sticker link copied'); });
+  /* Folder chip in the item sheet: jump Home into this item's folder. */
+  $('dFolderChip').addEventListener('click', function () {
+    if (!currentItemId) return;
+    var item = D.getItem(currentItemId);
+    if (!item) return;
+    homeFolder = itemCategory(item);
+    closeItem();
+    showView('home');
+  });
 
   /* ---------- NFC Live: always-on listening while the app is open ----------
    * Android Chrome (Web NFC): a single NDEFReader.scan() keeps firing
@@ -1037,6 +1293,7 @@
     return null;
   }
   function initAddForm() {
+    refreshFolderSelect();
     $('addBin').innerHTML = BINS.map(function (b) { return '<option>' + b + '</option>'; }).join('');
     $('addSupplier').innerHTML = D.getSuppliers().map(function (s) { return '<option>' + esc(s.name) + '</option>'; }).join('');
     $('iconPicker').innerHTML = ICON_KEYS.map(function (key, idx) {
@@ -1058,7 +1315,7 @@
     $('addDupWarn').classList.add('hidden');
     $('addForm').classList.add('hidden');
     $('addSuccess').classList.remove('hidden');
-    $('addSuccessText').textContent = item.name + ' — ' + item.qty + ' in ' + locShort(item) + '. Stick an NFC sticker on the bin/item and write this link to it:';
+    $('addSuccessText').textContent = item.name + ' — ' + item.qty + ' in ' + locShort(item) + ' · Folder: ' + itemCategory(item) + '. Stick an NFC sticker on the bin/item and write this link to it:';
     $('addStickerLink').value = D.stickerUrl(item.id);
     $('addWriteNfcBtn').classList.toggle('hidden', !('NDEFReader' in window));
     $('addWriteNfcBtn').onclick = function () { writeSticker(D.stickerUrl(item.id)); };
@@ -1070,7 +1327,8 @@
     var data = {
       name: $('addName').value.trim(),
       qty: $('addQty').value, cost: $('addCost').value,
-      bin: $('addBin').value, level: $('addLevel').value, supplier: $('addSupplier').value, icon: selectedIcon
+      bin: $('addBin').value, level: $('addLevel').value, supplier: $('addSupplier').value, icon: selectedIcon,
+      category: $('addFolder').value || D.UNCAT
     };
     if (!data.name) return;
     /* Duplicate-name check: offer "Receive this instead" rather than
