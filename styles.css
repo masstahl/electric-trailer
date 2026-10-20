@@ -238,6 +238,10 @@ main{max-width:960px;margin:0 auto;padding:1rem}
   border:1.5px solid var(--border);border-radius:10px;background:var(--input-bg);color:var(--text);font-weight:400;
 }
 .form-row{display:grid;grid-template-columns:1fr 1fr;gap:.7rem}
+/* Backend chooser (Settings) */
+.backend-opt{display:flex;align-items:center;gap:.55rem;font-weight:700;padding:.5rem 0;cursor:pointer}
+.backend-opt input{width:1.1rem;height:1.1rem;accent-color:var(--accent);flex:none}
+.backend-opt span{color:var(--muted);font-weight:400;font-size:.85rem}
 .btn{
   appearance:none;border:1.5px solid var(--border);background:var(--surface);color:var(--text);
   font-weight:700;font-size:.92rem;padding:.6rem 1rem;border-radius:999px;cursor:pointer;
@@ -387,9 +391,11 @@ main{max-width:960px;margin:0 auto;padding:1rem}
 .close-btn{position:absolute;top:.7rem;right:.7rem;width:44px;height:44px;border-radius:50%;border:none;background:var(--surface2);color:var(--text);font-size:1.05rem;cursor:pointer;z-index:2}
 /* Photo hero: a big WHITE plate, never cropped (SPEC PLATE) */
 .sheet-hero{
-  background:#fff;border-radius:16px;height:180px;
+  background:#fff;border-radius:16px;height:180px;position:relative;overflow:hidden;
   display:flex;align-items:center;justify-content:center;margin-bottom:.8rem;
 }
+/* Real item photos (backend Photo column) cover the white plate */
+.sheet-hero .plate-img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
 .detail-icon{font-size:4.2rem;line-height:1.1}
 .sheet h2{margin:.2rem 0 .1rem;font-size:1.45rem}
 .sheet-chips{display:flex;align-items:center;gap:.5rem;flex-wrap:wrap;margin:.45rem 0 .2rem}
@@ -507,13 +513,17 @@ main{max-width:960px;margin:0 auto;padding:1rem}
 .tab .icon-svg{width:21px;height:21px;display:block;margin:0 auto}
 .tab-add .icon-svg{width:24px;height:24px}
 .photo-card .pc-icon{
-  display:flex;align-items:center;justify-content:center;width:100%;height:44px;margin:0 auto;
+  display:flex;align-items:center;justify-content:center;width:100%;height:44px;margin:0 auto;position:relative;
   color:var(--accent);background:var(--surface2);font-size:1rem;line-height:1;
   clip-path:polygon(14% 0,100% 0,100% 86%,86% 100%,0 100%,0 14%);
 }
+/* Photo covers the plate; the icon stays underneath as the fallback */
+.photo-card .pc-icon .plate-img,.list-item .li-icon .plate-img{
+  position:absolute;inset:0;width:100%;height:100%;object-fit:cover;
+}
 .photo-card .pc-icon .icon-svg{width:30px;height:30px}
 .list-item .li-icon{
-  font-size:1rem;color:var(--muted);background:var(--surface2);flex:none;
+  font-size:1rem;color:var(--muted);background:var(--surface2);flex:none;position:relative;
   width:44px;height:44px;display:inline-flex;align-items:center;justify-content:center;
   clip-path:polygon(22% 0,100% 0,100% 78%,78% 100%,0 100%,0 22%);
 }

@@ -1,15 +1,17 @@
 /* sw.js — service worker: cache the app shell so Electric Trailer
  * opens instantly and works fully offline (#16 Offline-First).
- * AppSheet API calls are never cached — they always go to the network,
- * and edits made offline are queued by the app instead.
+ * Backend API calls (AppSheet, Google Sheet bridge) are never cached —
+ * they always go to the network, and edits made offline are queued
+ * by the app instead.
  */
-var CACHE = 'electric-trailer-v16';
+var CACHE = 'electric-trailer-v17';
 var SHELL = [
   './',
   'index.html',
   'styles.css',
   'app.js',
   'appsheet.js',
+  'sheets.js',
   'manifest.webmanifest'
 ];
 
@@ -32,8 +34,10 @@ self.addEventListener('activate', function (event) {
 
 self.addEventListener('fetch', function (event) {
   var url = new URL(event.request.url);
-  // Never intercept AppSheet API traffic.
+  // Never intercept backend API traffic (AppSheet API, Sheet bridge).
   if (url.hostname.indexOf('appsheet.com') !== -1) return;
+  if (url.hostname.indexOf('script.google.com') !== -1) return;
+  if (url.hostname.indexOf('script.googleusercontent.com') !== -1) return;
   if (event.request.method !== 'GET') return;
   // Cache-first for the app shell (same origin), network fallback,
   // and refresh the cache in the background for next time.

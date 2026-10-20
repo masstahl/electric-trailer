@@ -1,12 +1,15 @@
 /* appsheet.js — data layer for Electric Trailer inventory PWA.
  *
- * Two modes:
+ * Backends (Settings → Backend; stored in localStorage 'et-backend'):
  *  - Demo mode (default): items live in localStorage, seeded from DEMO data.
  *    Every change is recorded in a sync queue; "Sync now" marks them synced.
- *  - Live mode: when an AppSheet Access Key + table name are saved in the
- *    Sync tab (stored ONLY in this device's localStorage — never in code),
+ *  - AppSheet mode: when an AppSheet Access Key + table name are saved in
+ *    Settings (stored ONLY in this device's localStorage — never in code),
  *    changes are sent to the AppSheet API and "Test connection" runs a
  *    real Find action against the app.
+ *  - Google Sheet mode: syncs directly to the backend spreadsheet via
+ *    the Apps Script bridge in sheets.js (window.ETSheets) — rows are
+ *    pulled into local items, and the queue flushes as bridge ops.
  *
  * AppSheet API docs: POST https://api.appsheet.com/api/v2/apps/{appId}/tables/{table}/Action
  * Header: ApplicationAccessKey: <key>
@@ -108,10 +111,39 @@
       accessKey: (s.accessKey || '').trim()
     });
   }
-  function isLive() {
+  function appSheetConfigured() {
     var s = getSettings();
     return !!(s.accessKey && s.table && s.appId);
   }
+
+  /* ---------- Backend selection: 'demo' | 'appsheet' | 'sheet' ----------
+   * Stored in localStorage 'et-backend'. With nothing stored, behavior
+   * matches the original app: AppSheet when an Access Key is saved,
+   * Demo otherwise. 'sheet' = the direct Google Sheet bridge (sheets.js,
+   * window.ETSheets). activeBackend() is the EFFECTIVE backend — a
+   * chosen-but-unconfigured backend falls back to 'demo'. */
+  var BACKEND_KEY = 'et-backend';
+  function getBackend() {
+    var m = null;
+    try { m = localStorage.getItem(BACKEND_KEY); } catch (e) { /* storage blocked */ }
+    if (m === 'demo' || m === 'appsheet' || m === 'sheet') return m;
+    return appSheetConfigured() ? 'appsheet' : 'demo';
+  }
+  function setBackend(mode) {
+    if (mode !== 'demo' && mode !== 'appsheet' && mode !== 'sheet') mode = 'demo';
+    try { localStorage.setItem(BACKEND_KEY, mode); } catch (e) { /* storage blocked */ }
+    return mode;
+  }
+  function sheetConfigured() {
+    return !!(window.ETSheets && window.ETSheets.isConfigured());
+  }
+  function activeBackend() {
+    var m = getBackend();
+    if (m === 'sheet') return sheetConfigured() ? 'sheet' : 'demo';
+    if (m === 'appsheet') return appSheetConfigured() ? 'appsheet' : 'demo';
+    return 'demo';
+  }
+  function isLive() { return activeBackend() !== 'demo'; }
 
   function getItems() { return read(LS.items, []); }
   function getSuppliers() { return read(LS.suppliers, []); }
@@ -235,9 +267,57 @@
     });
   }
 
+  /* Sheet mode: pull the inventory rows from the Google Sheet and make
+   * them the local items — the sheet is the source of truth. Two local
+   * protections: an item with a qty change still queued keeps its local
+   * qty (the queue will push it), and an item added on this device that
+   * isn't in the sheet yet is kept until its 'add' op flushes. */
+  function refreshFromBackend() {
+    if (activeBackend() !== 'sheet' || !window.ETSheets) {
+      return Promise.resolve({ ok: false, skipped: true, message: 'Not in Google Sheet mode.' });
+    }
+    return window.ETSheets.fetchRows().then(function (res) {
+      if (!res.ok) { setMeta({ lastError: res.message }); return res; }
+      var pendingQty = {}, pendingAdd = {};
+      getQueue().forEach(function (c) {
+        if (c.synced) return;
+        if (c.type === 'add') pendingAdd[c.itemId] = true;
+        else if (c.kind === 'qty' || c.type === 'qty') pendingQty[c.itemId] = true;
+      });
+      var localById = {};
+      getItems().forEach(function (i) { localById[i.id] = i; });
+      var seen = {};
+      var merged = res.items.map(function (fi) {
+        seen[fi.id] = true;
+        var li = localById[fi.id];
+        if (li && pendingQty[fi.id]) return Object.assign({}, fi, { qty: li.qty, updated: li.updated });
+        return fi;
+      });
+      getItems().forEach(function (li) {
+        if (pendingAdd[li.id] && !seen[li.id]) merged.push(li);
+      });
+      write(LS.items, merged);
+      setMeta({ lastSync: nowISO(), lastError: '', sheetRows: res.rows });
+      return { ok: true, mode: 'sheet', rows: res.rows, message: res.message };
+    }).catch(function (err) {
+      var msg = String((err && err.message) || err);
+      setMeta({ lastError: msg });
+      return { ok: false, mode: 'sheet', message: msg };
+    });
+  }
+
   function testConnection() {
-    if (!isLive()) {
-      return Promise.resolve({ ok: false, mode: 'demo', message: 'Demo mode — add an Access Key and table name to test a live AppSheet connection.' });
+    var active = activeBackend();
+    if (active === 'sheet') {
+      return window.ETSheets.testConnection().then(function (r) {
+        if (!r.ok) { setMeta({ lastError: r.message }); return r; }
+        setMeta({ lastError: '' });
+        // A good test also imports the rows, so the app shows real data.
+        return refreshFromBackend().then(function () { return r; });
+      });
+    }
+    if (active !== 'appsheet') {
+      return Promise.resolve({ ok: false, mode: 'demo', message: 'Demo mode — pick AppSheet or Google Sheet under Backend in Settings, add its connection details, then test again.' });
     }
     return apiAction('Find', [])
       .then(function (body) {
@@ -249,6 +329,57 @@
         setMeta({ lastError: String(err.message || err) });
         return { ok: false, mode: 'live', message: String(err.message || err) + ' — If AppSheet says the app is not deployed / plan upgrade needed, a deployment check needs to be run in AppSheet first (see SETUP.md).' };
       });
+  }
+
+  /* Sheet-mode flush: translate pending queue entries into bridge ops
+   * and send them in one POST. Qty ops send just the new Qty (the
+   * bridge stamps Updated); adds/edits send the full field set.
+   * An op is marked synced only when the bridge's per-op result says
+   * ok — partial progress is kept, failures stay queued. */
+  function sheetFields(item, full) {
+    if (!full) return { Qty: item.qty };
+    var f = {
+      Name: item.name, SKU: item.sku, Qty: item.qty, Bin: item.bin,
+      Level: item.level || 2, Supplier: item.supplier, Cost: item.cost,
+      Icon: item.icon || 'box', 'NFC ID': item.nfcId || ''
+    };
+    if (item.photo) f.Photo = item.photo;
+    return f;
+  }
+  function flushViaSheet(q, pending) {
+    var itemsById = {};
+    getItems().forEach(function (i) { itemsById[i.id] = i; });
+    var jobs = [];
+    pending.forEach(function (c) {
+      var item = itemsById[c.itemId];
+      if (!item) { c.synced = true; c.syncedAt = nowISO(); return; }
+      var kind = c.type === 'add' ? 'add' : ((c.kind === 'qty' || c.type === 'qty') ? 'qty' : 'edit');
+      jobs.push({ entry: c, op: { id: item.id, kind: kind, fields: sheetFields(item, kind !== 'qty') } });
+    });
+    if (!jobs.length) {
+      write(LS.queue, q.slice(-200));
+      setMeta({ lastSync: nowISO(), lastError: '' });
+      return Promise.resolve({ ok: true, flushed: pending.length, message: 'Synced ' + pending.length + ' change(s) to the Google Sheet.' });
+    }
+    return window.ETSheets.flushOps(jobs.map(function (j) { return j.op; })).then(function (res) {
+      if (!res.ok) throw new Error(res.message || 'Sheet bridge unreachable.');
+      var byId = {};
+      (res.results || []).forEach(function (r) { if (r && r.id && !byId[r.id]) byId[r.id] = r; });
+      var failed = [];
+      jobs.forEach(function (j) {
+        var r = byId[j.op.id];
+        if (r && r.ok) { j.entry.synced = true; j.entry.syncedAt = nowISO(); }
+        else failed.push(j.op.id + (r && r.error ? ' (' + r.error + ')' : ' (no result)'));
+      });
+      write(LS.queue, q.slice(-200));
+      if (failed.length) throw new Error(failed.length + ' change(s) rejected by the sheet: ' + failed.join(', '));
+      setMeta({ lastSync: nowISO(), lastError: '' });
+      return { ok: true, flushed: pending.length, message: 'Synced ' + pending.length + ' change(s) to the Google Sheet.' };
+    }).catch(function (err) {
+      write(LS.queue, q.slice(-200));
+      setMeta({ lastError: String((err && err.message) || err) });
+      return { ok: false, flushed: 0, message: 'Sheet sync failed: ' + String((err && err.message) || err) };
+    });
   }
 
   /* Flush the pending queue. Demo mode: mark synced locally.
@@ -265,6 +396,7 @@
       setMeta({ lastSync: nowISO(), lastError: '' });
       return Promise.resolve({ ok: true, flushed: pending.length, message: 'Demo sync complete — ' + pending.length + ' change(s) marked synced locally.' });
     }
+    if (activeBackend() === 'sheet') return flushViaSheet(q, pending);
     var itemsById = {};
     getItems().forEach(function (i) { itemsById[i.id] = i; });
     var chain = Promise.resolve();
@@ -298,10 +430,12 @@
 
   window.ETData = {
     getSettings: getSettings, saveSettings: saveSettings, isLive: isLive,
+    getBackend: getBackend, setBackend: setBackend, activeBackend: activeBackend,
     getItems: getItems, getSuppliers: getSuppliers, getItem: getItem,
     getQueue: getQueue, getMeta: getMeta,
     updateQty: updateQty, setQty: setQty, addItem: addItem,
     testConnection: testConnection, flushQueue: flushQueue, resetDemo: resetDemo,
+    refreshFromBackend: refreshFromBackend,
     stickerUrl: function (id) { return 'https://masstahl.github.io/electric-trailer/?item=' + encodeURIComponent(id); }
   };
 })();

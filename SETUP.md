@@ -1,10 +1,17 @@
 # SETUP — Going live with Electric Trailer
 
-Going live takes about 10 minutes once AppSheet is unblocked.
-Work through the steps in order.
+Going live takes about 10 minutes. There are **two ways** to connect a
+live backend — pick one:
 
-The app runs in **Demo mode** until step 4 is done — safe to share the
-link and try everything before then.
+- **Option A (steps 2–4):** sync through the **AppSheet API**. Requires
+  the AppSheet app to be deployed with API access on its plan.
+- **Option B (right after step 1):** sync **directly to the Google
+  Sheet** behind AppSheet, through a small script bridge. Skips
+  AppSheet entirely — no API plan needed.
+
+The app runs in **Demo mode** until a backend is connected — safe to
+share the link and try everything before then. Steps 5 (columns) and 6
+(NFC stickers) apply to both options.
 
 ---
 
@@ -19,7 +26,52 @@ link and try everything before then.
 6. Open that link on your phone → browser menu → **Add to Home Screen**.
    It now behaves like an installed app and works offline.
 
-## Step 2 — Unblock and deploy the AppSheet app ⚠️ REQUIRED
+## Option B — Connect the Google Sheet directly (no AppSheet)
+
+The inventory data lives in a Google Sheet (AppSheet sits on top of
+it). This option has the app talk to that sheet directly, through a
+small **Apps Script bridge** installed in the sheet. No AppSheet API,
+no deployment check, no plan requirement. If you use this option, skip
+steps 2–4 and continue at step 5.
+
+1. Open the inventory **Google Sheet**.
+2. **Extensions → Apps Script.** Delete any default code in the editor,
+   then paste in the whole contents of **`apps-script.gs`** from this
+   repo.
+3. At the top of the pasted code, set **`TOKEN`** to a long random
+   string (20+ characters — letters, numbers, dashes). If the inventory
+   tab is not the first tab in the sheet, also set **`SHEET_NAME`** to
+   its exact tab name. Save the project.
+4. **Deploy → New deployment.** Type: **Web app**.
+   - **Execute as:** Me
+   - **Who has access:** Anyone with the link
+   Click **Deploy**, approve the authorization prompts (the script
+   needs permission to read/write its own spreadsheet), and copy the
+   **Web app URL** — it ends in `/exec`.
+5. In the app on your phone: **Settings → Backend → Google Sheet**.
+   Paste the Web app URL into **Sheet Web App URL** and the same
+   **TOKEN** into **Token**.
+6. Tap **Save sheet settings**, then **Test connection**. Success
+   reports how many rows the sheet returned — those rows are imported
+   and the header badge switches to “Live · Google Sheet”. Quantity
+   edits and new items now write straight back to the sheet.
+7. Repeat step 5–6 on each phone that needs live access (settings are
+   per-device by design).
+
+⚠️ **Token security:** the token is a **shared secret** — anyone who
+has the Web App URL *and* the token can read **and write** this
+inventory. Keep both private: don't post them in public places, shared
+notes, or screenshots. The bridge script runs as the sheet owner's
+Google account and only ever touches its own spreadsheet. If the token
+ever leaks, change `TOKEN` in the script, re-deploy (or edit the
+deployment), and update the token in the app on each device.
+
+Expected sheet columns are the same as step 5 (including the optional
+**`Photo`** column — an image URL per item; the app shows it on the
+item's plate when present, and falls back to the item's icon if the
+image can't load).
+
+## Step 2 — Unblock and deploy the AppSheet app ⚠️ REQUIRED for Option A
 
 The AppSheet app is currently **blocked in test mode (“plan upgrade
 needed”)** — while it is, its API cannot be used at all, by any app.
@@ -82,6 +134,7 @@ mapping in `appsheet.js`):
 | `Cost`   | Decimal / Price | Per-unit cost                  |
 | `Icon`   | Text (optional) | Angular icon key, e.g. `bolt` — one of: `box`, `controller`, `plug`, `light`, `bolt`, `battery`, `solar`, `tire`, `axle`, `hub`, `link`, `chain`, `hook`, `kit`, `spring`, `diamond`, `fender`, `jack`, `alert`. Legacy emoji values still render (mapped automatically) |
 | `NFC ID` | Text (optional) | Physical sticker serial, if you track them |
+| `Photo`  | Text (optional) | Image URL for the item — shown on the item's plate (grid card, item sheet, bin rows, count mode) when present; the icon shows if the image is empty or fails to load |
 
 If your real columns have different names, either rename them in the
 Sheet/AppSheet (simplest) or edit the `row` object in `flushQueue()` and
@@ -105,7 +158,11 @@ both platforms, and the Android listener reads the URL records too.
 ## Troubleshooting
 
 - **“Test connection” fails with a plan/deployment error** → step 2 isn't
-  finished; no front-end setting can bypass it.
+  finished; no front-end setting can bypass it. (Or switch to Option B
+  and connect the Google Sheet directly.)
+- **Sheet mode says “Bad token”** → the TOKEN in `apps-script.gs` and
+  the Token saved in the app must match exactly, and the script must
+  have been (re)deployed after the token was set.
 - **App opens but shows demo items** → no Access Key saved on this device
   yet (Demo mode). Keys don't sync between phones on purpose.
 - **Changes made offline didn't appear in AppSheet** → open the **Queue**

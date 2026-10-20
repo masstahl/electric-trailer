@@ -88,7 +88,7 @@ item / bin / count sheets that open over the current tab.
 | 08 | **Photo-First Grid** (Home) | Big photo/icon cards instead of spreadsheet rows — 3 across, photo on an unclipped white plate, location code (`B · L4 · P5`), status pill with a word (OUT / CRITICAL · n / LOW · n), and an inline − qty + stepper strip on every card. Live search; tap **low / out** in the glass stat bar to filter to low stock. Tap a card to open the item. |
 | 02 | **NFC Tap-to-Open Item Card** | Item sheet leading with a big white photo plate, a loud location chip (`B · L4 · P5`), a **Show on shelf** button (jumps to the Shelf Map and blinks the item's cell), and a sticky Done footer. Giant neutral + / − steppers; ±5 is **hold-to-apply** (400ms) so a gloved slip can't 5× an edit; tap the quantity numeral for an exact-count entry. Sticker taps via `?item=<id>` — or NFC Live — open the item directly. Includes a copyable sticker link. |
 | 03 | **Warehouse / Shelf Map** | Concept D elevation: each shelf drawn as a long elevation — levels 4 (top) → 1 (floor) × positions 1–6. Each cell shows its position and total units, colored by its **worst** item (with a ▲/✕ glyph, never color alone). Tap a cell to open its location sheet: items with inline steppers, **Count this location** (Count Mode), and **Add item here** (shelf, position and level pre-filled). **Show on shelf** from any item jumps here and blinks that item's cell. |
-| 16 | **Offline-First Field Mode** (Settings → Sync Queue) | Online/offline status, a pending-changes queue in localStorage, and “Sync now”. Every edit made offline queues instead of failing; qty edits coalesce per item, and the queue auto-flushes on reconnect/foreground when connected to AppSheet. |
+| 16 | **Offline-First Field Mode** (Settings → Sync Queue) | Online/offline status, a pending-changes queue in localStorage, and “Sync now”. Every edit made offline queues instead of failing; qty edits coalesce per item, and the queue auto-flushes on reconnect/foreground when connected to a live backend. |
 | 19 | **Supplier Hub** | Supplier cards with item count, lead time, and contact. Tap a supplier to list its items. |
 | 22 | **Quick Add New Item** | Fast form (name, qty, bin, supplier, cost, photo-icon picker). The icon auto-assigns from the name (tire, light, battery, axle…) unless a category is picked manually. A duplicate name offers **“Receive this instead”** instead of creating a twin. On save it shows the new item's NFC sticker link, a copy button, a Web NFC “write to sticker” button where supported, and iPhone NFC Tools instructions. |
 | 24 | **AppSheet Sync Health & Settings** | Demo/Live mode, last sync, row count, pending queue count, last error, and the AppSheet connection settings with a real “Test connection” (AppSheet `Find` action). |
@@ -105,9 +105,14 @@ item / bin / count sheets that open over the current tab.
   key is stored **only in that device's localStorage** — never in code,
   never in this repo. In Live mode the sync queue flushes to the AppSheet
   API (`Add`/`Edit` actions) and connection tests run a real `Find`.
+- **Google Sheet mode (alternative):** in **Settings → Backend**, choose
+  **Google Sheet** to sync straight to the backend spreadsheet through a
+  small Apps Script bridge (`apps-script.gs`) — rows are pulled into the
+  app and queued edits write back to the sheet, with no AppSheet API
+  access needed. Setup: **SETUP.md, Option B**.
 
 Expected table columns (rename/map in AppSheet — see SETUP.md):
-`Id, Name, SKU, Qty, Bin, Level, Supplier, Cost` (plus optional `Icon`, `NFC ID`).
+`Id, Name, SKU, Qty, Bin, Level, Supplier, Cost` (plus optional `Icon`, `NFC ID`, `Photo`).
 
 ## NFC sticker guide
 
@@ -148,7 +153,9 @@ electric-trailer/
 ├── index.html            # All 6 tab views + item detail overlay
 ├── styles.css            # Mobile-first styling, bottom tab bar
 ├── app.js                # Screen logic, NFC, queue UI
-├── appsheet.js           # Data layer: demo data, localStorage, queue, AppSheet API
+├── appsheet.js           # Data layer: demo data, localStorage, queue, backend dispatch
+├── sheets.js             # Google Sheet provider (Apps Script bridge)
+├── apps-script.gs        # Bridge script to paste into the sheet (SETUP Option B)
 ├── sw.js                 # Service worker — caches the app shell for offline use
 ├── manifest.webmanifest  # PWA manifest (installable, “Add to Home Screen”)
 ├── README.md             # This file

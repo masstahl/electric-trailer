@@ -97,6 +97,15 @@
     return EMOJI_TO_KEY[stripped] || 'box';
   }
   function iconFor(item) { return svgIcon(iconKeyFor(item)); }
+  /* Item plate content: the item's real photo (from the backend's Photo
+   * column, when present) laid over the angular icon. If the image
+   * fails to load — hotlink protection, offline, bad URL — it hides
+   * itself and the icon underneath shows through. */
+  function plateImg(item) {
+    if (!item || !item.photo) return '';
+    return '<img class="plate-img" src="' + esc(item.photo) + '" alt="" loading="lazy" onerror="this.style.display=\'none\'">';
+  }
+  function iconPlate(item) { return plateImg(item) + iconFor(item); }
   var currentItemId = null;
   var selectedBin = null;
   var currentBin = null;
@@ -206,7 +215,7 @@
     var pending = D.getQueue().filter(function (c) { return !c.synced; }).length;
     var live = D.isLive();
     var mb = $('modeBadge');
-    mb.textContent = live ? 'Live · AppSheet' : 'Demo mode';
+    mb.textContent = live ? (D.activeBackend() === 'sheet' ? 'Live · Google Sheet' : 'Live · AppSheet') : 'Demo mode';
     mb.className = 'badge ' + (live ? 'badge-live' : 'badge-demo');
     var nb = $('netBadge');
     nb.textContent = navigator.onLine ? '● Online' : '● Offline';
@@ -381,7 +390,7 @@
         ? '<span class="qty-pill qty-slot" aria-hidden="true">' + qtyLabel(i.qty) + '</span>'
         : '<span class="qty-pill ' + qtyClass(i.qty) + '">' + qtyLabel(i.qty) + '</span>';
       return '<div class="photo-card st-' + st + '" data-card="' + esc(i.id) + '" role="button" tabindex="0" aria-label="' + esc(i.name) + ', ' + qtyLabel(i.qty) + '">' +
-        '<span class="pc-icon">' + iconFor(i) + '</span>' +
+        '<span class="pc-icon">' + iconPlate(i) + '</span>' +
         '<div class="pc-name">' + esc(i.name) + '</div>' +
         '<div class="pc-loc">' + locShort(i) + '</div>' +
         '<div class="pc-bin">' + esc(i.sku) + '</div>' +
@@ -437,7 +446,7 @@
     var item = D.getItem(id);
     if (!item) { toast('Item not found: ' + id); return; }
     currentItemId = id;
-    $('dIcon').innerHTML = iconFor(item);
+    $('dIcon').innerHTML = iconPlate(item);
     $('dName').textContent = item.name;
     $('dMeta').textContent = item.sku + ' · ' + item.supplier;
     $('dBinChip').textContent = locShort(item);
@@ -795,7 +804,7 @@
     });
   });
   function itemRow(i) {
-    return '<button class="list-item" data-open="' + esc(i.id) + '"><span class="li-icon">' + iconFor(i) + '</span>' +
+    return '<button class="list-item" data-open="' + esc(i.id) + '"><span class="li-icon">' + iconPlate(i) + '</span>' +
       '<span class="li-main"><span class="li-name">' + esc(i.name) + '</span><br><span class="li-sub">' + locShort(i) + ' · ' + esc(i.sku) + ' · ' + money(i.cost) + '</span></span>' +
       '<span class="li-qty ' + qtyClass(i.qty) + '">' + i.qty + '</span></button>';
   }
@@ -818,7 +827,7 @@
       : '<span class="qty-pill ' + ('qty-' + worst) + '">' + (worst === 'ok' ? 'STOCKED' : qtyLabel(list.reduce(function (m, i) { return STATUS_RANK[statusOf(i.qty)] < STATUS_RANK[statusOf(m.qty)] ? i : m; }).qty)) + '</span>';
     $('bMeta').innerHTML = locLongParts(currentBin, currentLevel) + ' · ' + list.length + ' item(s) · ' + total + ' units &nbsp;' + statusHtml;
     $('binItems').innerHTML = list.length ? list.map(function (i) {
-      return '<div class="list-item row-item"><span class="li-icon">' + iconFor(i) + '</span>' +
+      return '<div class="list-item row-item"><span class="li-icon">' + iconPlate(i) + '</span>' +
         '<button type="button" class="li-main row-open" data-open="' + esc(i.id) + '"><span class="li-name">' + esc(i.name) + '</span><br>' +
         '<span class="li-sub">' + esc(i.sku) + ' · ' + esc(i.supplier) + '</span></button>' +
         '<span class="row-stepper">' +
@@ -883,7 +892,7 @@
     var item = D.getItem(en.id);
     if (!item) return;
     $('cProgress').textContent = (countSession.idx + 1) + ' of ' + countSession.entries.length + ' · ' + locShort(item);
-    $('cHero').innerHTML = iconFor(item);
+    $('cHero').innerHTML = iconPlate(item);
     $('cName').textContent = item.name;
     $('cMeta').textContent = locShort(item) + ' · system qty ' + en.system;
     $('cQty').textContent = en.counted;
@@ -1138,7 +1147,7 @@
     });
   });
   /* Auto-flush: when the connection returns or the app comes back to the
-   * foreground, quietly push the queue if we're connected to AppSheet. */
+   * foreground, quietly push the queue if a live backend is connected. */
   function maybeAutoFlush() {
     if (!navigator.onLine || !D.isLive()) return;
     if (!D.getQueue().some(function (c) { return !c.synced; })) return;
@@ -1158,7 +1167,20 @@
     $('setAppId').value = s.appId;
     $('setTable').value = s.table;
     if (document.activeElement !== $('setAccessKey') && s.accessKey) $('setAccessKey').value = s.accessKey;
-    $('healthMode').textContent = D.isLive() ? 'Live · AppSheet API' : 'Demo (local data)';
+    var backend = D.getBackend();
+    var active = D.activeBackend();
+    document.querySelectorAll('input[name="backendMode"]').forEach(function (r) {
+      r.checked = (r.value === backend);
+    });
+    $('appsheetBlock').classList.toggle('hidden', backend !== 'appsheet');
+    $('sheetBlock').classList.toggle('hidden', backend !== 'sheet');
+    if (window.ETSheets) {
+      var sc = window.ETSheets.getConfig();
+      if (document.activeElement !== $('setSheetUrl')) $('setSheetUrl').value = sc.url;
+      if (document.activeElement !== $('setSheetToken') && sc.token) $('setSheetToken').value = sc.token;
+    }
+    $('healthMode').textContent = active === 'sheet' ? 'Live · Google Sheet' : (active === 'appsheet' ? 'Live · AppSheet API' : 'Demo (local data)');
+    $('healthSheetRows').textContent = D.getMeta().sheetRows == null ? '–' : D.getMeta().sheetRows;
     $('healthRows').textContent = D.getItems().length;
     $('healthQueue').textContent = D.getQueue().filter(function (c) { return !c.synced; }).length + ' pending';
     $('healthLastSync').textContent = fmtTime(D.getMeta().lastSync);
@@ -1180,6 +1202,44 @@
       renderSync();
     });
   });
+
+  /* ---------- Backend chooser: Demo / AppSheet / Google Sheet ---------- */
+  function importSheetRows(announce) {
+    D.refreshFromBackend().then(function (r) {
+      if (r && r.ok) {
+        renderHome(); renderSync(); refreshChrome();
+        if (announce) toast(r.message);
+      }
+    });
+  }
+  document.querySelectorAll('input[name="backendMode"]').forEach(function (r) {
+    r.addEventListener('change', function () {
+      D.setBackend(r.value);
+      toast(r.value === 'sheet' ? 'Backend: Google Sheet' : (r.value === 'appsheet' ? 'Backend: AppSheet' : 'Backend: Demo (local data)'));
+      renderSync(); refreshChrome();
+      if (r.value === 'sheet') importSheetRows(false);
+    });
+  });
+  function saveSheetConfigFromForm() {
+    if (!window.ETSheets) return;
+    window.ETSheets.saveConfig({ url: $('setSheetUrl').value, token: $('setSheetToken').value });
+  }
+  $('saveSheetBtn').addEventListener('click', function () {
+    saveSheetConfigFromForm();
+    toast('Sheet settings saved on this device');
+    renderSync(); refreshChrome();
+    importSheetRows(false);
+  });
+  $('testSheetBtn').addEventListener('click', function () {
+    saveSheetConfigFromForm();
+    var out = $('sheetTestResult');
+    out.textContent = 'Testing…'; out.className = 'result';
+    D.testConnection().then(function (r) {
+      out.textContent = r.message; out.className = 'result ' + (r.ok ? 'ok' : 'err');
+      if (r.ok) { renderHome(); refreshChrome(); }
+      renderSync();
+    });
+  });
   $('resetDemoBtn').addEventListener('click', function () {
     if (confirm('Reset all local data back to the demo inventory?')) {
       D.resetDemo(); selectedBin = null; selectedSupplier = null;
@@ -1194,6 +1254,10 @@
   renderHome();
   renderSync();
   refreshChrome();
+  // Sheet mode: pull the sheet's rows so the app opens on real data.
+  D.refreshFromBackend().then(function (r) {
+    if (r && r.ok) { renderHome(); renderSync(); refreshChrome(); }
+  });
   fitSticky();
   openFromUrl();
 })();

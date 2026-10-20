@@ -198,11 +198,22 @@
     </div>
     <div class="card stats-card">
       <div class="kv"><span>Connection mode</span><strong id="healthMode">Demo</strong></div>
+      <div class="kv"><span>Google Sheet rows fetched</span><strong id="healthSheetRows">–</strong></div>
       <div class="kv"><span>Item rows on this device</span><strong id="healthRows">–</strong></div>
       <div class="kv"><span>Pending queue</span><strong id="healthQueue">–</strong></div>
       <div class="kv"><span>Last sync</span><strong id="healthLastSync">never</strong></div>
       <div class="kv"><span>Last error</span><strong id="healthError" class="error-text">none</strong></div>
     </div>
+    <div class="card">
+      <h3 style="margin-top:0">Backend</h3>
+      <p class="muted small">Where this device syncs its inventory data. <strong>Demo</strong> keeps everything on this device only.</p>
+      <div role="radiogroup" aria-label="Backend">
+        <label class="backend-opt"><input type="radio" name="backendMode" value="demo"> Demo <span>— sample data, local only</span></label>
+        <label class="backend-opt"><input type="radio" name="backendMode" value="appsheet"> AppSheet <span>— via the AppSheet API</span></label>
+        <label class="backend-opt"><input type="radio" name="backendMode" value="sheet"> Google Sheet <span>— direct to the spreadsheet, no AppSheet</span></label>
+      </div>
+    </div>
+    <div id="appsheetBlock">
     <form id="settingsForm" class="card form">
       <label>AppSheet App ID<input id="setAppId" value="bd77482b-d437-4804-a3ef-fc2815feff2e"></label>
       <label>Table name<input id="setTable" value="Inventory"></label>
@@ -212,6 +223,15 @@
       <button type="button" id="testConnBtn" class="btn">Test connection</button>
       <p id="testResult" class="result"></p>
     </form>
+    </div>
+    <div id="sheetBlock" class="card form hidden">
+      <label>Sheet Web App URL<input id="setSheetUrl" placeholder="https://script.google.com/macros/s/…/exec" autocomplete="off"></label>
+      <label>Token<input id="setSheetToken" type="password" placeholder="Same TOKEN as in apps-script.gs" autocomplete="off"></label>
+      <p class="muted small">The URL and token are stored <strong>only in this device's browser</strong>. The token is a shared secret — anyone with the URL + token can read and write this inventory, so keep both private and never post them publicly. Setup steps: <a href="https://github.com/masstahl/electric-trailer/blob/main/SETUP.md" target="_blank" rel="noopener">SETUP.md → Option B</a>.</p>
+      <button type="button" id="saveSheetBtn" class="btn btn-primary">Save sheet settings</button>
+      <button type="button" id="testSheetBtn" class="btn">Test connection</button>
+      <p id="sheetTestResult" class="result"></p>
+    </div>
     <div class="card">
       <h3>App status note</h3>
       <p class="muted">This AppSheet app is currently in <strong>test mode / blocked</strong> (“plan upgrade needed”). Live sync will fail until a deployment check has been run in AppSheet and the account plan enables the API. Until then, Demo mode works fully offline. See <strong>SETUP.md</strong> in the repo.</p>
@@ -319,6 +339,7 @@
 </nav>
 
 <script src="appsheet.js"></script>
+<script src="sheets.js"></script>
 <script src="app.js"></script>
 <script>
 if ('serviceWorker' in navigator) {

@@ -1,0 +1,136 @@
+/* sheets.js — Google Sheet provider for Electric Trailer (window.ETSheets).
+ *
+ * Alternative backend to the AppSheet API: talks directly to the
+ * inventory Google Sheet through a small Apps Script bridge installed
+ * in the sheet itself (apps-script.gs in this repo — see SETUP.md,
+ * "Option B"). The bridge URL + token are stored ONLY in this device's
+ * localStorage ('et-sheet-config') — never in code, never in the repo.
+ *
+ * The token is a shared secret: anyone with the URL + token can read
+ * and write the inventory. Keep both private.
+ */
+(function () {
+  'use strict';
+
+  var LS_KEY = 'et-sheet-config';
+
+  function getConfig() {
+    var c = {};
+    try { c = JSON.parse(localStorage.getItem(LS_KEY)) || {}; } catch (e) { /* blocked/corrupt */ }
+    return { url: c.url || '', token: c.token || '' };
+  }
+  function saveConfig(cfg) {
+    try {
+      localStorage.setItem(LS_KEY, JSON.stringify({
+        url: (cfg && cfg.url || '').trim(),
+        token: (cfg && cfg.token || '').trim()
+      }));
+    } catch (e) { /* storage blocked */ }
+  }
+  function isConfigured() {
+    var c = getConfig();
+    return !!(c.url && c.token);
+  }
+
+  /* Case-insensitive header lookup over a bridge row object. */
+  function pick(row, names) {
+    var keys = Object.keys(row || {});
+    for (var n = 0; n < names.length; n++) {
+      for (var k = 0; k < keys.length; k++) {
+        if (keys[k].trim().toLowerCase() === names[n]) return row[keys[k]];
+      }
+    }
+    return undefined;
+  }
+  function num(v, dflt) {
+    var n = Number(v);
+    return isFinite(n) ? n : dflt;
+  }
+  function str(v) { return v == null ? '' : String(v).trim(); }
+
+  /* Bridge row (keyed by the sheet's header names) → the same item
+   * shape the rest of the app uses. */
+  function normalizeRow(row, idx, usedIds) {
+    var name = str(pick(row, ['name']));
+    var id = str(pick(row, ['id']));
+    if (!id) {
+      id = (name || 'item').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') || 'item';
+      id = id + '-r' + (idx + 2);   // no Id in the sheet — synthesize one from the row
+    }
+    if (usedIds[id]) { var base = id, n = 2; while (usedIds[base + '-' + n]) n++; id = base + '-' + n; }
+    usedIds[id] = true;
+    var level = num(pick(row, ['level']), 2);
+    level = Math.min(4, Math.max(1, Math.floor(level) || 2));
+    return {
+      id: id,
+      name: name || id,
+      sku: str(pick(row, ['sku'])),
+      qty: Math.max(0, Math.floor(num(pick(row, ['qty']), 0))),
+      bin: str(pick(row, ['bin'])) || 'A1',
+      level: level,
+      supplier: str(pick(row, ['supplier'])),
+      cost: num(pick(row, ['cost', 'price']), 0),
+      icon: str(pick(row, ['icon'])) || 'box',
+      nfcId: str(pick(row, ['nfc id', 'nfcid', 'nfc'])),
+      photo: str(pick(row, ['photo', 'image', 'photo url', 'image url'])),
+      updated: str(pick(row, ['updated', 'last updated']))
+    };
+  }
+
+  function notConfigured() {
+    return { ok: false, mode: 'sheet', rows: 0, items: [],
+             message: 'Google Sheet is not configured — paste the Web App URL and the token in Settings → Backend → Google Sheet.' };
+  }
+
+  function fetchRows() {
+    if (!isConfigured()) return Promise.resolve(notConfigured());
+    var c = getConfig();
+    var url = c.url + (c.url.indexOf('?') === -1 ? '?' : '&') +
+              'action=rows&token=' + encodeURIComponent(c.token);
+    return fetch(url).then(function (res) { return res.text(); }).then(function (text) {
+      var body = null;
+      try { body = JSON.parse(text); } catch (e) { /* non-JSON body */ }
+      if (!body) throw new Error('Sheet bridge returned a non-JSON response — check the Web App URL (it should end in /exec) and that the deployment is live.');
+      if (body.ok === false) throw new Error(body.error || 'Sheet bridge error');
+      var rawRows = Array.isArray(body) ? body : (body.rows || []);
+      var usedIds = {};
+      var items = rawRows.map(function (r, i) { return normalizeRow(r, i, usedIds); });
+      return { ok: true, mode: 'sheet', rows: rawRows.length, items: items,
+               message: 'Connected. Google Sheet returned ' + rawRows.length + ' row(s).' };
+    }).catch(function (err) {
+      return { ok: false, mode: 'sheet', rows: 0, items: [], message: String((err && err.message) || err) };
+    });
+  }
+
+  /* ops: [{ id, kind: 'qty'|'edit'|'add', fields: { Qty: n, … } }]
+   * Sent as text/plain on purpose: Apps Script web apps don't answer
+   * CORS preflight (OPTIONS), and a "simple" content type avoids one. */
+  function flushOps(ops) {
+    if (!isConfigured()) return Promise.resolve({ ok: false, results: [], message: notConfigured().message });
+    var c = getConfig();
+    return fetch(c.url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+      body: JSON.stringify({ token: c.token, ops: ops || [] })
+    }).then(function (res) { return res.text(); }).then(function (text) {
+      var body = null;
+      try { body = JSON.parse(text); } catch (e) { /* non-JSON body */ }
+      if (!body) throw new Error('Sheet bridge returned a non-JSON response — check the Web App URL (it should end in /exec) and that the deployment is live.');
+      if (body.ok === false && !body.results) throw new Error(body.error || 'Sheet bridge error');
+      return { ok: true, results: body.results || [] };
+    }).catch(function (err) {
+      return { ok: false, results: [], message: String((err && err.message) || err) };
+    });
+  }
+
+  function testConnection() {
+    return fetchRows().then(function (r) {
+      return { ok: r.ok, mode: 'sheet', rows: r.rows, message: r.message };
+    });
+  }
+
+  window.ETSheets = {
+    getConfig: getConfig, saveConfig: saveConfig, isConfigured: isConfigured,
+    fetchRows: fetchRows, flushOps: flushOps, testConnection: testConnection
+  };
+})();
