@@ -1435,7 +1435,6 @@
     if (window.ETSheets) {
       var sc = window.ETSheets.getConfig();
       if (document.activeElement !== $('setSheetUrl')) $('setSheetUrl').value = sc.url;
-      if (document.activeElement !== $('setSheetToken') && sc.token) $('setSheetToken').value = sc.token;
     }
     $('healthMode').textContent = active === 'sheet' ? 'Live · Google Sheet' : (active === 'appsheet' ? 'Live · AppSheet API' : 'Demo (local data)');
     $('healthSheetRows').textContent = D.getMeta().sheetRows == null ? '–' : D.getMeta().sheetRows;
@@ -1478,20 +1477,12 @@
       if (r.value === 'sheet') importSheetRows(false);
     });
   });
-  function saveSheetConfigFromForm() {
-    if (!window.ETSheets) return;
-    window.ETSheets.saveConfig({ url: $('setSheetUrl').value, token: $('setSheetToken').value });
-  }
-  $('saveSheetBtn').addEventListener('click', function () {
-    saveSheetConfigFromForm();
-    toast('Sheet settings saved on this device');
-    renderSync(); refreshChrome();
-    importSheetRows(false);
-  });
-  $('testSheetBtn').addEventListener('click', function () {
-    saveSheetConfigFromForm();
+  /* One Connect button: saves the pasted link on this device, then
+   * tests it — in Sheet mode testConnection also imports the rows. */
+  $('connectSheetBtn').addEventListener('click', function () {
+    if (window.ETSheets) window.ETSheets.saveConfig({ url: $('setSheetUrl').value });
     var out = $('sheetTestResult');
-    out.textContent = 'Testing…'; out.className = 'result';
+    out.textContent = 'Connecting…'; out.className = 'result';
     D.testConnection().then(function (r) {
       out.textContent = r.message; out.className = 'result ' + (r.ok ? 'ok' : 'err');
       if (r.ok) { renderHome(); refreshChrome(); }

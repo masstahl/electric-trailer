@@ -3,11 +3,12 @@
  * Alternative backend to the AppSheet API: talks directly to the
  * inventory Google Sheet through a small Apps Script bridge installed
  * in the sheet itself (apps-script.gs in this repo — see SETUP.md,
- * "Option B"). The bridge URL + token are stored ONLY in this device's
+ * "Option B"). The bridge link is stored ONLY in this device's
  * localStorage ('et-sheet-config') — never in code, never in the repo.
  *
- * The token is a shared secret: anyone with the URL + token can read
- * and write the inventory. Keep both private.
+ * No token is needed: the link alone connects. (A token saved by an
+ * earlier setup is still sent along silently, for bridges that have
+ * the optional TOKEN switched on in apps-script.gs.)
  */
 (function () {
   'use strict';
@@ -21,15 +22,20 @@
   }
   function saveConfig(cfg) {
     try {
-      localStorage.setItem(LS_KEY, JSON.stringify({
-        url: (cfg && cfg.url || '').trim(),
-        token: (cfg && cfg.token || '').trim()
-      }));
+      var out = { url: (cfg && cfg.url || '').trim() };
+      /* A token is only ever kept if one is passed in explicitly or a
+       * legacy config already holds one — the Settings UI sends just
+       * the URL, and must not silently wipe a working legacy token. */
+      var token = '';
+      if (cfg && Object.prototype.hasOwnProperty.call(cfg, 'token')) token = String(cfg.token || '').trim();
+      else token = getConfig().token;
+      if (token) out.token = token;
+      localStorage.setItem(LS_KEY, JSON.stringify(out));
     } catch (e) { /* storage blocked */ }
   }
   function isConfigured() {
     var c = getConfig();
-    return !!(c.url && c.token);
+    return !!c.url;
   }
 
   /* Case-insensitive header lookup over a bridge row object. */
@@ -80,14 +86,14 @@
 
   function notConfigured() {
     return { ok: false, mode: 'sheet', rows: 0, items: [],
-             message: 'Google Sheet is not configured — paste the Web App URL and the token in Settings → Backend → Google Sheet.' };
+             message: 'Google Sheet is not connected — paste the Sheet link (the Web app link from Deploy, ending in /exec) in Settings → Backend → Google Sheet.' };
   }
 
   function fetchRows() {
     if (!isConfigured()) return Promise.resolve(notConfigured());
     var c = getConfig();
-    var url = c.url + (c.url.indexOf('?') === -1 ? '?' : '&') +
-              'action=rows&token=' + encodeURIComponent(c.token);
+    var url = c.url + (c.url.indexOf('?') === -1 ? '?' : '&') + 'action=rows';
+    if (c.token) url += '&token=' + encodeURIComponent(c.token);  // legacy setups only
     return fetch(url).then(function (res) { return res.text(); }).then(function (text) {
       var body = null;
       try { body = JSON.parse(text); } catch (e) { /* non-JSON body */ }
@@ -109,10 +115,12 @@
   function flushOps(ops) {
     if (!isConfigured()) return Promise.resolve({ ok: false, results: [], message: notConfigured().message });
     var c = getConfig();
+    var payload = { ops: ops || [] };
+    if (c.token) payload.token = c.token;  // legacy setups only
     return fetch(c.url, {
       method: 'POST',
       headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-      body: JSON.stringify({ token: c.token, ops: ops || [] })
+      body: JSON.stringify(payload)
     }).then(function (res) { return res.text(); }).then(function (text) {
       var body = null;
       try { body = JSON.parse(text); } catch (e) { /* non-JSON body */ }

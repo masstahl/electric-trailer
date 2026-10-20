@@ -44,8 +44,8 @@ steps 2–4 and continue at step 5.
 >   (an iPad in Safari can work via **aA → Request Desktop Website**).
 > - If the sheet opens as **“View only”**, you don't have Editor
 >   access yet: ask the sheet's owner to share it to you as **Editor**,
->   or have the owner do steps 1–4 themselves and just hand you the
->   Web app URL + TOKEN from step 4 — that's all the app needs.
+>   or have the owner (or any Editor) do steps 1–4 and just hand you
+>   the Web app link from step 4 — that's all the app needs.
 > - Open the spreadsheet itself from Drive / sheets.google.com. The
 >   preview inside AppSheet never shows the Extensions menu.
 > - The menu lives in the top row: File · Edit · View · Insert ·
@@ -55,34 +55,56 @@ steps 2–4 and continue at step 5.
 1. Open the inventory **Google Sheet** in a desktop browser.
 2. **Extensions → Apps Script.** Delete any default code in the editor,
    then paste in the whole contents of **`apps-script.gs`** from this
-   repo.
-3. At the top of the pasted code, set **`TOKEN`** to a long random
-   string (20+ characters — letters, numbers, dashes). If the inventory
-   tab is not the first tab in the sheet, also set **`SHEET_NAME`** to
-   its exact tab name. Save the project.
-4. **Deploy → New deployment.** Type: **Web app**.
+   repo. Nothing in the code needs editing — unless the inventory tab
+   is not the first tab in the sheet, in which case set **`SHEET_NAME`**
+   near the top to that tab's exact name. Save the project.
+3. **Deploy → New deployment.** Type: **Web app**.
    - **Execute as:** Me
-   - **Who has access:** Anyone with the link
+   - **Who has access:** Anyone
    Click **Deploy**, approve the authorization prompts (the script
-   needs permission to read/write its own spreadsheet), and copy the
-   **Web app URL** — it ends in `/exec`.
-5. In the app on your phone: **Settings → Backend → Google Sheet**.
-   Paste the Web app URL into **Sheet Web App URL** and the same
-   **TOKEN** into **Token**.
-6. Tap **Save sheet settings**, then **Test connection**. Success
-   reports how many rows the sheet returned — those rows are imported
-   and the header badge switches to “Live · Google Sheet”. Quantity
-   edits and new items now write straight back to the sheet.
-7. Repeat step 5–6 on each phone that needs live access (settings are
-   per-device by design).
+   needs permission to read/write its own spreadsheet — see the next
+   section if Google warns you), and copy the **Web app URL** — it
+   ends in `/exec`.
+4. In the app on your phone: **Settings → Backend → Google Sheet**.
+   Paste the link into **Sheet link**.
+5. Tap **Connect**. Success reports how many rows the sheet returned —
+   those rows are imported and the header badge switches to
+   “Live · Google Sheet”. Quantity edits and new items now write
+   straight back to the sheet.
+6. Repeat steps 4–5 on each phone that needs live access (the link is
+   saved per-device by design). Anyone who has the link can connect a
+   device the same way.
 
-⚠️ **Token security:** the token is a **shared secret** — anyone who
-has the Web App URL *and* the token can read **and write** this
-inventory. Keep both private: don't post them in public places, shared
-notes, or screenshots. The bridge script runs as the sheet owner's
-Google account and only ever touches its own spreadsheet. If the token
-ever leaks, change `TOKEN` in the script, re-deploy (or edit the
-deployment), and update the token in the app on each device.
+### When Google says “this app isn't verified” / “isn't safe”
+
+During step 3, Google shows a warning like **“Google hasn't verified
+this app”** or **“this app may be unsafe.”** This is expected: Google
+shows it for *every* personal Apps Script that hasn't gone through
+Google's review process, which is normal for a script you just pasted
+into your own sheet. It appears only during this one-time
+authorization, not when using the app afterwards. To continue:
+
+1. On the warning screen, click **Advanced** (bottom left).
+2. Click **“Go to <your project name>”** (the link that appears).
+3. Click **Allow**.
+
+If instead you see **“This app is blocked”** and there is no Advanced
+link, the browser is usually signed into several Google accounts at
+once and Google refuses to authorize. Sign out of the other accounts
+— or open a private/incognito window, sign in with only the sheet
+owner's account, and redo the Deploy step there.
+
+**About the link:** with no token (the default), anyone who has the
+Web app link can read **and write** this inventory through the bridge.
+That's fine as long as the link stays among the people using it —
+treat it like a house key, not a public web page. The bridge script
+runs as the sheet owner's Google account and only ever touches its
+own spreadsheet. If the link ever needs to stop working, delete the
+deployment (Apps Script → Deploy → Manage deployments) or re-deploy
+for a fresh link. A shared-secret token is available if that ever
+changes: set `TOKEN` in `apps-script.gs`, re-deploy, and add the same
+value as `token` in the app's saved sheet config on each device — the
+bridge then rejects requests that don't carry it.
 
 Expected sheet columns are the same as step 5 (including the optional
 **`Photo`** column — an image URL per item; the app shows it on the
@@ -191,9 +213,14 @@ both platforms, and the Android listener reads the URL records too.
 - **“Test connection” fails with a plan/deployment error** → step 2 isn't
   finished; no front-end setting can bypass it. (Or switch to Option B
   and connect the Google Sheet directly.)
-- **Sheet mode says “Bad token”** → the TOKEN in `apps-script.gs` and
-  the Token saved in the app must match exactly, and the script must
-  have been (re)deployed after the token was set.
+- **Sheet mode says “Bad token”** → only possible when the optional
+  `TOKEN` is set in `apps-script.gs`: the `token` in the app's saved
+  sheet config must match it exactly, and the script must have been
+  (re)deployed after the token was set.
+- **Connect fails / the link opens a Google sign-in page** → the
+  deployment's **Who has access** isn't set to **Anyone**. In Apps
+  Script: Deploy → Manage deployments → edit → set it to **Anyone**
+  and save (redeploy if asked).
 - **App opens but shows demo items** → no Access Key saved on this device
   yet (Demo mode). Keys don't sync between phones on purpose.
 - **Changes made offline didn't appear in AppSheet** → open the **Queue**

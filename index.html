@@ -249,11 +249,9 @@
     </form>
     </div>
     <div id="sheetBlock" class="card form hidden">
-      <label>Sheet Web App URL<input id="setSheetUrl" placeholder="https://script.google.com/macros/s/…/exec" autocomplete="off"></label>
-      <label>Token<input id="setSheetToken" type="password" placeholder="Same TOKEN as in apps-script.gs" autocomplete="off"></label>
-      <p class="muted small">The URL and token are stored <strong>only in this device's browser</strong>. The token is a shared secret — anyone with the URL + token can read and write this inventory, so keep both private and never post them publicly. Setup steps: <a href="https://github.com/masstahl/electric-trailer/blob/main/SETUP.md" target="_blank" rel="noopener">SETUP.md → Option B</a>.</p>
-      <button type="button" id="saveSheetBtn" class="btn btn-primary">Save sheet settings</button>
-      <button type="button" id="testSheetBtn" class="btn">Test connection</button>
+      <label>Sheet link<input id="setSheetUrl" placeholder="https://script.google.com/macros/s/…/exec" autocomplete="off"></label>
+      <p class="muted small">Paste the Web app link from Deploy (ends in /exec) — that's all it takes. The link is stored <strong>only in this device's browser</strong>. Anyone who has the link can read and write this inventory, so keep it among the people using it. Setup steps: <a href="https://github.com/masstahl/electric-trailer/blob/main/SETUP.md" target="_blank" rel="noopener">SETUP.md → Option B</a>.</p>
+      <button type="button" id="connectSheetBtn" class="btn btn-primary">Connect</button>
       <p id="sheetTestResult" class="result"></p>
     </div>
     <div class="card">

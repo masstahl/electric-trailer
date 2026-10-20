@@ -3,27 +3,32 @@
  * HOW TO INSTALL (full walkthrough: SETUP.md, "Option B"):
  *   1. Open the inventory Google Sheet → Extensions → Apps Script.
  *   2. Delete the default code and paste this whole file in.
- *   3. Set TOKEN below to a long random string (keep it private), and
- *      SHEET_NAME if the inventory tab isn't the first sheet.
+ *   3. Nothing to configure. (Optionally set SHEET_NAME below if the
+ *      inventory tab isn't the first sheet.)
  *   4. Deploy → New deployment → Web app: Execute as "Me",
- *      Who has access: "Anyone with the link". Copy the /exec URL.
- *   5. In the app: Settings → Backend → Google Sheet → paste the URL
- *      and the same TOKEN → Test connection.
+ *      Who has access: "Anyone". Copy the /exec URL.
+ *   5. In the app: Settings → Backend → Google Sheet → paste the link
+ *      into "Sheet link" → Connect.
  *
  * API (JSON in, JSON out):
- *   GET  ?action=rows&token=...   → { ok:true, rows:[ {Header: value, …} ] }
- *   POST { token, ops:[…] }       → { ok:true, results:[ {id, ok, error?} ] }
+ *   GET  ?action=rows             → { ok:true, rows:[ {Header: value, …} ] }
+ *   POST { ops:[…] }              → { ok:true, results:[ {id, ok, error?} ] }
  * Each op: { id, kind: 'qty' | 'edit' | 'add', fields: { Qty: 12, … } }.
  * 'qty'/'edit' find the row whose Id column matches op.id and apply the
  * given fields (by header name); 'add' appends a full row. If an
  * 'Updated' column exists it is stamped with the current time per write.
  *
- * SECURITY: the token is a shared secret — anyone with the Web App URL
- * and the token can read and write this inventory. Keep both private.
+ * TOKEN is optional and OFF by default — leave it blank unless you
+ * want a shared secret. With it blank, anyone who has the deployed
+ * link can read and write this sheet's inventory through the bridge,
+ * so keep the link among the people using it. To turn the token on,
+ * set TOKEN here to a long random string and add the same value as
+ * "token" in the app's saved sheet config on each device; requests
+ * without a matching token are then rejected.
  * The script runs as the sheet owner's account.
  */
 
-const TOKEN = 'CHANGE_ME';   // ← replace with a long random string
+const TOKEN = '';            // ← optional shared secret; blank = no token check
 const SHEET_NAME = '';       // ← blank = first sheet tab; or the exact tab name
 
 /* ---------------- helpers ---------------- */
@@ -34,8 +39,11 @@ function jsonOut_(obj) {
     .setMimeType(ContentService.MimeType.JSON);
 }
 
+/* Token check is skipped entirely while TOKEN is blank (the default).
+ * When TOKEN is set, the request must carry the same token. */
 function tokenOk_(token) {
-  return !!TOKEN && TOKEN !== 'CHANGE_ME' && !!token && String(token) === TOKEN;
+  if (!TOKEN) return true;
+  return !!token && String(token) === TOKEN;
 }
 
 function inventorySheet_() {
