@@ -394,6 +394,45 @@ html[data-theme="electric"] body.folders-bg{
 }
 .sup-x:active{transform:scale(.94)}
 
+/* ---------- Supplier Organize: suggested merges, all-list, picker ---------- */
+.org-h{margin:1rem 0 .5rem;font-size:.95rem}
+.org-group{
+  display:flex;gap:.7rem;align-items:flex-start;margin-bottom:.55rem;
+  background:var(--surface2);border:var(--bw) solid var(--border);border-radius:16px;padding:.7rem .85rem;
+}
+.org-group-main{flex:1;min-width:0}
+.org-group-title{font-weight:700}
+.org-variants{display:flex;flex-direction:column;gap:.18rem;margin-top:.3rem}
+.org-variant{font-size:.9rem;overflow-wrap:anywhere}
+.org-merge-btn{flex:none;min-height:44px}
+.org-row{cursor:default}
+.org-check{display:flex;align-items:center;justify-content:center;width:44px;height:44px;flex:none;cursor:pointer}
+.org-check input{width:22px;height:22px;accent-color:var(--accent);cursor:pointer}
+.org-act{flex:none;min-height:44px;padding:.45rem .8rem}
+.org-selbar{
+  position:sticky;bottom:-2rem;margin:.9rem -1.2rem -2rem;padding:.7rem 1.2rem calc(.9rem + env(safe-area-inset-bottom));
+  background:var(--surface);border-top:var(--bw) solid var(--border);
+  display:flex;align-items:center;gap:.6rem;flex-wrap:wrap;
+}
+.org-selbar #orgSelCount{font-weight:800}
+.org-selbar .btn{min-height:44px}
+.org-pick-list{display:flex;flex-direction:column;gap:.55rem;margin:.6rem 0}
+.org-pick-row{
+  display:flex;align-items:center;gap:.7rem;min-height:56px;padding:.55rem .8rem;cursor:pointer;
+  border:1.5px solid var(--border);border-radius:14px;background:var(--surface2);color:var(--text);
+}
+.org-pick-row input{width:22px;height:22px;accent-color:var(--accent);flex:none;cursor:pointer}
+.org-pick-row .li-main{flex:1;min-width:0}
+.org-pick-row .li-name{font-weight:700}
+.org-pick-row .li-sub{color:var(--muted);font-size:.82rem}
+
+/* Item-sheet location chip is a button now (tap → that location's view) */
+.bin-chip{font-family:inherit;cursor:pointer;border:none;border-left:4px solid var(--accent);text-align:left}
+.bin-chip:active{transform:scale(.97)}
+
+/* Map tab Shelves section: free-text locations below the elevation */
+.shelves-head{margin:1.2rem 0 .3rem}
+
 /* FAB — red glass disc, lower right, ~18px clear above the dock */
 .fab-btn{
   position:fixed;right:16px;bottom:calc(96px + env(safe-area-inset-bottom));z-index:28;

@@ -424,6 +424,277 @@
     saveExplicitSuppliers(next);
     return { ok: true };
   }
+  /* ---------- Supplier Organize: merge / rename / clear ----------
+   * The sheet's Vendor column is free text, so real data accumulates
+   * spelling variants of one vendor ('House of Hose' / 'House Of
+   * Hose'), case pairs ('EBAY' / 'Ebay'), and vendor + junk strings
+   * ('Parker 20085113', 'Newark 78Y9970 TDK …', a URL glued onto a
+   * name). supplierKey() is the comparison form (case/punctuation
+   * insensitive); supplierRoot() derives the vendor root by cutting
+   * the name at its first junk token — a token with a digit, with no
+   * letters at all, a URL fragment, or a ≥5-char vowel-less code.
+   * suggestSupplierMerges() groups raw names (union-find over exact
+   * keys, derived roots, and word-prefix folds) and preselects a
+   * canonical name per group; NOTHING is applied until the user
+   * confirms a group in the Organize overlay. mergeSuppliers /
+   * renameSupplier / clearSupplier rewrite item.supplier with one
+   * queued 'edit' op per changed item (same cascade shape as
+   * renameCategory) and return an undo snapshot — the affected items'
+   * previous supplier values plus the prior explicit-supplier list —
+   * which restoreSuppliers() puts back exactly (queuing its own edit
+   * ops, so the backend follows the undo too). */
+  function supplierKey(name) {
+    return String(name || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+  }
+  function isJunkSupplierToken(tok) {
+    if (!/[a-z]/i.test(tok)) return true;                    // '---', '20085113', pure numbers/symbols
+    if (/\d/.test(tok)) return true;                         // '78Y9970', 'M01-CAN', '25'
+    if (/^(www\.|https?)/i.test(tok) || /\.(com|net|org|io|co)$/i.test(tok)) return true;   // URL fragments
+    if (tok.length >= 5 && !/[aeiou]/i.test(tok)) return true;   // ≥5-char vowel-less code ('RPECX')
+    return false;
+  }
+  function supplierRoot(name) {
+    var s = String(name || '').trim();
+    var httpAt = s.toLowerCase().indexOf('http');
+    if (httpAt > 0) s = s.slice(0, httpAt).trim();           // 'Banggoodhttps://…' → 'Banggood'
+    else if (httpAt === 0) return '';                        // the name IS a URL — no vendor root
+    var tokens = s.split(/\s+/).filter(function (t) { return !!t; });
+    var kept = [];
+    for (var i = 0; i < tokens.length; i++) {
+      if (i > 0 && isJunkSupplierToken(tokens[i])) break;    // first junk token ends the root
+      kept.push(tokens[i]);
+    }
+    return kept.join(' ');
+  }
+  /* The Organize universe: RAW distinct supplier strings — every
+   * exact trimmed value on an item (case variants stay separate,
+   * that's the point of the cleanup) plus the explicit entries —
+   * each with live counts. The hub (getSuppliers) collapses case
+   * variants into one row; Organize deliberately does not. */
+  function getSupplierNames() {
+    var byName = {}, order = [];
+    function ensure(name) {
+      if (!byName[name]) {
+        byName[name] = { name: name, blurb: '', explicit: false, items: 0, units: 0 };
+        order.push(byName[name]);
+      }
+      return byName[name];
+    }
+    getExplicitSuppliers().forEach(function (e) {
+      var n = String((e && e.name) || '').trim();
+      if (!n) return;
+      var s = ensure(n);
+      s.blurb = String(e.blurb || ''); s.explicit = true;
+    });
+    getItems().forEach(function (i) {
+      var n = String(i.supplier || '').trim();
+      if (!n) return;
+      var s = ensure(n);
+      s.items++; s.units += Number(i.qty) || 0;
+    });
+    return order.sort(function (a, b) {
+      var x = supplierKey(a.name), y = supplierKey(b.name);
+      if (x !== y) return x < y ? -1 : 1;
+      return a.name < b.name ? -1 : (a.name > b.name ? 1 : 0);
+    });
+  }
+  function pickSupplierCanonical(variants, rootStr) {
+    var cands = variants.map(function (v) { return { name: v.name, items: v.items }; });
+    var hasRoot = rootStr && cands.some(function (c) { return c.name === rootStr; });
+    var clean = cands.filter(function (c) { return supplierRoot(c.name) === c.name; });
+    var pool;
+    if (clean.length || (rootStr && !hasRoot)) {
+      pool = clean.slice();
+      if (rootStr && !hasRoot) pool.push({ name: rootStr, items: 0 });
+      if (!pool.length) pool = cands.slice();
+      // Most items; tie → the fuller name (a word-extended clean name
+      // like 'Sun Hydraulics' beats its bare root 'Sun').
+      pool.sort(function (a, b) {
+        return (b.items - a.items) || (b.name.length - a.name.length) ||
+          (supplierKey(a.name) < supplierKey(b.name) ? -1 : 1);
+      });
+    } else {
+      pool = cands.slice();
+      pool.sort(function (a, b) {
+        return (b.items - a.items) || (a.name.length - b.name.length) ||
+          (supplierKey(a.name) < supplierKey(b.name) ? -1 : 1);
+      });
+    }
+    return pool.length ? pool[0].name : '';
+  }
+  function suggestSupplierMerges() {
+    var entries = getSupplierNames();
+    var parent = {};
+    function find(x) { while (parent[x] !== x) { parent[x] = parent[parent[x]]; x = parent[x]; } return x; }
+    function union(a, b) { var ra = find(a), rb = find(b); if (ra !== rb) parent[rb] = ra; }
+    entries.forEach(function (e) { parent[e.name] = e.name; });
+    var byKey = {}, byRoot = {};
+    entries.forEach(function (e) {
+      var k = supplierKey(e.name);
+      (byKey[k] = byKey[k] || []).push(e.name);
+      var rk = supplierKey(supplierRoot(e.name));
+      if (rk) (byRoot[rk] = byRoot[rk] || []).push(e.name);
+    });
+    Object.keys(byKey).forEach(function (k) {
+      byKey[k].forEach(function (n) { union(byKey[k][0], n); });       // exact: case/punct variants
+    });
+    Object.keys(byRoot).forEach(function (k) {
+      byRoot[k].forEach(function (n) { union(byRoot[k][0], n); });     // same derived root
+    });
+    /* Word-prefix fold: a root that is a word-prefix of another
+     * supplier's name pulls that name (and its whole root group) in —
+     * root 'sun' folds in 'Sun Hydraulics'. Suggestion only; the user
+     * confirms every group before anything is applied. */
+    var rootKeys = Object.keys(byRoot);
+    entries.forEach(function (e) {
+      var keys = [supplierKey(e.name), supplierKey(supplierRoot(e.name))];
+      rootKeys.forEach(function (rk) {
+        if (!rk) return;
+        keys.forEach(function (k) {
+          if (k && k !== rk && k.indexOf(rk + ' ') === 0) union(byRoot[rk][0], e.name);
+        });
+      });
+    });
+    var comps = {};
+    entries.forEach(function (e) {
+      var r = find(e.name);
+      (comps[r] = comps[r] || []).push(e);
+    });
+    var groups = [];
+    Object.keys(comps).forEach(function (r) {
+      var members = comps[r];
+      var junkAlone = members.length === 1 && supplierRoot(members[0].name) !== members[0].name;
+      if (members.length < 2 && !junkAlone) return;
+      /* The group's root: the root form shared by the most members
+       * (a member whose own name IS that root wins the spelling). */
+      var rootCount = {}, rootStr = '';
+      members.forEach(function (m) {
+        var rt = supplierRoot(m.name);
+        if (rt) rootCount[supplierKey(rt)] = (rootCount[supplierKey(rt)] || 0) + 1;
+      });
+      var bestRk = '', bestN = -1;
+      Object.keys(rootCount).forEach(function (rk) { if (rootCount[rk] > bestN) { bestN = rootCount[rk]; bestRk = rk; } });
+      if (bestRk) {
+        var asName = members.filter(function (m) { return m.name && supplierKey(m.name) === bestRk; })[0];
+        rootStr = asName ? asName.name : supplierRoot(members.filter(function (m) { return supplierKey(supplierRoot(m.name)) === bestRk; })[0].name);
+      }
+      groups.push({
+        canonical: pickSupplierCanonical(members, rootStr),
+        root: rootStr,
+        variants: members.map(function (m) {
+          return { name: m.name, items: m.items, units: m.units, explicit: m.explicit };
+        }).sort(function (a, b) { return (b.items - a.items) || (a.name < b.name ? -1 : 1); }),
+        total: members.reduce(function (s, m) { return s + m.items; }, 0)
+      });
+    });
+    return groups.sort(function (a, b) { return (b.total - a.total) || (a.canonical < b.canonical ? -1 : 1); });
+  }
+  function copyExplicitList(list) {
+    return (list || []).map(function (e) { return { name: e.name, blurb: e.blurb || '' }; });
+  }
+  /* Rewrite every item whose supplier key is in keySet to `to`
+   * ('' clears). Returns the undo snapshot. One queued 'edit' op per
+   * item whose value actually changes; items already carrying `to`
+   * verbatim are left alone. */
+  function rewriteSuppliers(keySet, to, detailVerb) {
+    var items = getItems(), affected = [], changedIds = [];
+    items.forEach(function (it) {
+      var cur = String(it.supplier || '').trim();
+      if (!cur || !keySet[supplierKey(cur)]) return;
+      affected.push({ id: it.id, supplier: it.supplier });
+      if (cur === to) return;
+      it.supplier = to;
+      it.updated = nowISO();
+      changedIds.push(it.id);
+    });
+    if (changedIds.length) {
+      saveItems(items);
+      changedIds.forEach(function (id) { queueChange('edit', id, detailVerb + ': ' + (to || '(cleared)')); });
+    }
+    return { items: affected, suppliers: copyExplicitList(getExplicitSuppliers()), changed: changedIds.length };
+  }
+  function keySetOf(names) {
+    var set = {};
+    (names || []).forEach(function (n) { var k = supplierKey(n); if (k) set[k] = true; });
+    return set;
+  }
+  function mergeSuppliers(variants, canonical) {
+    canonical = String(canonical || '').trim();
+    if (!canonical) return { ok: false, error: 'empty', message: 'Pick a name to merge into' };
+    var names = (variants || []).map(function (v) { return String(v || '').trim(); }).filter(function (v) { return !!v; });
+    if (!names.length) return { ok: false, error: 'empty', message: 'Nothing selected to merge' };
+    var keySet = keySetOf(names.concat([canonical]));
+    var undo = rewriteSuppliers(keySet, canonical, 'Supplier merged into ' + canonical);
+    /* Explicit list: variant entries are removed; the canonical
+     * entry is kept/created when any variant (or the canonical
+     * itself) was explicit, with the canonical's own blurb if it had
+     * one, else the first non-empty variant blurb. When no variant
+     * was explicit, no entry is created — the name lives on items. */
+    var before = undo.suppliers;
+    var canonKey = supplierKey(canonical);
+    var canonEntry = before.filter(function (e) { return supplierKey(e.name) === canonKey; })[0];
+    var anyExplicit = before.some(function (e) { return !!keySet[supplierKey(e.name)]; });
+    var blurb = canonEntry ? (canonEntry.blurb || '') : '';
+    if (!blurb) {
+      var withBlurb = before.filter(function (e) { return !!keySet[supplierKey(e.name)] && String(e.blurb || '').trim(); })[0];
+      if (withBlurb) blurb = withBlurb.blurb;
+    }
+    var next = before.filter(function (e) { return !keySet[supplierKey(e.name)]; });
+    if (canonEntry || anyExplicit) next.push({ name: canonical, blurb: blurb });
+    if (next.length !== before.length || canonEntry || anyExplicit) saveExplicitSuppliers(next);
+    undo.suppliers = before;
+    return { ok: true, count: undo.changed, undo: undo };
+  }
+  function renameSupplier(oldName, newName) {
+    oldName = String(oldName || '').trim();
+    newName = String(newName || '').trim();
+    if (!oldName) return { ok: false, error: 'empty', message: 'Nothing to rename' };
+    if (!newName) return { ok: false, error: 'empty', message: 'Supplier name can\'t be empty' };
+    var oldKey = supplierKey(oldName), newKey = supplierKey(newName);
+    if (newKey !== oldKey) {
+      var clash = getSupplierNames().some(function (s) { return supplierKey(s.name) === newKey; });
+      if (clash) return { ok: false, error: 'duplicate', message: '“' + newName + '” already exists — merge into it instead' };
+    }
+    var undo = rewriteSuppliers(keySetOf([oldName]), newName, 'Supplier renamed: ' + oldName + ' → ' + newName);
+    var before = undo.suppliers;
+    var next = before.map(function (e) {
+      return supplierKey(e.name) === oldKey ? { name: newName, blurb: e.blurb || '' } : e;
+    });
+    saveExplicitSuppliers(next);
+    return { ok: true, count: undo.changed, undo: undo };
+  }
+  function clearSupplier(name) {
+    name = String(name || '').trim();
+    if (!name) return { ok: false, error: 'empty', message: 'Nothing to clear' };
+    var key = supplierKey(name);
+    var undo = rewriteSuppliers(keySetOf([name]), '', 'Supplier cleared: ' + name);
+    var before = undo.suppliers;
+    saveExplicitSuppliers(before.filter(function (e) { return supplierKey(e.name) !== key; }));
+    return { ok: true, count: undo.changed, undo: undo };
+  }
+  /* Put a merge/rename/clear back exactly: item supplier values and
+   * the explicit list return to the snapshot; items whose value
+   * changes back queue an 'edit' op so the backend follows. */
+  function restoreSuppliers(undo) {
+    if (!undo) return { ok: false };
+    var items = getItems(), changedIds = [];
+    var byId = {};
+    (undo.items || []).forEach(function (s) { byId[s.id] = s.supplier; });
+    items.forEach(function (it) {
+      if (!(it.id in byId)) return;
+      if (it.supplier !== byId[it.id]) {
+        it.supplier = byId[it.id];
+        it.updated = nowISO();
+        changedIds.push(it.id);
+      }
+    });
+    if (changedIds.length) {
+      saveItems(items);
+      changedIds.forEach(function (id) { queueChange('edit', id, 'Supplier change undone'); });
+    }
+    saveExplicitSuppliers(copyExplicitList(undo.suppliers));
+    return { ok: true, count: changedIds.length };
+  }
   function getItem(id) {
     return getItems().filter(function (i) { return i.id === id; })[0] || null;
   }
@@ -729,7 +1000,11 @@
   window.ETData = {
     getSettings: getSettings, saveSettings: saveSettings, isLive: isLive,
     getBackend: getBackend, setBackend: setBackend, activeBackend: activeBackend,
-    getItems: getItems, getSuppliers: getSuppliers, addSupplier: addSupplier, removeSupplier: removeSupplier, getItem: getItem,
+    getItems: getItems, getSuppliers: getSuppliers, addSupplier: addSupplier, removeSupplier: removeSupplier,
+    supplierKey: supplierKey, supplierRoot: supplierRoot, getSupplierNames: getSupplierNames,
+    suggestSupplierMerges: suggestSupplierMerges, mergeSuppliers: mergeSuppliers,
+    renameSupplier: renameSupplier, clearSupplier: clearSupplier, restoreSuppliers: restoreSuppliers,
+    getItem: getItem,
     getQueue: getQueue, getMeta: getMeta,
     getCategories: getCategories, addCategory: addCategory,
     renameCategory: renameCategory, removeCategory: removeCategory, setCategory: setCategory,
@@ -737,6 +1012,7 @@
     updateQty: updateQty, setQty: setQty, addItem: addItem,
     testConnection: testConnection, flushQueue: flushQueue, resetDemo: resetDemo,
     refreshFromBackend: refreshFromBackend,
-    stickerUrl: function (id) { return 'https://masstahl.github.io/electric-trailer/?item=' + encodeURIComponent(id); }
+    stickerUrl: function (id) { return 'https://masstahl.github.io/electric-trailer/?item=' + encodeURIComponent(id); },
+    shelfUrl: function (loc) { return 'https://masstahl.github.io/electric-trailer/?shelf=' + encodeURIComponent(loc); }
   };
 })();

@@ -106,6 +106,10 @@
       <span id="locateCaptionText" class="locate-caption-text"></span>
       <button type="button" id="locateDismiss" class="locate-dismiss" aria-label="Dismiss located item">✕</button>
     </div>
+    <h3 class="shelves-head">Shelves</h3>
+    <p class="muted small">Every labeled location from your items — tap one to see what's on it. Stick an NFC sticker with that shelf's link on the shelf itself and a tap opens the same list.</p>
+    <div id="shelfList" class="list"></div>
+    <p id="shelfListEmpty" class="empty hidden">No labeled shelves yet — locations like “Shelf 59” appear here as items arrive.</p>
     <div class="legend"><span><i class="dot dot-ok"></i>Stocked</span><span><i class="dot dot-low"></i>▲ Low / Critical</span><span><i class="dot dot-out"></i>✕ Out</span><span>· Empty</span></div>
   </section>
 
@@ -116,6 +120,7 @@
       <span class="sup-head-btns">
         <button type="button" id="supplierEditBtn" class="pill-btn hidden">Edit</button>
         <button type="button" id="supplierDoneBtn" class="pill-btn pill-done hidden">Done</button>
+        <button type="button" id="supplierOrganizeBtn" class="btn">Organize</button>
         <button type="button" id="addSupplierBtn" class="btn">+ Add supplier</button>
       </span>
     </div>
@@ -272,8 +277,14 @@
     <h2 id="dName">Item</h2>
     <p class="muted" id="dMeta">SKU · Bin · Supplier</p>
     <div class="sheet-chips">
-      <span class="bin-chip" id="dBinChip">A · L2 · P1</span>
+      <button type="button" class="bin-chip" id="dBinChip" title="See everything at this location">A · L2 · P1</button>
       <span class="qty-pill qty-ok" id="dStatus">0 in stock</span>
+    </div>
+    <div id="dLookup" class="sku-lookup hidden">
+      <span class="sku-lookup-label">Look up this exact part number:</span>
+      <a id="dLkWeb" class="btn sku-lk" href="#" target="_blank" rel="noopener">Web</a>
+      <a id="dLkImages" class="btn sku-lk" href="#" target="_blank" rel="noopener">Images</a>
+      <a id="dLkAmazon" class="btn sku-lk" href="#" target="_blank" rel="noopener">Amazon</a>
     </div>
     <p class="small-label folder-rail-label">Folder — tap to file here</p>
     <div id="dFolderRail" class="folder-rail" role="group" aria-label="File this item in a folder"></div>
@@ -411,6 +422,86 @@
     <p id="supError" class="result err hidden"></p>
     <button type="button" id="supSaveBtn" class="btn btn-primary btn-big">Save supplier</button>
     <button type="button" id="supCancelBtn" class="btn btn-big">Cancel</button>
+  </div>
+</div>
+
+<!-- ============ NFC TOOLS · behind the header chip (no tab, no Settings card) ============ -->
+<div id="nfcOverlay" class="overlay hidden" role="dialog" aria-modal="true" aria-labelledby="nfcTitle">
+  <div class="sheet confirm-sheet">
+    <button type="button" id="closeNfc" class="close-btn" aria-label="Close">✕</button>
+    <h2 id="nfcTitle">NFC stickers</h2>
+    <p id="nfcStateText" class="muted"></p>
+    <button type="button" id="nfcToggleBtn" class="btn btn-primary btn-big">Start listening</button>
+    <p id="nfcIosNote" class="muted small hidden">iPhone can't scan NFC inside a web app — stickers still work: hold one near the top of the phone and its link opens the item or shelf directly, no app needed.</p>
+    <p class="small-label">Writing a sticker</p>
+    <p class="muted small">Open an item or a shelf and tap <strong>Copy sticker link</strong>, then write that link to an NTAG sticker with your NFC writer app. On Android Chrome, Quick Add can also write a sticker directly after an item is added.</p>
+    <button type="button" id="nfcDoneBtn" class="btn btn-big">Done</button>
+  </div>
+</div>
+
+<!-- ============ SHELF VIEW · everything at one location (shelf stickers land here) ============ -->
+<div id="shelfOverlay" class="overlay hidden" role="dialog" aria-modal="true" aria-labelledby="shTitle">
+  <div class="sheet bin-sheet">
+    <button type="button" id="closeShelf" class="close-btn" aria-label="Close">✕</button>
+    <h2 id="shTitle">Shelf</h2>
+    <p class="muted" id="shMeta"></p>
+    <div id="shelfItems" class="list"></div>
+    <p id="shelfItemsEmpty" class="empty hidden">Nothing is stored at this location.</p>
+    <label class="small-label">Shelf sticker link (write this URL to a sticker on the shelf)</label>
+    <div class="copy-row"><input id="shStickerLink" readonly><button type="button" id="shCopyBtn" class="btn">Copy</button></div>
+  </div>
+</div>
+
+<!-- ============ SUPPLIER ORGANIZE · merge / rename / clear ============ -->
+<div id="orgOverlay" class="overlay hidden" role="dialog" aria-modal="true" aria-labelledby="orgTitle">
+  <div class="sheet autosort-sheet org-sheet">
+    <button type="button" id="closeOrg" class="close-btn" aria-label="Close organize">✕</button>
+    <h2 id="orgTitle">Organize suppliers</h2>
+    <p class="muted small">Same-sounding suppliers and names with part numbers or links stuck on the end can be merged into one clean name. Nothing changes until you tap Merge — and every merge can be undone.</p>
+    <h3 class="org-h">Suggested merges</h3>
+    <div id="orgSuggest"></div>
+    <p id="orgSuggestEmpty" class="muted small hidden">No duplicates spotted — the list below is already clean.</p>
+    <h3 class="org-h">All suppliers</h3>
+    <div id="orgList" class="list"></div>
+    <div id="orgSelBar" class="org-selbar hidden">
+      <span id="orgSelCount">0 selected</span>
+      <button type="button" id="orgMergeSelBtn" class="btn btn-primary">Merge selected</button>
+      <button type="button" id="orgClearSelBtn" class="btn">Clear</button>
+    </div>
+  </div>
+</div>
+
+<!-- ============ MERGE CANONICAL PICKER ============ -->
+<div id="orgPickOverlay" class="overlay hidden" role="dialog" aria-modal="true" aria-labelledby="orgPickTitle">
+  <div class="sheet confirm-sheet">
+    <h2 id="orgPickTitle">Merge into…</h2>
+    <p class="muted small">Every selected supplier becomes this name — on all its items and in the list.</p>
+    <div id="orgPickList" class="org-pick-list"></div>
+    <button type="button" id="orgPickApply" class="btn btn-primary btn-big">Merge</button>
+    <button type="button" id="orgPickCancel" class="btn btn-big">Cancel</button>
+  </div>
+</div>
+
+<!-- ============ RENAME SUPPLIER ============ -->
+<div id="supRenameOverlay" class="overlay hidden" role="dialog" aria-modal="true" aria-labelledby="supRenameTitle">
+  <div class="sheet confirm-sheet">
+    <h2 id="supRenameTitle">Rename supplier</h2>
+    <div class="form">
+      <label>New name<input id="supRenameInput" autocomplete="off"></label>
+    </div>
+    <p id="supRenameError" class="result err hidden"></p>
+    <button type="button" id="supRenameSave" class="btn btn-primary btn-big">Rename everywhere</button>
+    <button type="button" id="supRenameCancel" class="btn btn-big">Cancel</button>
+  </div>
+</div>
+
+<!-- ============ CLEAR SUPPLIER CONFIRM ============ -->
+<div id="supClearOverlay" class="overlay hidden" role="dialog" aria-modal="true" aria-labelledby="supClearTitle">
+  <div class="sheet confirm-sheet">
+    <h2 id="supClearTitle">Clear supplier?</h2>
+    <p id="supClearText" class="muted"></p>
+    <button type="button" id="supClearConfirm" class="btn btn-primary btn-big">Clear from items</button>
+    <button type="button" id="supClearCancel" class="btn btn-big">Cancel</button>
   </div>
 </div>
 

@@ -176,6 +176,33 @@ with live counts of that supplier's items. Hand-added entries can be
 removed from the tab's Edit mode; items always keep their own
 supplier name.
 
+**Cleaning up supplier names — Organize.** Because `Vendor` is free
+text, the same supplier collects variants over time: different
+capitalization (`EBAY` / `Ebay`), punctuation (`Parker ---`), and
+part numbers or links stuck onto the name (`Parker 20085113`,
+`Newark 78Y9970 TDK …`). The **Organize** button in the Suppliers tab
+opens the cleanup tools:
+
+- **Suggested merges** — the app groups names that differ only by
+  case/punctuation, names that share a vendor root after trailing
+  junk (digits, part codes, URLs) is trimmed, and names where one
+  root is the start of a fuller supplier name (`Sun …` folds into
+  `Sun Hydraulics`). Each group shows its variants with item counts
+  and a preselected clean name — tap **Merge** to apply just that
+  group. Nothing is ever merged automatically.
+- **Manual merge** — tick the checkbox on any two or more suppliers
+  in the All suppliers list, tap **Merge selected**, and pick which
+  name everything becomes.
+- **Rename** — renames a supplier everywhere: every item carrying
+  the name (in any capitalization) gets the new one.
+- **Clear** — for strings that aren't a supplier at all: removes the
+  name from its items (the items keep everything else).
+
+Merging, renaming and clearing rewrite the `Vendor` value on the
+affected items and queue like any other edit, so they push to the
+sheet on the next sync. Each one offers a 6-second **UNDO** that
+restores the previous names exactly.
+
 ### Locations
 
 The `Location` column is **free text** and the app shows it exactly
@@ -188,6 +215,19 @@ and displayed in the app's notation — short `B · L4 · P5`, long
 draws each shelf A–D as an elevation, levels stacked L4 (top) down
 to L1. Free-text locations don't land in those cells; they stay
 fully searchable and show verbatim on the item's card and sheet.
+Below the elevation, the Map tab's **Shelves** list shows every
+free-text location with its item/unit counts — tap one to open that
+shelf's contents. An item's location chip opens the same view.
+
+**Shelf stickers.** A whole shelf can have its own sticker: open the
+shelf (from the Map tab's Shelves list, or any item stored there),
+tap **Copy** next to the *Shelf sticker link*, and write that URL to
+an NTAG sticker exactly like an item sticker (Step 4). The link
+looks like
+`https://masstahl.github.io/electric-trailer/?shelf=Shelf%2059`.
+Stick it on the shelf itself — tapping it with any phone opens the
+app to a list of everything stored at that location, with counts you
+can adjust on the spot.
 
 ### Icon keys for the `Icon` column
 
@@ -221,7 +261,16 @@ URLs / bigger custom text). Stickers or cards both fine.
   the name when added (e.g. `20a-breaker`).
 
 Then stick the tag on the item's bin. Tapping it with any phone opens
-the app straight to that item.
+the app straight to that item. Shelf stickers work the same way, one
+level up — see **Shelf stickers** under Locations in Step 3.
+
+**The NFC tools sheet.** NFC has no tab and no Settings card — tap
+the **NFC chip in the app header** to open it. It shows whether NFC
+Live (always-on listening on Android Chrome) is running, with its
+start/stop button, plus the sticker-writing guidance. On iPhone the
+sheet explains the one limit that matters: iOS can't scan NFC inside
+a web app, but stickers still open their item or shelf when tapped,
+because the phone itself follows the link.
 
 ---
 

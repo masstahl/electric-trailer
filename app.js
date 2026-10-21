@@ -122,6 +122,7 @@
   var currentItemId = null;
   var selectedBin = null;
   var currentBin = null;
+  var currentShelf = null;   // free-text location open in the Shelf view, or null
   var currentLevel = null;
   var locateTarget = null;   // { id, name, bin, level } — blink-on-search target
   var selectedIcon = ICON_KEYS[0];
@@ -274,6 +275,7 @@
     if ($('view-home').classList.contains('active')) renderHome();
     if (currentItemId === id && !$('itemOverlay').classList.contains('hidden')) syncSheetQty();
     if (currentBin && !$('binOverlay').classList.contains('hidden')) renderBinSheetItems();
+    if (currentShelf !== null && !$('shelfOverlay').classList.contains('hidden')) renderShelf();
     if ($('view-map').classList.contains('active')) renderMap();
     if ($('view-suppliers').classList.contains('active')) renderSuppliers();
     if ($('view-sync').classList.contains('active')) renderQueue();
@@ -910,7 +912,8 @@
     $('dName').textContent = item.name;
     $('dMeta').textContent = item.sku + ' · ' + item.supplier;
     $('dBinChip').textContent = locShort(item);
-    $('dBinChip').setAttribute('aria-label', locLong(item));
+    $('dBinChip').setAttribute('aria-label', locLong(item) + ' — see everything at this location');
+    renderPartLookup(item);
     renderFolderRail(item);
     $('dCost').textContent = money(item.cost) + ' each';
     $('dStickerLink').value = D.stickerUrl(item.id);
@@ -1063,6 +1066,32 @@
     }
     return null;
   }
+  /* A shelf sticker's URL carries ?shelf=<location> instead of an
+   * item id; pull it out of any URL/text record on the tag. */
+  function nfcShelfFromEvent(ev) {
+    var records = (ev && ev.message && ev.message.records) || [];
+    for (var i = 0; i < records.length; i++) {
+      var rec = records[i];
+      if (!rec.data || (rec.recordType !== 'url' && rec.recordType !== 'text')) continue;
+      try {
+        var text = new TextDecoder().decode(rec.data);
+        var m = text.match(/[?&]shelf=([^&#\s]+)/);
+        if (m) return decodeURIComponent(m[1]);
+      } catch (e) { /* ignore undecodable record */ }
+    }
+    return null;
+  }
+  function handleShelfTag(loc) {
+    var key = 'shelf:' + loc;
+    var now = Date.now();
+    if (key === nfcLastKey && now - nfcLastAt < 3000) return 'debounced';
+    nfcLastKey = key; nfcLastAt = now;
+    if (currentShelf === loc && !$('shelfOverlay').classList.contains('hidden')) return 'open';
+    if (navigator.vibrate) { try { navigator.vibrate(60); } catch (e) { /* unsupported */ } }
+    openShelf(loc);
+    toast('NFC · ' + loc);
+    return 'opened';
+  }
   /* Shared tag handler — the live listener and the item-detail Scan button
    * both end up here. Accepts an array of candidate ids (or a single raw
    * payload string) plus the tag serial. Debounced: the same outcome within
@@ -1106,16 +1135,51 @@
   function renderNfcChip() {
     var btn = $('nfcLiveBtn');
     if (!btn) return;
-    btn.classList.toggle('hidden', !NFC_SUPPORTED);
-    if (!NFC_SUPPORTED) return;
+    /* The chip is ALWAYS visible now: it is the (only) door to the
+     * NFC tools sheet — no dock tab, no Settings card. On platforms
+     * without Web NFC (iPhone) it simply reads 'NFC'. */
+    btn.classList.remove('hidden');
     var label = $('nfcLiveLabel');
     btn.classList.remove('is-live', 'is-paused');
-    if (nfcLivePaused) { btn.classList.add('is-paused'); label.textContent = 'NFC · Paused — tap'; }
+    if (!NFC_SUPPORTED) { label.textContent = 'NFC'; }
+    else if (nfcLivePaused) { btn.classList.add('is-paused'); label.textContent = 'NFC · Paused — tap'; }
     else if (nfcLiveActive) { btn.classList.add('is-live'); label.textContent = 'NFC · Live'; }
     else if (nfcLiveWanted) { btn.classList.add('is-paused'); label.textContent = 'NFC · Tap to resume'; }
     else { label.textContent = 'NFC · Off'; }
     btn.setAttribute('aria-pressed', nfcLiveWanted ? 'true' : 'false');
+    renderNfcSheet();
   }
+  /* ---------- NFC tools sheet (hidden behind the header chip) ----------
+   * Scan state + the sticker-writing guidance live here and nowhere
+   * else in the UI. On Android Chrome the sheet's button starts/stops
+   * NFC Live (the tap is the user gesture Chrome requires); on iPhone
+   * it shows the honest note instead — iOS opens sticker URLs itself. */
+  function renderNfcSheet() {
+    var state = $('nfcStateText');
+    if (!state) return;
+    $('nfcToggleBtn').classList.toggle('hidden', !NFC_SUPPORTED);
+    $('nfcIosNote').classList.toggle('hidden', NFC_SUPPORTED);
+    if (!NFC_SUPPORTED) {
+      state.textContent = 'Stickers work on this phone — tapping one opens its item or shelf.';
+      return;
+    }
+    if (nfcLiveActive) state.textContent = 'NFC Live is ON — hold any sticker near the phone and its item or shelf opens.';
+    else if (nfcLivePaused) state.textContent = 'NFC Live is paused — tap Start listening to resume (Chrome needs a tap to allow scanning).';
+    else if (nfcLiveWanted) state.textContent = 'NFC Live is on but not scanning yet — tap Start listening.';
+    else state.textContent = 'NFC Live is off — turn it on and every sticker tap opens its item or shelf while the app is open.';
+    $('nfcToggleBtn').textContent = (nfcLiveWanted && nfcLiveActive) ? 'Stop listening' : 'Start listening';
+  }
+  function openNfcSheet() { renderNfcSheet(); $('nfcOverlay').classList.remove('hidden'); }
+  function closeNfcSheet() { $('nfcOverlay').classList.add('hidden'); }
+  $('closeNfc').addEventListener('click', closeNfcSheet);
+  $('nfcDoneBtn').addEventListener('click', closeNfcSheet);
+  $('nfcOverlay').addEventListener('click', function (e) { if (e.target === $('nfcOverlay')) closeNfcSheet(); });
+  $('nfcToggleBtn').addEventListener('click', function () {
+    if (!NFC_SUPPORTED) return;
+    if (nfcLiveWanted && nfcLiveActive) { stopNfcLive(); toast('NFC Live off'); }
+    else startNfcLive();   // this tap is the user gesture Chrome requires
+    renderNfcSheet();
+  });
   function startNfcLive() {
     if (!NFC_SUPPORTED) return Promise.resolve(false);
     nfcLiveWanted = true;
@@ -1125,6 +1189,8 @@
       nfcReader = new NDEFReader();
       nfcReader.addEventListener('reading', function (ev) {
         if (!nfcLiveWanted) return;   // stopped logically — Web NFC has no stop API of its own
+        var shelf = nfcShelfFromEvent(ev);
+        if (shelf) { handleShelfTag(shelf); return; }
         handleTag(nfcCandidateIds(ev), ev.serialNumber);
       });
       nfcReader.addEventListener('readingerror', function () {
@@ -1158,11 +1224,10 @@
       if (nfcLiveWanted && !nfcLiveActive) startNfcLive();
     }, { once: true });
   }
-  $('nfcLiveBtn').addEventListener('click', function () {
-    if (!NFC_SUPPORTED) return;
-    if (nfcLiveWanted && nfcLiveActive) { stopNfcLive(); toast('NFC Live off'); }
-    else startNfcLive();   // this tap is the user gesture Chrome requires
-  });
+  /* The chip no longer toggles scanning directly — it opens the NFC
+   * tools sheet (app level, so it works even with an item sheet open
+   * underneath). Start/stop lives on the sheet's own button. */
+  $('nfcLiveBtn').addEventListener('click', function () { openNfcSheet(); });
   document.addEventListener('visibilitychange', function () {
     if (!NFC_SUPPORTED || !nfcLiveWanted) return;
     if (document.hidden) {
@@ -1185,11 +1250,24 @@
   /* No Scan button in the item detail: NFC Live (header chip) listens
    * globally while the app is open and opens items via handleTag(). */
 
-  /* Sticker taps: ?item=<id> opens that item directly on load. */
+  /* Sticker taps: ?item=<id> opens that item, ?shelf=<location>
+   * opens the Shelf view — both directly on load. In Sheet mode the
+   * rows may still be in flight on a cold load, so an item link that
+   * doesn't resolve yet is retried once the import lands (the init
+   * refresh calls openFromUrl again); a handled link never re-fires. */
+  var urlOpenedFor = '';
   function openFromUrl() {
     var params = new URLSearchParams(window.location.search);
     var id = params.get('item');
-    if (id) openItem(id);
+    var shelf = params.get('shelf');
+    var key = id ? 'item:' + id : (shelf ? 'shelf:' + shelf : '');
+    if (!key || key === urlOpenedFor) return;
+    if (id) {
+      if (D.getItem(id)) { urlOpenedFor = key; openItem(id); }
+    } else if (shelf) {
+      urlOpenedFor = key;
+      openShelf(shelf);
+    }
   }
 
   /* ---------- #03 Warehouse / Bin Map ---------- */
@@ -1235,6 +1313,7 @@
       });
     });
     updateLocateCaption();
+    renderShelfList();
   }
 
   /* ---------- Blink-on-search: "Show on shelf" ----------
@@ -1347,6 +1426,109 @@
   });
   $('binCountBtn').addEventListener('click', function () { startCount(currentBin, currentLevel); });
 
+  /* ---------- Shelf View: everything at one free-text location ----------
+   * A shelf sticker carries ?shelf=<location> and lands here; the same
+   * view opens from an item's location chip and from the Map tab's
+   * Shelves list. Matching is the EXACT location string (item.bin) —
+   * 'Shelf 58 Kit_5' is its own shelf, distinct from 'Shelf 58'. Rows
+   * follow the supplier drill-in pattern: tap opens the item sheet,
+   * steppers go through the shared changeQty path. */
+  function itemsAtLocation(loc) {
+    return D.getItems().filter(function (i) { return String(i.bin || '') === loc; });
+  }
+  function openShelf(loc) {
+    currentShelf = String(loc == null ? '' : loc);
+    renderShelf();
+    $('shelfOverlay').classList.remove('hidden');
+  }
+  function closeShelf() { $('shelfOverlay').classList.add('hidden'); currentShelf = null; }
+  function renderShelf() {
+    if (currentShelf === null) return;
+    var list = itemsAtLocation(currentShelf);
+    var units = list.reduce(function (s, i) { return s + i.qty; }, 0);
+    $('shTitle').textContent = currentShelf;
+    $('shMeta').textContent = list.length + (list.length === 1 ? ' item' : ' items') + ' · ' + units + ' units';
+    $('shelfItemsEmpty').classList.toggle('hidden', list.length > 0);
+    $('shStickerLink').value = D.shelfUrl(currentShelf);
+    $('shelfItems').innerHTML = list.map(function (i) {
+      return '<div class="list-item row-item"><span class="li-icon">' + iconPlate(i) + '</span>' +
+        '<button type="button" class="li-main row-open" data-shopen="' + esc(i.id) + '"><span class="li-name">' + esc(i.name) + '</span><br>' +
+        '<span class="li-sub">' + esc(i.sku) + ' · ' + esc(i.supplier) + '</span></button>' +
+        '<span class="qty-pill ' + qtyClass(i.qty) + '">' + qtyLabel(i.qty) + '</span>' +
+        '<span class="row-stepper">' +
+          '<button type="button" data-shdec="' + esc(i.id) + '" aria-label="Remove one from ' + esc(i.name) + '">−</button>' +
+          '<button type="button" class="row-qty-btn" data-sh-qty-btn="' + esc(i.id) + '" aria-label="Quantity ' + i.qty + ' for ' + esc(i.name) + ' — tap to type a new quantity">' + i.qty + '</button>' +
+          '<button type="button" data-shinc="' + esc(i.id) + '" aria-label="Add one to ' + esc(i.name) + '">+</button>' +
+        '</span></div>';
+    }).join('');
+    var box = $('shelfItems');
+    box.querySelectorAll('[data-shopen]').forEach(function (el) {
+      el.addEventListener('click', function () { var id = el.getAttribute('data-shopen'); closeShelf(); openItem(id); });
+    });
+    box.querySelectorAll('[data-shdec]').forEach(function (b) {
+      b.addEventListener('click', function () { changeQty(b.getAttribute('data-shdec'), -1); });
+    });
+    box.querySelectorAll('[data-shinc]').forEach(function (b) {
+      b.addEventListener('click', function () { changeQty(b.getAttribute('data-shinc'), 1); });
+    });
+    box.querySelectorAll('[data-sh-qty-btn]').forEach(function (b) {
+      b.addEventListener('click', function () {
+        var id = b.getAttribute('data-sh-qty-btn');
+        var item = D.getItem(id);
+        if (!item) return;
+        openQtyEditor({
+          value: item.qty, itemName: item.name,
+          returnAttr: 'data-sh-qty-btn', returnValue: id,
+          onCommit: function (qty) { setQtyWithUndo(id, qty); }
+        });
+      });
+    });
+  }
+  $('closeShelf').addEventListener('click', closeShelf);
+  $('shelfOverlay').addEventListener('click', function (e) { if (e.target === $('shelfOverlay')) closeShelf(); });
+  $('shCopyBtn').addEventListener('click', function () { copyText($('shStickerLink'), 'Shelf sticker link copied'); });
+  /* The item sheet's location chip is the third door into a location:
+   * coded bins (A1–D6) open their bin sheet on the map; free-text
+   * locations open the Shelf view. */
+  $('dBinChip').addEventListener('click', function () {
+    if (!currentItemId) return;
+    var item = D.getItem(currentItemId);
+    if (!item) return;
+    var bin = String(item.bin || '');
+    if (BIN_PATTERN.test(bin)) {
+      var lv = levelOf(item);
+      closeItem();
+      showView('map');
+      openBinSheet(bin, lv);
+    } else if (bin) {
+      closeItem();
+      openShelf(bin);
+    }
+  });
+  /* Map tab, below the elevation: every distinct free-text location
+   * with its counts. Pattern bins stay in the elevation only. */
+  function renderShelfList() {
+    var byLoc = {}, order = [];
+    D.getItems().forEach(function (i) {
+      var bin = String(i.bin || '');
+      if (!bin || BIN_PATTERN.test(bin)) return;
+      if (!byLoc[bin]) { byLoc[bin] = { loc: bin, items: 0, units: 0 }; order.push(byLoc[bin]); }
+      byLoc[bin].items++; byLoc[bin].units += Number(i.qty) || 0;
+    });
+    order.sort(function (a, b) { return a.loc < b.loc ? -1 : (a.loc > b.loc ? 1 : 0); });
+    $('shelfListEmpty').classList.toggle('hidden', order.length > 0);
+    $('shelfList').innerHTML = order.map(function (s) {
+      var counts = s.items + (s.items === 1 ? ' item' : ' items') + ' · ' + s.units + ' units';
+      return '<button type="button" class="list-item supplier-row" data-shelf="' + esc(s.loc) + '" aria-label="Open shelf ' + esc(s.loc) + ', ' + counts + '">' +
+        '<span class="li-icon">' + svgIcon('map') + '</span>' +
+        '<span class="li-main"><span class="li-name">' + esc(s.loc) + '</span></span>' +
+        '<span class="sup-counts">' + counts + '</span><span class="air-chev" aria-hidden="true">›</span></button>';
+    }).join('');
+    $('shelfList').querySelectorAll('[data-shelf]').forEach(function (row) {
+      row.addEventListener('click', function () { openShelf(row.getAttribute('data-shelf')); });
+    });
+  }
+
   /* ---------- #19 Supplier Hub ----------
    * The list is ETData's union: suppliers the user added by hand plus
    * any supplier named on an item, each with live counts. It starts
@@ -1369,6 +1551,7 @@
     }
     $('supplierListWrap').classList.toggle('hidden', !!selectedSupplier);
     $('supplierDetail').classList.toggle('hidden', !selectedSupplier);
+    $('supplierOrganizeBtn').classList.toggle('hidden', !!selectedSupplier);
     $('supplierEditBtn').classList.toggle('hidden', !!selectedSupplier || supplierEdit || !hub.some(function (s) { return s.explicit; }));
     $('supplierDoneBtn').classList.toggle('hidden', !!selectedSupplier || !supplierEdit);
     if (selectedSupplier) { renderSupplierItems(drilled); return; }
@@ -1473,6 +1656,192 @@
     renderSuppliers();
     refreshSupplierList();
     toast('Supplier added');
+  });
+
+  /* ---------- Supplier Organize: merge / rename / clear ----------
+   * One overlay over the hub. Top: ETData's suggested merge groups
+   * (case/punctuation twins, vendor+junk-suffix roots, word-prefix
+   * folds) — each confirmed individually, never auto-applied. Below:
+   * every raw supplier name with Rename (cascades to its items) and
+   * Clear (for strings that aren't vendors at all), plus checkbox
+   * multi-select → pick a canonical name → merge. Every mutation
+   * snapshots first; the UNDO toast restores items + the explicit
+   * list exactly. */
+  var orgSuggestions = [];
+  var orgChecked = {};        // raw supplier name -> true
+  var orgPickNames = null;    // names in the open canonical picker
+  var orgRenameName = null;
+  var orgClearName = null;
+  function orgAfterMutation(msg, res) {
+    renderSuppliers();
+    refreshSupplierList();
+    refreshChrome();
+    renderOrganize();
+    if (res && res.undo) {
+      showUndoToast(msg, function () {
+        D.restoreSuppliers(res.undo);
+        orgChecked = {};
+        renderSuppliers();
+        refreshSupplierList();
+        refreshChrome();
+        renderOrganize();
+      });
+    } else {
+      toast(msg);
+    }
+  }
+  function openOrganize() {
+    orgChecked = {};
+    $('orgOverlay').classList.remove('hidden');
+    renderOrganize();
+  }
+  function closeOrganize() { $('orgOverlay').classList.add('hidden'); orgChecked = {}; }
+  function renderOrganize() {
+    if ($('orgOverlay').classList.contains('hidden')) return;
+    orgSuggestions = D.suggestSupplierMerges();
+    $('orgSuggestEmpty').classList.toggle('hidden', orgSuggestions.length > 0);
+    $('orgSuggest').innerHTML = orgSuggestions.map(function (g, gi) {
+      var vars = g.variants.map(function (v) {
+        return '<span class="org-variant">' + esc(v.name) + ' <span class="sup-counts">' + v.items + (v.items === 1 ? ' item' : ' items') + '</span>' + (v.explicit ? ' <span class="sup-tag">in list</span>' : '') + '</span>';
+      }).join('');
+      return '<div class="org-group"><div class="org-group-main">' +
+        '<div class="org-group-title">Merge into <strong>' + esc(g.canonical) + '</strong></div>' +
+        '<div class="org-variants">' + vars + '</div></div>' +
+        '<button type="button" class="btn btn-primary org-merge-btn" data-org-apply="' + gi + '">Merge</button></div>';
+    }).join('');
+    $('orgSuggest').querySelectorAll('[data-org-apply]').forEach(function (b) {
+      b.addEventListener('click', function () {
+        var g = orgSuggestions[parseInt(b.getAttribute('data-org-apply'), 10)];
+        if (!g) return;
+        var res = D.mergeSuppliers(g.variants.map(function (v) { return v.name; }), g.canonical);
+        if (!res.ok) { toast(res.message || 'Could not merge'); return; }
+        orgAfterMutation('Merged into ' + g.canonical + ' — ' + res.count + ' item(s) updated', res);
+      });
+    });
+    var names = D.getSupplierNames();
+    // Drop checks for names that no longer exist after a mutation.
+    Object.keys(orgChecked).forEach(function (n) {
+      if (!names.some(function (s) { return s.name === n; })) delete orgChecked[n];
+    });
+    $('orgList').innerHTML = names.map(function (s) {
+      var counts = s.items + (s.items === 1 ? ' item' : ' items') + ' · ' + s.units + ' units';
+      return '<div class="list-item org-row">' +
+        '<label class="org-check"><input type="checkbox" data-org-check="' + esc(s.name) + '"' + (orgChecked[s.name] ? ' checked' : '') + ' aria-label="Select ' + esc(s.name) + ' for merging"></label>' +
+        '<span class="li-main"><span class="li-name">' + esc(s.name) + '</span>' +
+        (s.explicit ? '' : ' <span class="sup-tag">from items</span>') +
+        '<br><span class="li-sub">' + counts + (s.blurb ? ' · ' + esc(s.blurb) : '') + '</span></span>' +
+        '<button type="button" class="btn org-act" data-org-rename="' + esc(s.name) + '">Rename</button>' +
+        '<button type="button" class="btn org-act" data-org-clear="' + esc(s.name) + '">Clear</button></div>';
+    }).join('');
+    var list = $('orgList');
+    list.querySelectorAll('[data-org-check]').forEach(function (cb) {
+      cb.addEventListener('change', function () {
+        var n = cb.getAttribute('data-org-check');
+        if (cb.checked) orgChecked[n] = true; else delete orgChecked[n];
+        updateOrgSelBar();
+      });
+    });
+    list.querySelectorAll('[data-org-rename]').forEach(function (b) {
+      b.addEventListener('click', function () { openSupplierRename(b.getAttribute('data-org-rename')); });
+    });
+    list.querySelectorAll('[data-org-clear]').forEach(function (b) {
+      b.addEventListener('click', function () { askClearSupplier(b.getAttribute('data-org-clear')); });
+    });
+    updateOrgSelBar();
+  }
+  function checkedOrgNames() { return Object.keys(orgChecked).filter(function (n) { return orgChecked[n]; }); }
+  function updateOrgSelBar() {
+    var n = checkedOrgNames().length;
+    $('orgSelBar').classList.toggle('hidden', n < 2);
+    $('orgSelCount').textContent = n + ' selected';
+    $('orgMergeSelBtn').textContent = 'Merge ' + n + ' selected';
+  }
+  $('supplierOrganizeBtn').addEventListener('click', openOrganize);
+  $('closeOrg').addEventListener('click', closeOrganize);
+  $('orgOverlay').addEventListener('click', function (e) { if (e.target === $('orgOverlay')) closeOrganize(); });
+  $('orgClearSelBtn').addEventListener('click', function () { orgChecked = {}; renderOrganize(); });
+  /* Multi-select merge: choose which of the selected names everything
+   * becomes. Default pick mirrors the suggestion engine: most items,
+   * then a clean (junk-free) name, then the fuller name. */
+  $('orgMergeSelBtn').addEventListener('click', function () {
+    var names = checkedOrgNames();
+    if (names.length < 2) return;
+    var info = {};
+    D.getSupplierNames().forEach(function (s) { info[s.name] = s; });
+    var sorted = names.slice().sort(function (a, b) {
+      var ia = info[a] || { items: 0 }, ib = info[b] || { items: 0 };
+      if (ib.items !== ia.items) return ib.items - ia.items;
+      var ca = D.supplierRoot(a) === a ? 0 : 1, cb2 = D.supplierRoot(b) === b ? 0 : 1;
+      if (ca !== cb2) return ca - cb2;
+      return b.length - a.length;
+    });
+    orgPickNames = names;
+    $('orgPickList').innerHTML = sorted.map(function (n, i) {
+      var s = info[n] || { items: 0 };
+      return '<label class="org-pick-row"><input type="radio" name="orgPick" value="' + esc(n) + '"' + (i === 0 ? ' checked' : '') + '>' +
+        '<span class="li-main"><span class="li-name">' + esc(n) + '</span><br><span class="li-sub">' + s.items + (s.items === 1 ? ' item' : ' items') + '</span></span></label>';
+    }).join('');
+    $('orgPickOverlay').classList.remove('hidden');
+  });
+  function closeOrgPick() { $('orgPickOverlay').classList.add('hidden'); orgPickNames = null; }
+  $('orgPickCancel').addEventListener('click', closeOrgPick);
+  $('orgPickOverlay').addEventListener('click', function (e) { if (e.target === $('orgPickOverlay')) closeOrgPick(); });
+  $('orgPickApply').addEventListener('click', function () {
+    if (!orgPickNames) return;
+    var sel = $('orgPickList').querySelector('input[name="orgPick"]:checked');
+    if (!sel) return;
+    var canonical = sel.value;
+    var names = orgPickNames;
+    closeOrgPick();
+    var res = D.mergeSuppliers(names, canonical);
+    if (!res.ok) { toast(res.message || 'Could not merge'); return; }
+    orgAfterMutation('Merged ' + names.length + ' suppliers into ' + canonical + ' — ' + res.count + ' item(s) updated', res);
+  });
+  /* Rename: one prompt sheet; the cascade + its edit ops are ETData's. */
+  function openSupplierRename(name) {
+    orgRenameName = name;
+    $('supRenameInput').value = name;
+    $('supRenameError').classList.add('hidden');
+    $('supRenameOverlay').classList.remove('hidden');
+    $('supRenameInput').focus();
+    $('supRenameInput').select();
+  }
+  function closeSupplierRename() { $('supRenameOverlay').classList.add('hidden'); orgRenameName = null; }
+  $('supRenameCancel').addEventListener('click', closeSupplierRename);
+  $('supRenameOverlay').addEventListener('click', function (e) { if (e.target === $('supRenameOverlay')) closeSupplierRename(); });
+  $('supRenameSave').addEventListener('click', function () {
+    if (!orgRenameName) return;
+    var res = D.renameSupplier(orgRenameName, $('supRenameInput').value);
+    if (!res.ok) {
+      $('supRenameError').textContent = res.message || 'Could not rename that supplier.';
+      $('supRenameError').classList.remove('hidden');
+      return;
+    }
+    var newName = $('supRenameInput').value.trim();
+    closeSupplierRename();
+    orgAfterMutation('Renamed to ' + newName + ' — ' + res.count + ' item(s) updated', res);
+  });
+  /* Clear: for strings that aren't vendors at all. Confirm first —
+   * the items lose the name entirely (undo restores it). */
+  function askClearSupplier(name) {
+    orgClearName = name;
+    var entry = D.getSupplierNames().filter(function (s) { return s.name === name; })[0];
+    var n = entry ? entry.items : 0;
+    $('supClearTitle').textContent = 'Clear “' + name + '”?';
+    $('supClearText').textContent = 'This removes the supplier name from ' + n + (n === 1 ? ' item' : ' items') +
+      ' — for names that aren\'t really a supplier. The items keep everything else, and you can undo right after.';
+    $('supClearOverlay').classList.remove('hidden');
+  }
+  function closeClearSupplier() { $('supClearOverlay').classList.add('hidden'); orgClearName = null; }
+  $('supClearCancel').addEventListener('click', closeClearSupplier);
+  $('supClearOverlay').addEventListener('click', function (e) { if (e.target === $('supClearOverlay')) closeClearSupplier(); });
+  $('supClearConfirm').addEventListener('click', function () {
+    if (!orgClearName) return;
+    var name = orgClearName;
+    closeClearSupplier();
+    var res = D.clearSupplier(name);
+    if (!res.ok) { toast(res.message || 'Could not clear'); return; }
+    orgAfterMutation('Cleared ' + name + ' — ' + res.count + ' item(s) updated', res);
   });
 
   /* ---------- Count Mode: walk a bin item by item, then apply ---------- */
@@ -1645,6 +2014,27 @@
     if (kind === 'images') return 'https://www.google.com/search?tbm=isch&q=' + q;
     if (kind === 'amazon') return 'https://www.amazon.com/s?k=' + q;
     return 'https://www.google.com/search?q=' + q;
+  }
+  /* Item-sheet lookup: search the web for the item's EXACT part
+   * number — the Web search wraps it in double quotes so results
+   * match the number itself, not near-misses. Source is the SKU when
+   * the item has one, else its name; with neither, the row hides. */
+  function partLookupHrefs(part) {
+    var enc = encodeURIComponent(part);
+    return {
+      web: 'https://www.google.com/search?q=' + encodeURIComponent('"' + part + '"'),
+      images: 'https://www.google.com/search?tbm=isch&q=' + enc,
+      amazon: 'https://www.amazon.com/s?k=' + enc
+    };
+  }
+  function renderPartLookup(item) {
+    var part = String((item && item.sku) || '').trim() || String((item && item.name) || '').trim();
+    $('dLookup').classList.toggle('hidden', !part);
+    if (!part) return;
+    var hrefs = partLookupHrefs(part);
+    $('dLkWeb').href = hrefs.web;
+    $('dLkImages').href = hrefs.images;
+    $('dLkAmazon').href = hrefs.amazon;
   }
   function updateSkuLookup() {
     var skuEl = $('addSku');
@@ -1824,7 +2214,11 @@
   refreshChrome();
   // Sheet mode: pull the sheet's rows so the app opens on real data.
   D.refreshFromBackend().then(function (r) {
-    if (r && r.ok) { renderHome(); renderSync(); refreshChrome(); }
+    if (r && r.ok) {
+      renderHome(); renderSync(); refreshChrome();
+      if (currentShelf !== null && !$('shelfOverlay').classList.contains('hidden')) renderShelf();
+      openFromUrl();   // a sticker link whose item only just arrived
+    }
   });
   fitSticky();
   openFromUrl();
