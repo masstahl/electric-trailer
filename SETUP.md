@@ -75,11 +75,14 @@ once.
    Health shows **Mode: Live · Google Sheet**. Repeat this paste on
    **each phone/tablet** that uses the app — links don't sync between
    devices.
-7. **Sync now** on the Settings screen pushes queued changes back to
-   the sheet (quantities, new items, folder assignments). In Sheet
-   mode the app also **auto-syncs** when it comes back online or to
-   the foreground. Edits in the sheet itself appear in the app the
-   next time it opens or syncs.
+7. In Sheet mode, **sync is automatic**: every change (quantities,
+   new items, folder assignments) sends itself within a second or so
+   whenever the phone has service, and the app pulls fresh rows when
+   it comes to the foreground and about once a minute while open.
+   **Sync now** on the Settings screen is a manual retry — for after
+   dead zones, or when a change is reported as rejected and stays
+   queued. Edits made in the sheet itself appear in the app the next
+   time it opens, comes to the foreground, or polls.
 
 **Updating the script later:** pasting new code into the editor does
 **not** change the live Web app by itself — the deployment keeps
@@ -311,8 +314,9 @@ tapped, because the phone itself follows the link.
   column is blank for those rows (blank = level 2). Fill in 1–4 in
   the sheet, or set the level in Quick Add when adding.
 - **Changes made in the app didn't appear in the sheet** → in Sheet
-  mode changes push on **Sync now** (Settings), or automatically when
-  the app comes back online / to the foreground. A change whose row
+  mode changes push automatically whenever there is service (and
+  retry on their own if a send fails); **Sync now** (Settings) forces
+  an immediate retry after a dead zone. A change whose row
   can't be found in the sheet (for example a row with a blank
   `Item ID`) is reported honestly and stays queued — give the row a
   real `Item ID`

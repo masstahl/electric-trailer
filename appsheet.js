@@ -704,10 +704,22 @@
     var m = getMeta(); Object.assign(m, patch); write(LS.meta, m);
   }
 
+  /* Live-sync hook: every enqueue notifies subscribers so the UI can
+   * schedule an automatic flush. Central by design — queueChange and
+   * queueQty below are the ONLY two funnels that create pending ops,
+   * so qty steps, adds, edits, folder moves, category renames and
+   * supplier rewrites all announce themselves here instead of at a
+   * dozen call sites. Subscribers must never throw into a save. */
+  var queueListeners = [];
+  function notifyQueue() {
+    queueListeners.forEach(function (fn) { try { fn(); } catch (e) { /* ignore */ } });
+  }
+
   function queueChange(type, itemId, detail) {
     var q = getQueue();
     q.push({ id: 'q' + Date.now() + Math.random().toString(36).slice(2, 7), type: type, itemId: itemId, detail: detail, at: nowISO(), synced: false });
     write(LS.queue, q);
+    notifyQueue();
     return q.length;
   }
 
@@ -740,6 +752,7 @@
       q.push({ id: 'q' + Date.now() + Math.random().toString(36).slice(2, 7), type: 'qty', kind: 'qty', itemId: item.id, baseQty: beforeQty, qty: afterQty, detail: qtyDetail(item, beforeQty, afterQty), at: nowISO(), synced: false });
     }
     write(LS.queue, q);
+    notifyQueue();
   }
 
   function saveItems(items) { write(LS.items, items); }
@@ -1006,6 +1019,7 @@
     renameSupplier: renameSupplier, clearSupplier: clearSupplier, restoreSuppliers: restoreSuppliers,
     getItem: getItem,
     getQueue: getQueue, getMeta: getMeta,
+    onQueueChange: function (fn) { if (typeof fn === 'function') queueListeners.push(fn); },
     getCategories: getCategories, addCategory: addCategory,
     renameCategory: renameCategory, removeCategory: removeCategory, setCategory: setCategory,
     folderStats: folderStats, categoryFor: categoryForItem, UNCAT: UNCAT,

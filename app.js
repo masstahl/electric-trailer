@@ -2249,20 +2249,90 @@
       renderQueue(); renderSync();
     });
   });
-  /* Auto-flush: when the connection returns or the app comes back to the
-   * foreground, quietly push the queue if a live backend is connected. */
-  function maybeAutoFlush() {
-    if (!navigator.onLine || !D.isLive()) return;
-    if (!D.getQueue().some(function (c) { return !c.synced; })) return;
+  /* ---------- Live sync engine ----------
+   * Changes used to sit in the queue until someone opened Settings
+   * and pressed Sync (the only other flushes were the online and
+   * foreground events below — nothing fired when a change was MADE).
+   * Now every enqueue schedules its own flush: ETData notifies from
+   * its two queue funnels (appsheet.js), and this engine debounces
+   * bursts into one POST, retries with backoff while the app stays
+   * open, and pulls fresh sheet rows on focus and on a ~60 s poll —
+   * skipping pulls while a flush is running or an editing sheet is
+   * open, and relying on refreshFromBackend's pending-op protection
+   * so a pull never clobbers an unsent local change. The Settings
+   * Sync button stays as the manual fallback (dead zones, stubborn
+   * per-op rejections — failures stay visible there, no noisy toast). */
+  var syncFlushTimer = null, syncRetryTimer = null, syncRunning = false;
+  var syncRetryDelay = 30000, syncLastRefresh = 0, syncRefreshRunning = false;
+  function syncPending() { return D.getQueue().some(function (c) { return !c.synced; }); }
+  function scheduleAutoFlush(delay) {
+    if (!D.isLive()) return;
+    clearTimeout(syncFlushTimer);
+    syncFlushTimer = setTimeout(runAutoFlush, delay == null ? 800 : delay);
+  }
+  function armSyncRetry(grow) {
+    clearTimeout(syncRetryTimer);
+    if (!D.isLive() || !syncPending()) return;
+    syncRetryTimer = setTimeout(runAutoFlush, syncRetryDelay);
+    /* Only a real failed send grows the backoff — arming from the
+     * offline / nothing-to-send path just parks the timer. */
+    if (grow) syncRetryDelay = Math.min(syncRetryDelay * 2, 300000);
+  }
+  function runAutoFlush() {
+    clearTimeout(syncFlushTimer); clearTimeout(syncRetryTimer);
+    if (syncRunning) return;   // the running flush re-checks the queue when it settles
+    if (!navigator.onLine || !D.isLive() || !syncPending()) { armSyncRetry(false); return; }
+    syncRunning = true;
     D.flushQueue().then(function (r) {
+      syncRunning = false;
       refreshChrome();
       if ($('view-sync').classList.contains('active')) { renderQueue(); renderSync(); }
-      if (!r.ok) return;   // failure stays visible in Settings — no noisy toast
+      if (r.ok) {
+        syncRetryDelay = 30000;
+        if (syncPending()) scheduleAutoFlush(800);   // ops that arrived mid-flush
+      } else {
+        armSyncRetry(true);   // stays queued; backed-off retry + next trigger will get it
+      }
     });
   }
-  window.addEventListener('online', function () { refreshChrome(); renderQueue(); toast('Back online'); maybeAutoFlush(); });
+  D.onQueueChange(function () { scheduleAutoFlush(); });
+
+  var EDIT_OVERLAYS = ['itemOverlay', 'binOverlay', 'countOverlay', 'shelfOverlay', 'orgOverlay', 'orgPickOverlay', 'nfcOverlay', 'qtyEditOverlay', 'autoSortOverlay', 'sortOverlay', 'folderRemoveOverlay', 'supClearOverlay', 'supRenameOverlay', 'supplierOverlay'];
+  function editingOpen() {
+    for (var i = 0; i < EDIT_OVERLAYS.length; i++) {
+      var o = $(EDIT_OVERLAYS[i]);
+      if (o && !o.classList.contains('hidden')) return true;
+    }
+    var av = $('view-add');
+    return !!(av && av.classList.contains('active'));
+  }
+  function maybeAutoRefresh(force) {
+    if (!D.isLive() || document.hidden) return;
+    if (syncRunning || syncRefreshRunning) return;
+    if (editingOpen()) return;
+    var now = Date.now();
+    if (!force && now - syncLastRefresh < 60000) return;
+    if (force && now - syncLastRefresh < 4000) return;   // focus + visibility often fire together
+    syncRefreshRunning = true;
+    D.refreshFromBackend().then(function (r) {
+      syncRefreshRunning = false; syncLastRefresh = Date.now();
+      if (r && r.ok) {
+        renderHome(); refreshChrome();
+        if (currentShelf !== null && !$('shelfOverlay').classList.contains('hidden')) renderShelf();
+        if ($('view-sync').classList.contains('active')) renderSync();
+      }
+    });
+  }
+  setInterval(function () { maybeAutoRefresh(false); }, 60000);
+
+  window.addEventListener('online', function () { refreshChrome(); renderQueue(); toast('Back online'); scheduleAutoFlush(300); maybeAutoRefresh(true); });
   window.addEventListener('offline', function () { refreshChrome(); renderQueue(); toast('Offline — changes will queue'); });
-  document.addEventListener('visibilitychange', function () { if (!document.hidden) maybeAutoFlush(); });
+  window.addEventListener('focus', function () { maybeAutoRefresh(true); });
+  document.addEventListener('visibilitychange', function () {
+    if (document.hidden) return;
+    scheduleAutoFlush(0);
+    maybeAutoRefresh(true);
+  });
 
   /* ---------- Sync Health & Settings ---------- */
   function renderSync() {
@@ -2317,11 +2387,15 @@
   // Sheet mode: pull the sheet's rows so the app opens on real data.
   D.refreshFromBackend().then(function (r) {
     if (r && r.ok) {
+      syncLastRefresh = Date.now();   // the load pull counts as a refresh for the poll
       renderHome(); renderSync(); refreshChrome();
       if (currentShelf !== null && !$('shelfOverlay').classList.contains('hidden')) renderShelf();
       openFromUrl();   // a sticker link whose item only just arrived
     }
   });
+  /* Flush anything left queued from a previous session shortly after
+   * load — the manual Sync button is the fallback, not the routine. */
+  scheduleAutoFlush(1500);
   fitSticky();
   openFromUrl();
 })();
