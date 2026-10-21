@@ -35,7 +35,6 @@
     <div class="header-status">
       <span id="modeBadge" class="badge badge-demo">Demo mode</span>
       <span id="netBadge" class="badge badge-online">● Online</span>
-      <button type="button" id="nfcLiveBtn" class="badge badge-nfc hidden" aria-pressed="false" title="NFC Live — always-on sticker listening while the app is open"><span class="nfc-dot"></span><span id="nfcLiveLabel">NFC · Off</span></button>
       <span id="queueBadge" class="badge badge-queue hidden">0 pending</span>
     </div>
   </div>
@@ -181,10 +180,13 @@
     <div id="addSuccess" class="card success hidden">
       <h3>Item added</h3>
       <p id="addSuccessText"></p>
-      <label class="small-label">NFC sticker link for this item</label>
-      <div class="copy-row"><input id="addStickerLink" readonly><button type="button" id="addCopyBtn" class="btn">Copy</button></div>
-      <button type="button" id="addWriteNfcBtn" class="btn btn-primary hidden">Write to sticker (Web NFC)</button>
-      <p class="muted small">iPhone: open the free <strong>NFC Tools</strong> app → Write → Add a record → URL → paste the link above → Write → hold the sticker to the top of the phone.</p>
+      <label class="small-label">NFC sticker for this item</label>
+      <div class="sticker-actions">
+        <button type="button" id="addWriteNfcBtn" class="btn btn-primary hidden">Write sticker</button>
+        <button type="button" id="addCopyBtn" class="btn">Copy sticker link</button>
+      </div>
+      <p id="addWriteStatus" class="write-status hidden"><span id="addWriteStatusText"></span><button type="button" id="addWriteCancel" class="pill-btn">Cancel</button></p>
+      <p id="addIosNote" class="muted small hidden">iPhone can't write stickers from a web app (an Apple limit on all web apps). One-time fix per sticker (~30 seconds): tap <strong>Copy sticker link</strong> above, open the free <strong>NFC Tools</strong> app (by wakdev) → Write → Add a record → URL/URI → paste → OK → Write, and hold the sticker to the top of the phone. Tapping the finished sticker opens the item here — no app needed to read it.</p>
       <button type="button" id="addAnotherBtn" class="btn">Add another</button>
     </div>
   </section>
@@ -303,8 +305,13 @@
     </div>
     <p id="dCost" class="detail-cost"></p>
     <p id="dUpdated" class="muted small"></p>
-    <label class="small-label">NFC sticker link (write this URL to a sticker)</label>
-    <div class="copy-row"><input id="dStickerLink" readonly><button id="dCopyBtn" class="btn">Copy</button></div>
+    <label class="small-label">NFC sticker</label>
+    <div class="sticker-actions">
+      <button type="button" id="dWriteBtn" class="btn btn-primary hidden">Write sticker</button>
+      <button type="button" id="dCopyBtn" class="btn">Copy sticker link</button>
+      <button type="button" id="dNfcToolsBtn" class="btn">NFC tools</button>
+    </div>
+    <p id="dWriteStatus" class="write-status hidden"><span id="dWriteStatusText"></span><button type="button" id="dWriteCancel" class="pill-btn">Cancel</button></p>
     <div class="sheet-footer">
       <button type="button" id="doneDetail" class="btn btn-primary btn-big">Done</button>
     </div>
@@ -425,7 +432,7 @@
   </div>
 </div>
 
-<!-- ============ NFC TOOLS · behind the header chip (no tab, no Settings card) ============ -->
+<!-- ============ NFC TOOLS · reached from item / shelf sheets (no tab, no header button, no Settings card) ============ -->
 <div id="nfcOverlay" class="overlay hidden" role="dialog" aria-modal="true" aria-labelledby="nfcTitle">
   <div class="sheet confirm-sheet">
     <button type="button" id="closeNfc" class="close-btn" aria-label="Close">✕</button>
@@ -434,7 +441,8 @@
     <button type="button" id="nfcToggleBtn" class="btn btn-primary btn-big">Start listening</button>
     <p id="nfcIosNote" class="muted small hidden">iPhone can't scan NFC inside a web app — stickers still work: hold one near the top of the phone and its link opens the item or shelf directly, no app needed.</p>
     <p class="small-label">Writing a sticker</p>
-    <p class="muted small">Open an item or a shelf and tap <strong>Copy sticker link</strong>, then write that link to an NTAG sticker with your NFC writer app. On Android Chrome, Quick Add can also write a sticker directly after an item is added.</p>
+    <p id="nfcWriteNote" class="muted small hidden">Write stickers right here in the app: open any item or shelf, tap <strong>Write sticker</strong>, then hold a blank NTAG sticker to the back of the phone. Quick Add offers the same button right after an item is added, and a <strong>Copy sticker link</strong> button is on those sheets too if you ever need the link on a clipboard.</p>
+    <p id="nfcIosWriteNote" class="muted small hidden">This phone's browser can't write NFC — an Apple limit on every web app — but writing takes about 30 seconds per sticker, one time only: (1) on the item or shelf, tap <strong>Copy sticker link</strong>; (2) open the free <strong>NFC Tools</strong> app (by wakdev) → <strong>Write</strong> → <strong>Add a record</strong> → <strong>URL/URI</strong> → paste the link → OK; (3) tap <strong>Write</strong> and hold the sticker to the top of the phone. After that, stickers open by tapping — no app needed to read them.</p>
     <button type="button" id="nfcDoneBtn" class="btn btn-big">Done</button>
   </div>
 </div>
@@ -447,8 +455,13 @@
     <p class="muted" id="shMeta"></p>
     <div id="shelfItems" class="list"></div>
     <p id="shelfItemsEmpty" class="empty hidden">Nothing is stored at this location.</p>
-    <label class="small-label">Shelf sticker link (write this URL to a sticker on the shelf)</label>
-    <div class="copy-row"><input id="shStickerLink" readonly><button type="button" id="shCopyBtn" class="btn">Copy</button></div>
+    <label class="small-label">Shelf sticker</label>
+    <div class="sticker-actions">
+      <button type="button" id="shWriteBtn" class="btn btn-primary hidden">Write sticker</button>
+      <button type="button" id="shCopyBtn" class="btn">Copy shelf sticker link</button>
+      <button type="button" id="shNfcToolsBtn" class="btn">NFC tools</button>
+    </div>
+    <p id="shWriteStatus" class="write-status hidden"><span id="shWriteStatusText"></span><button type="button" id="shWriteCancel" class="pill-btn">Cancel</button></p>
   </div>
 </div>
 

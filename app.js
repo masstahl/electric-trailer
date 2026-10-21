@@ -916,7 +916,6 @@
     renderPartLookup(item);
     renderFolderRail(item);
     $('dCost').textContent = money(item.cost) + ' each';
-    $('dStickerLink').value = D.stickerUrl(item.id);
     syncSheetQty();
     $('itemOverlay').classList.remove('hidden');
     var sheet = $('itemOverlay').querySelector('.sheet');
@@ -977,14 +976,31 @@
     });
   });
 
-  function copyText(inputEl, msg) {
-    inputEl.select(); inputEl.setSelectionRange(0, 9999);
+  /* Copy a string that is never rendered anywhere: sticker URLs are
+   * plumbing, not content — the sheets show Copy buttons, never the
+   * raw link itself. */
+  function copyString(str, msg) {
+    if (!str) { toast('Nothing to copy yet'); return; }
     var done = function () { toast(msg || 'Copied'); };
     if (navigator.clipboard && navigator.clipboard.writeText) {
-      navigator.clipboard.writeText(inputEl.value).then(done, function () { document.execCommand('copy'); done(); });
-    } else { document.execCommand('copy'); done(); }
+      navigator.clipboard.writeText(str).then(done, function () { copyFallback(str, done); });
+    } else copyFallback(str, done);
   }
-  $('dCopyBtn').addEventListener('click', function () { copyText($('dStickerLink'), 'Sticker link copied'); });
+  function copyFallback(str, done) {
+    var ta = document.createElement('textarea');
+    ta.value = str;
+    ta.setAttribute('readonly', '');
+    ta.style.position = 'fixed';
+    ta.style.opacity = '0';
+    document.body.appendChild(ta);
+    ta.select();
+    try { document.execCommand('copy'); done(); }
+    catch (e) { toast('Copy failed — try again'); }
+    ta.remove();
+  }
+  $('dCopyBtn').addEventListener('click', function () {
+    if (currentItemId) copyString(D.stickerUrl(currentItemId), 'Link copied');
+  });
   /* Folder rail in the item sheet (Sorting Kit): one chip per folder
    * plus Uncategorized, the item's current folder filled with the
    * accent. Tapping a chip files the item there on the spot — this
@@ -1018,10 +1034,12 @@
    * Android Chrome (Web NFC): a single NDEFReader.scan() keeps firing
    * `reading` events for every tag presented while the page is visible, so
    * listening can stay on for a whole warehouse session. Chrome requires a
-   * user gesture for the first scan, so the header chip tap starts it, and
-   * the saved preference ('et-nfc-live') re-arms it on the first touch after
-   * the app is reopened. iOS Safari has no Web NFC at all — the chip stays
-   * hidden there and stickers keep working because iOS opens their URLs. */
+   * user gesture for the first scan, so the NFC tools sheet's Start button
+   * (or any first touch, once armed) starts it, and the saved preference
+   * ('et-nfc-live') re-arms it on the first touch after the app is
+   * reopened. There is deliberately NO header button: the tools sheet is
+   * reached from the item and Shelf sheets. iOS Safari has no Web NFC at
+   * all — stickers keep working there because iOS opens their URLs. */
   var NFC_SUPPORTED = ('NDEFReader' in window);
   var nfcLiveWanted = false;
   try { nfcLiveWanted = localStorage.getItem('et-nfc-live') === '1'; } catch (e) { /* storage blocked */ }
@@ -1132,33 +1150,22 @@
       wakeLock = null;
     }
   }
-  function renderNfcChip() {
-    var btn = $('nfcLiveBtn');
-    if (!btn) return;
-    /* The chip is ALWAYS visible now: it is the (only) door to the
-     * NFC tools sheet — no dock tab, no Settings card. On platforms
-     * without Web NFC (iPhone) it simply reads 'NFC'. */
-    btn.classList.remove('hidden');
-    var label = $('nfcLiveLabel');
-    btn.classList.remove('is-live', 'is-paused');
-    if (!NFC_SUPPORTED) { label.textContent = 'NFC'; }
-    else if (nfcLivePaused) { btn.classList.add('is-paused'); label.textContent = 'NFC · Paused — tap'; }
-    else if (nfcLiveActive) { btn.classList.add('is-live'); label.textContent = 'NFC · Live'; }
-    else if (nfcLiveWanted) { btn.classList.add('is-paused'); label.textContent = 'NFC · Tap to resume'; }
-    else { label.textContent = 'NFC · Off'; }
-    btn.setAttribute('aria-pressed', nfcLiveWanted ? 'true' : 'false');
-    renderNfcSheet();
-  }
-  /* ---------- NFC tools sheet (hidden behind the header chip) ----------
+  /* NFC state has no visible home of its own anymore (the header pill
+   * is gone); the only surface is the NFC tools sheet, refreshed here. */
+  function renderNfcUi() { renderNfcSheet(); }
+  /* ---------- NFC tools sheet (reached from item / shelf sheets) ----------
    * Scan state + the sticker-writing guidance live here and nowhere
-   * else in the UI. On Android Chrome the sheet's button starts/stops
-   * NFC Live (the tap is the user gesture Chrome requires); on iPhone
-   * it shows the honest note instead — iOS opens sticker URLs itself. */
+   * else in the UI — no dock tab, no Settings card, no header button.
+   * On Android Chrome the sheet's button starts/stops NFC Live (the tap
+   * is the user gesture Chrome requires); on iPhone it shows the honest
+   * notes instead — iOS opens sticker URLs itself. */
   function renderNfcSheet() {
     var state = $('nfcStateText');
     if (!state) return;
     $('nfcToggleBtn').classList.toggle('hidden', !NFC_SUPPORTED);
     $('nfcIosNote').classList.toggle('hidden', NFC_SUPPORTED);
+    $('nfcWriteNote').classList.toggle('hidden', !NFC_SUPPORTED);
+    $('nfcIosWriteNote').classList.toggle('hidden', NFC_SUPPORTED);
     if (!NFC_SUPPORTED) {
       state.textContent = 'Stickers work on this phone — tapping one opens its item or shelf.';
       return;
@@ -1180,11 +1187,16 @@
     else startNfcLive();   // this tap is the user gesture Chrome requires
     renderNfcSheet();
   });
+  /* The doors to the tools sheet: a compact button on the item sheet
+   * and on the Shelf view, next to their sticker rows. The sheet
+   * stacks above both (see #nfcOverlay in styles.css). */
+  $('dNfcToolsBtn').addEventListener('click', function () { openNfcSheet(); });
+  $('shNfcToolsBtn').addEventListener('click', function () { openNfcSheet(); });
   function startNfcLive() {
     if (!NFC_SUPPORTED) return Promise.resolve(false);
     nfcLiveWanted = true;
     try { localStorage.setItem('et-nfc-live', '1'); } catch (e) { /* storage blocked */ }
-    if (nfcLiveActive) { nfcLivePaused = false; renderNfcChip(); return Promise.resolve(true); }
+    if (nfcLiveActive) { nfcLivePaused = false; renderNfcUi(); return Promise.resolve(true); }
     if (!nfcReader) {
       nfcReader = new NDEFReader();
       nfcReader.addEventListener('reading', function (ev) {
@@ -1200,12 +1212,13 @@
     nfcAbort = (typeof AbortController !== 'undefined') ? new AbortController() : null;
     var scanPromise = nfcAbort ? nfcReader.scan({ signal: nfcAbort.signal }) : nfcReader.scan();
     return scanPromise.then(function () {
-      nfcLiveActive = true; nfcLivePaused = false; renderNfcChip(); updateWakeLock();
+      nfcLiveActive = true; nfcLivePaused = false; renderNfcUi(); updateWakeLock();
       return true;
     }).catch(function () {
       // Most often NotAllowedError: no gesture yet / permission not granted.
-      // The chip stays in "Paused — tap"; tapping it retries with a gesture.
-      nfcLiveActive = false; nfcLivePaused = true; renderNfcChip();
+      // State shows as paused; the tools sheet's button (or the next
+      // touch, once armed) retries with a gesture behind it.
+      nfcLiveActive = false; nfcLivePaused = true; renderNfcUi();
       return false;
     });
   }
@@ -1213,7 +1226,7 @@
     nfcLiveWanted = false; nfcLiveActive = false; nfcLivePaused = false;
     try { localStorage.setItem('et-nfc-live', '0'); } catch (e) { /* storage blocked */ }
     if (nfcAbort) { try { nfcAbort.abort(); } catch (e) { /* already settled */ } nfcAbort = null; }
-    renderNfcChip(); updateWakeLock();
+    renderNfcUi(); updateWakeLock();
   }
   /* Chrome needs a gesture: arm a one-time first-touch retry. */
   function armNfcOnFirstTouch() {
@@ -1224,16 +1237,12 @@
       if (nfcLiveWanted && !nfcLiveActive) startNfcLive();
     }, { once: true });
   }
-  /* The chip no longer toggles scanning directly — it opens the NFC
-   * tools sheet (app level, so it works even with an item sheet open
-   * underneath). Start/stop lives on the sheet's own button. */
-  $('nfcLiveBtn').addEventListener('click', function () { openNfcSheet(); });
   document.addEventListener('visibilitychange', function () {
     if (!NFC_SUPPORTED || !nfcLiveWanted) return;
     if (document.hidden) {
       // Readings stop while hidden; end the session so resume is clean.
       if (nfcAbort) { try { nfcAbort.abort(); } catch (e) { /* settled */ } nfcAbort = null; }
-      nfcLiveActive = false; nfcLivePaused = true; renderNfcChip(); updateWakeLock();
+      nfcLiveActive = false; nfcLivePaused = true; renderNfcUi(); updateWakeLock();
     } else {
       // Try an immediate restart; if Chrome refuses without a gesture,
       // the next touch anywhere re-arms it.
@@ -1241,14 +1250,116 @@
     }
   });
   function initNfcLive() {
-    renderNfcChip();
+    renderNfcUi();
     if (NFC_SUPPORTED && nfcLiveWanted) {
       startNfcLive().then(function (ok) { if (!ok) armNfcOnFirstTouch(); });
     }
   }
 
-  /* No Scan button in the item detail: NFC Live (header chip) listens
-   * globally while the app is open and opens items via handleTag(). */
+  /* No Scan button in the item detail: NFC Live listens globally
+   * while the app is open and opens items via handleTag(). */
+
+  /* ---------- In-app sticker writing (Web NFC write) ----------
+   * Android Chrome can WRITE tags too, not just read them: NDEFReader
+   * .write() with a single URL record is how stickers get made — no
+   * separate writer app. Web NFC allows one operation at a time, so a
+   * running Live scan is paused first and resumed afterwards (the
+   * write tap itself is the gesture Chrome needs for the restart).
+   * Result is structured — {ok:true} or {ok:false, reason}: */
+  var nfcWriter = null;      // dedicated reader instance for writes
+  var nfcWriteAbort = null;  // AbortController for the in-flight write
+  var nfcWriteBusy = false;  // one write at a time
+  function nfcWriteReason(err) {
+    var name = (err && err.name) || '';
+    if (name === 'AbortError') return 'cancelled';
+    if (name === 'NotAllowedError') return 'not-allowed';
+    if (name === 'NotSupportedError') return 'not-writable';
+    if (name === 'NotReadableError') return 'not-writable';
+    if (name === 'NetworkError') return 'tag-lost';
+    return 'error';
+  }
+  function nfcWriteReasonText(reason) {
+    if (reason === 'not-writable') return "That sticker isn't writable — NTAG213/216 stickers work.";
+    if (reason === 'not-allowed') return "Chrome didn't allow the write — keep the app on screen and tap Write sticker again.";
+    if (reason === 'tag-lost') return 'The sticker moved away mid-write — hold it steady against the back of the phone and try again.';
+    if (reason === 'busy') return 'Another sticker write is still finishing — give it a second.';
+    if (reason === 'unsupported') return "This device's browser can't write NFC stickers.";
+    return 'Write failed — hold a blank NTAG sticker to the back of the phone and try again.';
+  }
+  function nfcWriteUrl(url) {
+    if (!NFC_SUPPORTED) return Promise.resolve({ ok: false, reason: 'unsupported' });
+    if (nfcWriteBusy) return Promise.resolve({ ok: false, reason: 'busy' });
+    nfcWriteBusy = true;
+    var resumeScan = nfcLiveActive;
+    if (resumeScan) {
+      if (nfcAbort) { try { nfcAbort.abort(); } catch (e) { /* settled */ } nfcAbort = null; }
+      nfcLiveActive = false; nfcLivePaused = nfcLiveWanted; renderNfcUi();
+    }
+    if (!nfcWriter) nfcWriter = new NDEFReader();
+    nfcWriteAbort = (typeof AbortController !== 'undefined') ? new AbortController() : null;
+    var settled = function (res) {
+      nfcWriteBusy = false; nfcWriteAbort = null;
+      if (resumeScan && nfcLiveWanted) startNfcLive();
+      return res;
+    };
+    var writePromise;
+    try {
+      writePromise = nfcWriteAbort
+        ? nfcWriter.write({ records: [{ recordType: 'url', data: url }] }, { signal: nfcWriteAbort.signal })
+        : nfcWriter.write({ records: [{ recordType: 'url', data: url }] });
+    } catch (e) {
+      return Promise.resolve(settled({ ok: false, reason: nfcWriteReason(e) }));
+    }
+    return writePromise.then(
+      function () { return settled({ ok: true }); },
+      function (err) { return settled({ ok: false, reason: nfcWriteReason(err) }); }
+    );
+  }
+  function cancelNfcWrite() {
+    if (nfcWriteAbort) { try { nfcWriteAbort.abort(); } catch (e) { /* settled */ } }
+  }
+  /* One wiring for all three Write sticker buttons (item sheet, Shelf
+   * view, Quick Add success): shows the hold-the-sticker status with a
+   * Cancel while the write waits for a tag, then reports the outcome.
+   * The button exists only where writing is possible (Web NFC). */
+  function attachStickerWriter(getUrl, writeBtn, statusEl, statusTextEl, cancelBtn) {
+    if (!writeBtn) return;
+    writeBtn.classList.toggle('hidden', !NFC_SUPPORTED);
+    var session = 0;
+    function setWaiting(on) {
+      if (statusEl) statusEl.classList.toggle('hidden', !on);
+      writeBtn.disabled = !!on;
+      if (on && statusTextEl) statusTextEl.textContent = 'Hold a blank sticker to the back of the phone…';
+    }
+    writeBtn.addEventListener('click', function () {
+      var mine = ++session;
+      setWaiting(true);
+      nfcWriteUrl(getUrl()).then(function (res) {
+        if (mine !== session) return;   // user cancelled — stay quiet
+        setWaiting(false);
+        if (res.ok) {
+          if (navigator.vibrate) { try { navigator.vibrate(60); } catch (e) { /* unsupported */ } }
+          toast('Sticker written — hold the phone to it to test');
+        } else if (res.reason !== 'cancelled') {
+          toast(nfcWriteReasonText(res.reason));
+        }
+      });
+    });
+    if (cancelBtn) cancelBtn.addEventListener('click', function () {
+      session++;             // suppress the pending write's outcome
+      setWaiting(false);
+      cancelNfcWrite();      // scan resume happens when the write settles
+    });
+  }
+  attachStickerWriter(
+    function () { return currentItemId ? D.stickerUrl(currentItemId) : ''; },
+    $('dWriteBtn'), $('dWriteStatus'), $('dWriteStatusText'), $('dWriteCancel'));
+  attachStickerWriter(
+    function () { return currentShelf !== null ? D.shelfUrl(currentShelf) : ''; },
+    $('shWriteBtn'), $('shWriteStatus'), $('shWriteStatusText'), $('shWriteCancel'));
+  attachStickerWriter(
+    function () { return lastAddUrl; },
+    $('addWriteNfcBtn'), $('addWriteStatus'), $('addWriteStatusText'), $('addWriteCancel'));
 
   /* Sticker taps: ?item=<id> opens that item, ?shelf=<location>
    * opens the Shelf view — both directly on load. In Sheet mode the
@@ -1449,7 +1560,6 @@
     $('shTitle').textContent = currentShelf;
     $('shMeta').textContent = list.length + (list.length === 1 ? ' item' : ' items') + ' · ' + units + ' units';
     $('shelfItemsEmpty').classList.toggle('hidden', list.length > 0);
-    $('shStickerLink').value = D.shelfUrl(currentShelf);
     $('shelfItems').innerHTML = list.map(function (i) {
       return '<div class="list-item row-item"><span class="li-icon">' + iconPlate(i) + '</span>' +
         '<button type="button" class="li-main row-open" data-shopen="' + esc(i.id) + '"><span class="li-name">' + esc(i.name) + '</span><br>' +
@@ -1486,7 +1596,9 @@
   }
   $('closeShelf').addEventListener('click', closeShelf);
   $('shelfOverlay').addEventListener('click', function (e) { if (e.target === $('shelfOverlay')) closeShelf(); });
-  $('shCopyBtn').addEventListener('click', function () { copyText($('shStickerLink'), 'Shelf sticker link copied'); });
+  $('shCopyBtn').addEventListener('click', function () {
+    if (currentShelf !== null) copyString(D.shelfUrl(currentShelf), 'Link copied');
+  });
   /* The item sheet's location chip is the third door into a location:
    * coded bins (A1–D6) open their bin sheet on the map; free-text
    * locations open the Shelf view. */
@@ -1958,6 +2070,7 @@
   /* ---------- #22 Quick Add ---------- */
   var iconTouched = false;      // user picked a category manually — stop auto-assigning
   var pendingAdd = null;        // { data, dup } while the duplicate warning is up
+  var lastAddUrl = '';          // sticker link of the just-added item (never displayed — Copy/Write use it directly)
   function selectIcon(key) {
     selectedIcon = key;
     $('iconPicker').querySelectorAll('.icon-choice').forEach(function (x) {
@@ -2056,10 +2169,9 @@
     $('addDupWarn').classList.add('hidden');
     $('addForm').classList.add('hidden');
     $('addSuccess').classList.remove('hidden');
-    $('addSuccessText').textContent = item.name + ' — ' + item.qty + ' in ' + locShort(item) + ' · Folder: ' + itemCategory(item) + '. Stick an NFC sticker on the bin/item and write this link to it:';
-    $('addStickerLink').value = D.stickerUrl(item.id);
-    $('addWriteNfcBtn').classList.toggle('hidden', !('NDEFReader' in window));
-    $('addWriteNfcBtn').onclick = function () { writeSticker(D.stickerUrl(item.id)); };
+    $('addSuccessText').textContent = item.name + ' — ' + item.qty + ' in ' + locShort(item) + ' · Folder: ' + itemCategory(item) + '. Stick an NFC sticker on the bin/item:';
+    lastAddUrl = D.stickerUrl(item.id);
+    $('addIosNote').classList.toggle('hidden', NFC_SUPPORTED);
     refreshChrome();
     toast('Added ' + item.name);
   }
@@ -2104,7 +2216,7 @@
     if (level >= 1 && level <= 4) $('addLevel').value = String(level);
     $('addName').focus();
   }
-  $('addCopyBtn').addEventListener('click', function () { copyText($('addStickerLink'), 'Sticker link copied'); });
+  $('addCopyBtn').addEventListener('click', function () { copyString(lastAddUrl, 'Link copied'); });
   $('addAnotherBtn').addEventListener('click', function () {
     $('addSuccess').classList.add('hidden');
     $('addForm').classList.remove('hidden');
@@ -2114,16 +2226,6 @@
     $('addDupWarn').classList.add('hidden');
     selectIcon(ICON_KEYS[0]);
   });
-  function writeSticker(url) {
-    if (!('NDEFReader' in window)) { toast('Web NFC writing needs Chrome on Android'); return; }
-    try {
-      var writer = new NDEFReader();
-      writer.write({ records: [{ recordType: 'url', data: url }] })
-        .then(function () { toast('Sticker written — hold it near the phone to test.'); })
-        .catch(function (err) { toast('Write failed: ' + err.message); });
-    } catch (e) { toast('NFC writing not available here'); }
-  }
-
   /* ---------- #16 Offline-First / Sync Queue ---------- */
   function renderQueue() {
     $('queueNetStatus').textContent = navigator.onLine ? 'Online' : 'Offline';

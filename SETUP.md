@@ -220,10 +220,13 @@ free-text location with its item/unit counts — tap one to open that
 shelf's contents. An item's location chip opens the same view.
 
 **Shelf stickers.** A whole shelf can have its own sticker: open the
-shelf (from the Map tab's Shelves list, or any item stored there),
-tap **Copy** next to the *Shelf sticker link*, and write that URL to
-an NTAG sticker exactly like an item sticker (Step 4). The link
-looks like
+shelf (from the Map tab's Shelves list, or any item stored there) and
+write its link to an NTAG sticker exactly like an item sticker
+(Step 4) — on Android Chrome, tap **Write sticker** right in the
+Shelf view and hold a blank sticker to the back of the phone;
+**Copy shelf sticker link** is there too if you need the link on a
+clipboard instead. (The app never displays the raw link — buttons
+only.) The link looks like
 `https://masstahl.github.io/electric-trailer/?shelf=Shelf%2059`.
 Stick it on the shelf itself — tapping it with any phone opens the
 app to a list of everything stored at that location, with counts you
@@ -242,35 +245,48 @@ keys automatically.)
 
 ## Step 4 — NFC stickers (tap-to-open)
 
-Works on iPhone and Android with ordinary NFC tags — no special app
-needed, because the tag stores a plain URL.
+Works on iPhone and Android with ordinary NFC tags, because the tag
+stores a plain URL — reading one never needs an app. (Writing is
+in-app on Android Chrome; on iPhone it's the one-time NFC Tools step
+below.)
 
 **Tag choice:** NTAG213 (cheap, plenty for a URL) or NTAG216 (longer
 URLs / bigger custom text). Stickers or cards both fine.
 
 **Writing a tag:**
 
-- **Android:** in the app, open **Quick Add**, fill in the item, then
-  use **Write to NFC sticker** and hold the phone against the tag.
-  (Or use any NFC writer app to write the URL below.)
-- **iPhone:** install the free "NFC Tools" app (or similar). Write a
-  URL record:
-  `https://masstahl.github.io/electric-trailer/?item=<id>`
-  where `<id>` is the item's Id in the sheet (e.g.
-  `?item=breaker-20a`). Names for new items are turned into an id from
-  the name when added (e.g. `20a-breaker`).
+- **Android (in the app — no other app needed):** open the item (or
+  the shelf), tap **Write sticker**, and hold a blank tag to the back
+  of the phone — Chrome writes the tag's URL record itself. Quick Add
+  offers the same **Write sticker** button right after an item is
+  added.
+- **iPhone:** Safari can't write NFC from any web app — an Apple
+  limit, not an app limit — so writing is a one-time, ~30-second step
+  per sticker in the free **NFC Tools** app (by wakdev):
+  (1) in this app, open the item or shelf and tap **Copy sticker
+  link**; (2) in NFC Tools, tap **Write** → **Add a record** →
+  **URL/URI**, paste the link, and tap OK; (3) tap **Write** and hold
+  the sticker to the top of the phone. From then on the sticker just
+  works: tap it and the app opens — reading needs no app at all.
+
+The link being written looks like
+`https://masstahl.github.io/electric-trailer/?item=<id>`, where
+`<id>` is the item's Id in the sheet (e.g. `?item=breaker-20a`).
+Names for new items are turned into an id from the name when added
+(e.g. `20a-breaker`).
 
 Then stick the tag on the item's bin. Tapping it with any phone opens
 the app straight to that item. Shelf stickers work the same way, one
 level up — see **Shelf stickers** under Locations in Step 3.
 
-**The NFC tools sheet.** NFC has no tab and no Settings card — tap
-the **NFC chip in the app header** to open it. It shows whether NFC
-Live (always-on listening on Android Chrome) is running, with its
-start/stop button, plus the sticker-writing guidance. On iPhone the
-sheet explains the one limit that matters: iOS can't scan NFC inside
-a web app, but stickers still open their item or shelf when tapped,
-because the phone itself follows the link.
+**The NFC tools sheet.** NFC has no tab, no Settings card, and no
+header button — open any item or shelf and tap **NFC tools** next to
+its sticker rows. The sheet shows whether NFC Live (always-on
+listening on Android Chrome) is running, with its start/stop button,
+plus the sticker-writing guidance for this phone. On iPhone it
+explains the one limit that matters: iOS can't scan or write NFC
+inside a web app, but stickers still open their item or shelf when
+tapped, because the phone itself follows the link.
 
 ---
 

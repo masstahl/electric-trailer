@@ -153,14 +153,6 @@ a{color:var(--accent)}
 .badge-live{background:var(--ok-bg);color:var(--ok-text);border-color:var(--green)}
 .badge-online{color:var(--ok-text)}.badge-offline{color:var(--out-text)}
 .badge-queue{background:var(--out-bg);color:var(--out-text);border-color:var(--red)}
-/* NFC Live chip (header) */
-.badge-nfc{cursor:pointer;font-family:inherit;display:inline-flex;align-items:center;gap:.35rem}
-.badge-nfc .nfc-dot{width:7px;height:7px;border-radius:50%;background:var(--muted);display:inline-block;flex:none}
-.badge-nfc.is-live{border-color:var(--accent);color:var(--accent)}
-.badge-nfc.is-live .nfc-dot{background:var(--accent);animation:nfcPulse 1.6s ease-in-out infinite}
-.badge-nfc.is-paused .nfc-dot{background:var(--amber)}
-@keyframes nfcPulse{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.35;transform:scale(.7)}}
-@media (prefers-reduced-motion:reduce){.badge-nfc.is-live .nfc-dot{animation:none}}
 
 main{max-width:960px;margin:0 auto;padding:1rem}
 .view{display:none}.view.active{display:block}
@@ -495,8 +487,9 @@ html[data-theme="electric"] body.folders-bg{
 .result{font-size:.9rem;margin-top:.6rem;min-height:1.2em}
 .result.ok{color:var(--green)} .result.err{color:var(--red)}
 .small-label{display:block;font-size:.78rem;font-weight:700;color:var(--muted);margin:.8rem 0 .3rem;text-transform:uppercase;letter-spacing:.04em}
-.copy-row{display:flex;gap:.5rem}
-.copy-row input{flex:1;padding:.6rem .7rem;border:1.5px solid var(--border);border-radius:10px;font-size:.82rem;background:var(--surface2);color:var(--text);min-width:0}
+/* Sticker write row (item sheet / Shelf view / Quick Add success) */
+.sticker-actions{display:flex;gap:.5rem;flex-wrap:wrap;margin-top:.55rem}
+.write-status{display:flex;align-items:center;gap:.6rem;margin:.55rem 0 0;font-size:.85rem;color:var(--muted)}
 .kv{display:flex;justify-content:space-between;gap:1rem;padding:.45rem 0;border-bottom:var(--bw) solid var(--border)}
 .kv:last-child{border-bottom:none}
 .kv span{color:var(--muted)}
@@ -625,6 +618,9 @@ html[data-theme="electric"] body.folders-bg{
 
 /* Item detail overlay (#02) + bin sheet + count sheet */
 .overlay{position:fixed;inset:0;background:var(--overlay);z-index:40;display:flex;align-items:flex-end;justify-content:center}
+/* The NFC tools sheet opens FROM the item / shelf sheets, so it
+   stacks above the generic overlay layer (qty editor stays higher). */
+#nfcOverlay{z-index:55}
 .sheet{
   background:var(--surface);color:var(--text);width:100%;max-width:560px;max-height:92vh;overflow:auto;
   border-radius:26px 26px 0 0;padding:1.2rem 1.2rem 2rem;position:relative;text-align:left;
