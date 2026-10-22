@@ -490,6 +490,11 @@ html[data-theme="electric"] body.folders-bg{
 /* Sticker write row (item sheet / Shelf view / Quick Add success) */
 .sticker-actions{display:flex;gap:.5rem;flex-wrap:wrap;margin-top:.55rem}
 .write-status{display:flex;align-items:center;gap:.6rem;margin:.55rem 0 0;font-size:.85rem;color:var(--muted)}
+/* Not-in-sheet (orphan) resolution: slim notice on the item sheet, action row in Sync Health */
+.orphan-notice{display:flex;align-items:center;gap:.6rem;margin:.7rem 0 0;padding:.6rem .75rem;background:var(--accent-soft);border:var(--bw) solid var(--border);border-radius:12px}
+.orphan-notice-text{flex:1;font-size:.88rem;font-weight:600}
+.orphan-item{cursor:default}
+.orphan-actions{display:flex;gap:.45rem;flex-wrap:wrap}
 .kv{display:flex;justify-content:space-between;gap:1rem;padding:.45rem 0;border-bottom:var(--bw) solid var(--border)}
 .kv:last-child{border-bottom:none}
 .kv span{color:var(--muted)}

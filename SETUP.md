@@ -321,6 +321,17 @@ tapped, because the phone itself follows the link.
   `Item ID`) is reported honestly and stays queued — give the row a
   real `Item ID`
   in the sheet.
+- **An item is listed under "Not in the sheet" (Settings)** → the
+  item exists only on that device — it was added before the device
+  connected to the sheet, or it is a leftover from the old demo
+  stock — so it has no row in the sheet and its changes have
+  nothing to sync to. Resolve it where you work: open the item and
+  tap **Add to sheet** (the same action sits in the **Not in the
+  sheet** card in Settings). That creates its row with the item's
+  current details, under its existing id, and everything syncs
+  normally from then on. Or tap **Remove** to delete the item and
+  its pending changes from that device only — the sheet is not
+  changed either way by removing.
 - **Deploy blocked: "Google hasn't verified this app" / "This app is
   blocked"** → that's the authorization step (Step 2, item 4):
   **Advanced → Go to project → Allow**, in a window signed into only

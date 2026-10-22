@@ -915,6 +915,7 @@
     $('dBinChip').setAttribute('aria-label', locLong(item) + ' — see everything at this location');
     renderPartLookup(item);
     renderFolderRail(item);
+    renderOrphanNotice();
     $('dCost').textContent = money(item.cost) + ' each';
     syncSheetQty();
     $('itemOverlay').classList.remove('hidden');
@@ -2286,6 +2287,7 @@
     D.flushQueue().then(function (r) {
       syncRunning = false;
       refreshChrome();
+      if (currentItemId && !$('itemOverlay').classList.contains('hidden')) renderOrphanNotice();
       if ($('view-sync').classList.contains('active')) { renderQueue(); renderSync(); }
       if (r.ok) {
         syncRetryDelay = 30000;
@@ -2297,7 +2299,7 @@
   }
   D.onQueueChange(function () { scheduleAutoFlush(); });
 
-  var EDIT_OVERLAYS = ['itemOverlay', 'binOverlay', 'countOverlay', 'shelfOverlay', 'orgOverlay', 'orgPickOverlay', 'nfcOverlay', 'qtyEditOverlay', 'autoSortOverlay', 'sortOverlay', 'folderRemoveOverlay', 'supClearOverlay', 'supRenameOverlay', 'supplierOverlay'];
+  var EDIT_OVERLAYS = ['itemOverlay', 'binOverlay', 'countOverlay', 'shelfOverlay', 'orgOverlay', 'orgPickOverlay', 'nfcOverlay', 'qtyEditOverlay', 'autoSortOverlay', 'sortOverlay', 'folderRemoveOverlay', 'supClearOverlay', 'supRenameOverlay', 'supplierOverlay', 'orphanRemoveOverlay'];
   function editingOpen() {
     for (var i = 0; i < EDIT_OVERLAYS.length; i++) {
       var o = $(EDIT_OVERLAYS[i]);
@@ -2348,8 +2350,113 @@
     $('healthQueue').textContent = D.getQueue().filter(function (c) { return !c.synced; }).length + ' pending';
     $('healthLastSync').textContent = fmtTime(D.getMeta().lastSync);
     $('healthError').textContent = D.getMeta().lastError || 'none';
+    renderOrphans();
     refreshChrome();
   }
+
+  /* ---------- Not-in-sheet items (orphans) ----------
+   * ETData flags an item when the sheet bridge answers one of its
+   * ops with 'Id not found in sheet' — the item lives only on this
+   * device (added before it connected, or a leftover the demo purge
+   * spared), so its changes can never sync until it gets a row. Two
+   * exits, offered here in Sync Health AND on the item sheet itself:
+   * Add to sheet (ETData queues one 'add' op with the item's full
+   * current state under its existing id — the auto-flush sends it,
+   * and the flag clears when it lands), or Remove from this device
+   * (confirm first). In local-only mode there is no sheet to be
+   * missing from: the section stays hidden. */
+  function orphanEntries() {
+    if (D.activeBackend() !== 'sheet') return [];
+    return D.getOrphans().map(function (id) { return D.getItem(id); }).filter(function (it) { return !!it; });
+  }
+  function orphanLabel(it) {
+    return (it.name && String(it.name).trim()) || it.sku || 'Unnamed item';
+  }
+  function renderOrphans() {
+    var block = $('orphanBlock');
+    if (!block) return;
+    var entries = orphanEntries();
+    block.classList.toggle('hidden', !entries.length);
+    if (!entries.length) return;
+    $('orphanList').innerHTML = entries.map(function (it) {
+      var label = orphanLabel(it);
+      var sub = [];
+      if (it.sku && it.sku !== label) sub.push(it.sku);
+      sub.push('Qty ' + it.qty);
+      if (it.bin) sub.push(it.bin);
+      return '<div class="list-item orphan-item"><span class="li-main"><span class="li-name">' + esc(label) + '</span><br><span class="li-when">' + esc(sub.join(' · ')) + '</span></span>' +
+        '<span class="orphan-actions"><button type="button" class="btn btn-primary" data-orphan-add="' + esc(it.id) + '">Add to sheet</button>' +
+        '<button type="button" class="btn" data-orphan-remove="' + esc(it.id) + '">Remove</button></span></div>';
+    }).join('');
+    $('orphanList').querySelectorAll('[data-orphan-add]').forEach(function (b) {
+      b.addEventListener('click', function () { addOrphanFromUi(b.getAttribute('data-orphan-add'), $('orphanResult')); });
+    });
+    $('orphanList').querySelectorAll('[data-orphan-remove]').forEach(function (b) {
+      b.addEventListener('click', function () { askRemoveOrphan(b.getAttribute('data-orphan-remove')); });
+    });
+  }
+  /* Shared Add action (Sync Health row + item-sheet notice). The add
+   * op rides the live-sync auto-flush — ETData's queueChange notify
+   * schedules it — and the flag (and this UI) clears when it lands;
+   * runAutoFlush re-renders both surfaces on completion. */
+  function addOrphanFromUi(id, outEl) {
+    var item = D.getItem(id);
+    var res = D.addOrphanToSheet(id);
+    if (!res.ok) { toast(res.message || 'Could not add that item'); return; }
+    if (outEl) { outEl.textContent = 'Adding “' + (item ? orphanLabel(item) : id) + '” to the sheet…'; outEl.className = 'result'; }
+    toast('Adding “' + (item ? orphanLabel(item) : id) + '” to the sheet…');
+    renderOrphans();
+  }
+  /* Item-sheet notice: shown only while the open item is flagged.
+   * renderOrphanNotice also restores the Add button after a flush —
+   * if the flag cleared, the notice hides; if the add is still
+   * waiting (offline, another rejection), the button re-arms. */
+  function renderOrphanNotice() {
+    var notice = $('dOrphanNotice');
+    if (!notice) return;
+    var show = !!currentItemId && D.activeBackend() === 'sheet' && D.isOrphan(currentItemId) && !!D.getItem(currentItemId);
+    notice.classList.toggle('hidden', !show);
+    if (show) {
+      var btn = $('dOrphanAddBtn');
+      btn.disabled = false;
+      btn.textContent = 'Add to sheet';
+    }
+  }
+  $('dOrphanAddBtn').addEventListener('click', function () {
+    if (!currentItemId) return;
+    var btn = $('dOrphanAddBtn');
+    btn.disabled = true;
+    btn.textContent = 'Adding…';
+    addOrphanFromUi(currentItemId, null);
+  });
+  /* Remove: confirm first — the item and its pending changes leave
+   * this device; the sheet never had it and is not touched. */
+  var orphanRemoveId = null;
+  function askRemoveOrphan(id) {
+    var item = D.getItem(id);
+    if (!item) { renderOrphans(); return; }
+    orphanRemoveId = id;
+    $('orTitle').textContent = 'Remove “' + orphanLabel(item) + '”?';
+    $('orText').textContent = 'This item isn\'t in the sheet. Remove it and its pending changes from this device? The sheet is not changed.';
+    $('orphanRemoveOverlay').classList.remove('hidden');
+  }
+  function closeRemoveOrphan() { $('orphanRemoveOverlay').classList.add('hidden'); orphanRemoveId = null; }
+  $('orCancel').addEventListener('click', closeRemoveOrphan);
+  $('orphanRemoveOverlay').addEventListener('click', function (e) { if (e.target === $('orphanRemoveOverlay')) closeRemoveOrphan(); });
+  $('orConfirm').addEventListener('click', function () {
+    if (!orphanRemoveId) return;
+    var id = orphanRemoveId;
+    var item = D.getItem(id);
+    closeRemoveOrphan();
+    var res = D.removeOrphanItem(id);
+    if (!res.ok) { toast(res.message || 'Could not remove that item'); return; }
+    toast('Removed “' + (item ? orphanLabel(item) : id) + '” from this device');
+    if (currentItemId === id) closeItem();
+    renderOrphans();
+    renderQueue();
+    renderHome();
+    refreshChrome();
+  });
 
   /* One Connect button: saves the pasted link on this device, then
    * tests it — in Sheet mode testConnection also imports the rows. */

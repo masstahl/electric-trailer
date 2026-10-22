@@ -23,7 +23,8 @@
     meta: 'et.meta.v1',
     categories: 'et-categories',
     folderMigration: 'et-folder-migration',
-    mapVersion: 'et-map-v'
+    mapVersion: 'et-map-v',
+    orphans: 'et-orphans'
   };
 
   var DEFAULT_SETTINGS = {
@@ -698,6 +699,63 @@
   function getItem(id) {
     return getItems().filter(function (i) { return i.id === id; })[0] || null;
   }
+
+  /* ---------- Orphaned items ("Not in the sheet") ----------
+   * An item can exist on this device with no row in the sheet: it was
+   * added before this device connected, or it is a leftover the demo
+   * purge spared because it still had pending ops. Every qty/edit op
+   * for it comes back from the bridge with the per-op error below and
+   * stays queued forever — there is no sheet row to write to. The
+   * flush flags such ids here (persisted in localStorage
+   * 'et-orphans') so the UI can offer the two ways out: add the item
+   * to the sheet (under its existing id, with its full current
+   * state), or remove it from this device. A flag clears when any op
+   * for the id succeeds, and an import drops flags for ids the sheet
+   * now contains. Other per-op errors never set the flag. */
+  var ORPHAN_ERROR = 'Id not found in sheet';
+  function getOrphans() {
+    var list = read(LS.orphans, []);
+    if (!Array.isArray(list)) return [];
+    return list.filter(function (x) { return typeof x === 'string' && !!x; });
+  }
+  function saveOrphans(list) { write(LS.orphans, list); }
+  function isOrphan(id) { return getOrphans().indexOf(id) !== -1; }
+  function markOrphan(id) {
+    var list = getOrphans();
+    if (list.indexOf(id) === -1) { list.push(id); saveOrphans(list); }
+  }
+  function clearOrphan(id) {
+    var list = getOrphans();
+    var next = list.filter(function (x) { return x !== id; });
+    if (next.length !== list.length) saveOrphans(next);
+  }
+  /* Add a not-in-sheet item to the sheet: its stuck queued ops are
+   * dropped (they can never land — there is no row) and ONE 'add' op
+   * is queued carrying the item's full current local state under its
+   * EXISTING id — the bridge writes the caller-provided id into the
+   * Item ID column, so the created row matches the local item and
+   * future edits sync normally. Nothing about the item changes
+   * locally; its current state already includes the stuck changes.
+   * The flag clears when that add (or any op for the item) next
+   * succeeds. Queueing via queueChange notifies the live-sync hook,
+   * so the add rides the auto-flush like any other change. */
+  function addOrphanToSheet(id) {
+    var item = getItem(id);
+    if (!item) return { ok: false, error: 'missing', message: 'That item is no longer on this device.' };
+    write(LS.queue, getQueue().filter(function (c) { return c.synced || c.itemId !== id; }));
+    queueChange('add', id, 'Added to sheet: ' + item.name);
+    return { ok: true };
+  }
+  /* Remove a not-in-sheet item from this device: the item, ALL its
+   * queued ops (pending and history) and its orphan flag go away.
+   * The sheet is untouched — the item was never in it. */
+  function removeOrphanItem(id) {
+    if (!getItem(id)) { clearOrphan(id); return { ok: false, error: 'missing', message: 'That item is no longer on this device.' }; }
+    saveItems(getItems().filter(function (i) { return i.id !== id; }));
+    write(LS.queue, getQueue().filter(function (c) { return c.itemId !== id; }));
+    clearOrphan(id);
+    return { ok: true };
+  }
   function getQueue() { return read(LS.queue, []); }
   function getMeta() { return read(LS.meta, { lastSync: '', lastError: '' }); }
   function setMeta(patch) {
@@ -863,6 +921,19 @@
       getItems().forEach(function (li) {
         if (pendingAdd[li.id] && !seen[li.id]) merged.push(li);
       });
+      /* Orphans: an import proves which ids DO exist in the sheet —
+       * flags for those are stale and drop. A still-flagged item is
+       * kept whole (the loop right after this): it has no sheet row
+       * to merge from, and dropping it would strand the very item
+       * Sync Health offers to resolve. */
+      var orphanFlags = getOrphans();
+      if (orphanFlags.length) {
+        var keptFlags = orphanFlags.filter(function (id) { return !seen[id]; });
+        if (keptFlags.length !== orphanFlags.length) saveOrphans(keptFlags);
+      }
+      getItems().forEach(function (li) {
+        if (!seen[li.id] && isOrphan(li.id) && !merged.some(function (m) { return m.id === li.id; })) merged.push(li);
+      });
       /* Demo purge: a successful import retires leftover DEMO seed
        * items. A demo id that IS in the import is real now (it's in
        * `merged` via `seen`); one that is NOT in the import is dropped
@@ -879,7 +950,7 @@
         if (seedIds[li.id] && !seen[li.id] && pendingAny[li.id] && !inMerged[li.id]) merged.push(li);
       });
       merged = merged.filter(function (it) {
-        return !(seedIds[it.id] && !seen[it.id] && !pendingAny[it.id]);
+        return !(seedIds[it.id] && !seen[it.id] && !pendingAny[it.id] && !isOrphan(it.id));
       });
       write(LS.items, merged);
       setMeta({ lastSync: nowISO(), lastError: '', sheetRows: res.rows });
@@ -949,8 +1020,18 @@
         for (var k = 0; k < pool.length; k++) {
           if (pool[k] && pool[k].id === j.op.id) { r = pool.splice(k, 1)[0]; break; }
         }
-        if (r && r.ok) { j.entry.synced = true; j.entry.syncedAt = nowISO(); }
-        else failed.push(j.op.id + (r && r.error ? ' (' + r.error + ')' : ' (no result)'));
+        if (r && r.ok) {
+          j.entry.synced = true; j.entry.syncedAt = nowISO();
+          clearOrphan(j.op.id);   // a landed op proves the row exists
+        } else {
+          /* The bridge's per-op 'Id not found in sheet' means this
+           * item has no row to write to — flag it as an orphan so
+           * Sync Health and the item sheet can offer the add/remove
+           * resolution. Any other error (or no result) is an ordinary
+           * rejection: the op stays queued and NO flag is set. */
+          if (r && r.error === ORPHAN_ERROR) markOrphan(j.op.id);
+          failed.push(j.op.id + (r && r.error ? ' (' + r.error + ')' : ' (no result)'));
+        }
       });
       write(LS.queue, q.slice(-200));
       if (failed.length) throw new Error(failed.length + ' change(s) rejected by the sheet: ' + failed.join(', '));
@@ -1005,7 +1086,7 @@
   }
 
   function resetDemo() {
-    [LS.items, LS.suppliers, LS.explicitSuppliers, LS.queue, LS.meta, LS.categories, LS.folderMigration].forEach(function (k) { localStorage.removeItem(k); });
+    [LS.items, LS.suppliers, LS.explicitSuppliers, LS.queue, LS.meta, LS.categories, LS.folderMigration, LS.orphans].forEach(function (k) { localStorage.removeItem(k); });
     seedIfNeeded();
     migrateFoldersElec1();
   }
@@ -1018,6 +1099,8 @@
     suggestSupplierMerges: suggestSupplierMerges, mergeSuppliers: mergeSuppliers,
     renameSupplier: renameSupplier, clearSupplier: clearSupplier, restoreSuppliers: restoreSuppliers,
     getItem: getItem,
+    getOrphans: getOrphans, isOrphan: isOrphan,
+    addOrphanToSheet: addOrphanToSheet, removeOrphanItem: removeOrphanItem,
     getQueue: getQueue, getMeta: getMeta,
     onQueueChange: function (fn) { if (typeof fn === 'function') queueListeners.push(fn); },
     getCategories: getCategories, addCategory: addCategory,

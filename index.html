@@ -260,6 +260,13 @@
       <div class="kv"><span>Last sync</span><strong id="healthLastSync">never</strong></div>
       <div class="kv"><span>Last error</span><strong id="healthError" class="error-text">none</strong></div>
     </div>
+    <!-- Not in the sheet: shown only while flagged items exist (renderOrphans) -->
+    <div id="orphanBlock" class="card hidden">
+      <h3 style="margin-top:0">Not in the sheet</h3>
+      <p class="muted small">These items are on this device but have no row in the Google Sheet, so their changes can't sync. <strong>Add to sheet</strong> creates the row with the item's current details — it keeps its place everywhere. <strong>Remove</strong> deletes the item from this device only; the sheet is not changed.</p>
+      <div id="orphanList" class="list"></div>
+      <p id="orphanResult" class="result"></p>
+    </div>
     <div id="sheetBlock" class="card form">
       <h3 style="margin-top:0">Google Sheet</h3>
       <label>Sheet link<input id="setSheetUrl" placeholder="https://script.google.com/macros/s/…/exec" autocomplete="off"></label>
@@ -287,6 +294,10 @@
       <a id="dLkWeb" class="btn sku-lk" href="#" target="_blank" rel="noopener">Web</a>
       <a id="dLkImages" class="btn sku-lk" href="#" target="_blank" rel="noopener">Images</a>
       <a id="dLkAmazon" class="btn sku-lk" href="#" target="_blank" rel="noopener">Amazon</a>
+    </div>
+    <div id="dOrphanNotice" class="orphan-notice hidden">
+      <span class="orphan-notice-text">Not in the sheet yet — its changes can't sync.</span>
+      <button type="button" id="dOrphanAddBtn" class="btn btn-primary">Add to sheet</button>
     </div>
     <p class="small-label folder-rail-label">Folder — tap to file here</p>
     <div id="dFolderRail" class="folder-rail" role="group" aria-label="File this item in a folder"></div>
@@ -515,6 +526,16 @@
     <p id="supClearText" class="muted"></p>
     <button type="button" id="supClearConfirm" class="btn btn-primary btn-big">Clear from items</button>
     <button type="button" id="supClearCancel" class="btn btn-big">Cancel</button>
+  </div>
+</div>
+
+<!-- ============ ORPHAN REMOVE CONFIRM ============ -->
+<div id="orphanRemoveOverlay" class="overlay hidden" role="dialog" aria-modal="true" aria-labelledby="orTitle">
+  <div class="sheet confirm-sheet">
+    <h2 id="orTitle">Remove from this device?</h2>
+    <p id="orText" class="muted"></p>
+    <button type="button" id="orConfirm" class="btn btn-primary btn-big">Remove item</button>
+    <button type="button" id="orCancel" class="btn btn-big">Cancel</button>
   </div>
 </div>
 
