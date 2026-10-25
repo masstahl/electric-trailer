@@ -275,10 +275,13 @@
   }
   function afterQtyChange(id) {
     refreshChrome();
-    if ($('view-home').classList.contains('active')) renderHome();
+    /* Qty-originated re-renders preserve the pinned order (v34):
+     * the card updates in place and never changes position, even
+     * when its quantity passes a neighbour's. */
+    if ($('view-home').classList.contains('active')) renderHome({ preserveOrder: true });
     if (currentItemId === id && !$('itemOverlay').classList.contains('hidden')) syncSheetQty();
     if (currentBin && !$('binOverlay').classList.contains('hidden')) renderBinSheetItems();
-    if (currentShelf !== null && !$('shelfOverlay').classList.contains('hidden')) renderShelf();
+    if (currentShelf !== null && !$('shelfOverlay').classList.contains('hidden')) renderShelf({ preserveOrder: true });
     if ($('view-map').classList.contains('active')) renderMap();
     if ($('view-suppliers').classList.contains('active')) renderSuppliers();
     if ($('view-sync').classList.contains('active')) renderQueue();
@@ -393,8 +396,48 @@
     t.addEventListener('click', function () { showView(t.getAttribute('data-view')); });
   });
 
+  /* ---------- grid order: quantity, highest first (v34) ----------
+   * The standard item grid ranks by stock on hand: qty DESC, ties by
+   * display name A→Z (case-insensitive), then id — fully
+   * deterministic. (Low/out items have their own stat-filter view, so
+   * the main list leads with what's most in stock.) A missing or
+   * non-numeric qty counts as 0 and sinks to the end. The order is
+   * recomputed on navigation renders — tab/folder selection, search
+   * changes, filter changes, view entry, backend refresh/import,
+   * jump-list selection — but NEVER by a qty change itself: qty-
+   * originated re-renders pass { preserveOrder: true } and reuse the
+   * pinned id order, so stepping +/−, undoing a step, or applying a
+   * count never moves a card out from under the user's finger. */
+  function qtyOf(i) { var n = Number(i && i.qty); return isFinite(n) ? n : 0; }
+  function byQtyDesc(a, b) {
+    var d = qtyOf(b) - qtyOf(a);
+    if (d) return d;
+    var an = String(a.name || '').toLowerCase(), bn = String(b.name || '').toLowerCase();
+    if (an < bn) return -1;
+    if (an > bn) return 1;
+    var ai = String(a.id), bi = String(b.id);
+    return ai < bi ? -1 : (ai > bi ? 1 : 0);
+  }
+  /* Reorder `list` (a copy — the caller's array is never mutated) by
+   * a pinned id sequence. Items not in the pin (newly matching the
+   * filter since the pin was taken) fall to the end, comparator-
+   * ordered among themselves. A null/empty pin = plain comparator. */
+  function applyPinnedOrder(list, pinnedIds) {
+    if (!pinnedIds || !pinnedIds.length) return list.slice().sort(byQtyDesc);
+    var rank = {};
+    pinnedIds.forEach(function (id, idx) { rank[id] = idx; });
+    var pinned = [], fresh = [];
+    list.forEach(function (i) {
+      if (Object.prototype.hasOwnProperty.call(rank, i.id)) pinned.push(i); else fresh.push(i);
+    });
+    pinned.sort(function (a, b) { return rank[a.id] - rank[b.id]; });
+    fresh.sort(byQtyDesc);
+    return pinned.concat(fresh);
+  }
+  var homeOrder = null;   // pinned grid order (item ids) for qty-originated re-renders
+
   /* ---------- #08 Photo-First Grid (Home) ---------- */
-  function renderHome() {
+  function renderHome(opts) {
     var q = ($('searchInput').value || '').trim().toLowerCase();
     var items = D.getItems();
     var totalUnits = items.reduce(function (s, i) { return s + i.qty; }, 0);
@@ -428,7 +471,16 @@
     if (!searching && categoryFilter !== null) {
       filtered = filtered.filter(function (i) { return itemCategory(i) === categoryFilter; });
     }
-    if (lowFilter) filtered = filtered.slice().sort(function (a, b) { return a.qty - b.qty; });  // worst first: 0s, then 1–2, then 3–5
+    /* Quantity order (v34) applies to every grid this function
+     * renders — All, a folder tab, search results, and the LOW view
+     * (ordered within its filtered set). A qty-originated re-render
+     * keeps the pinned order instead of re-sorting. */
+    if (opts && opts.preserveOrder) {
+      filtered = applyPinnedOrder(filtered, homeOrder);
+    } else {
+      filtered = filtered.slice().sort(byQtyDesc);
+      homeOrder = filtered.map(function (i) { return i.id; });
+    }
     $('photoGrid').innerHTML = filtered.map(function (i) {
       var st = statusOf(i.qty);
       var pill = st === 'ok'
@@ -1134,7 +1186,7 @@
     $('dCost').textContent = money(item.cost) + ' each';
     $('dUpdated').textContent = 'Last updated ' + fmtTime(item.updated) + (navigator.onLine ? '' : ' · queued (offline)');
   }
-  function closeItem() { $('itemOverlay').classList.add('hidden'); currentItemId = null; renderHome(); }
+  function closeItem() { $('itemOverlay').classList.add('hidden'); currentItemId = null; renderHome({ preserveOrder: true }); }
   $('closeDetail').addEventListener('click', closeItem);
   $('doneDetail').addEventListener('click', closeItem);
   $('itemOverlay').addEventListener('click', function (e) { if (e.target === $('itemOverlay')) closeItem(); });
@@ -1752,9 +1804,15 @@
     $('shelfOverlay').classList.remove('hidden');
   }
   function closeShelf() { $('shelfOverlay').classList.add('hidden'); currentShelf = null; }
-  function renderShelf() {
+  var shelfOrder = null;   // pinned Shelf-view order (v34), same rule as the grid's
+  function renderShelf(opts) {
     if (currentShelf === null) return;
     var list = itemsAtLocation(currentShelf);
+    /* The Shelf view's item list carries the same quantity order as
+     * the grid (v34); a qty change made inside the shelf re-renders
+     * with the pinned order so rows stay put while stepping. */
+    if (opts && opts.preserveOrder) list = applyPinnedOrder(list, shelfOrder);
+    else { list = list.slice().sort(byQtyDesc); shelfOrder = list.map(function (i) { return i.id; }); }
     var units = list.reduce(function (s, i) { return s + i.qty; }, 0);
     $('shTitle').textContent = currentShelf;
     $('shMeta').textContent = list.length + (list.length === 1 ? ' item' : ' items') + ' · ' + units + ' units';
@@ -2252,13 +2310,16 @@
     changed.forEach(function (en) { prev[en.id] = en.system; D.setQty(en.id, en.counted); });
     closeCount();
     if ($('view-map').classList.contains('active')) renderMap();
-    if ($('view-home').classList.contains('active')) renderHome();
+    /* Applying a count is a batch of qty changes — the grid keeps
+     * its pinned order (v34); the count walk itself runs off the
+     * session snapshot and is never re-sorted either. */
+    if ($('view-home').classList.contains('active')) renderHome({ preserveOrder: true });
     refreshChrome();
     if (changed.length) {
       showUndoToast('Count applied — ' + changed.length + ' item(s) updated', function () {
         changed.forEach(function (en) { D.setQty(en.id, prev[en.id]); });
         if ($('view-map').classList.contains('active')) renderMap();
-        if ($('view-home').classList.contains('active')) renderHome();
+        if ($('view-home').classList.contains('active')) renderHome({ preserveOrder: true });
         refreshChrome();
       });
     } else {
