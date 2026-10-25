@@ -17,6 +17,17 @@
   --low-bg:#fef3c7; --low-text:#92400e;
   --crit-bg:#ffe7d3; --crit-text:#9a3400;
   --out-bg:#fee2e2; --out-text:#991b1b;
+  /* Frosted glass — ONE recipe shared by the dock, the sticky
+     search/stat block, the shelf jump bar and the locate caption
+     (v31: heavy frost). A low 42% tint over a deep 48px blur with a
+     milky white sheen: the surface reads as frosted glass over the
+     scrolling content, while the bold labels on top and the dark
+     outer shadow keep everything legible. */
+  --glass-fill:color-mix(in srgb,var(--tabbar-bg) 42%,transparent);
+  --glass-sheen:linear-gradient(180deg,rgba(255,255,255,.40),rgba(255,255,255,.13) 55%,rgba(255,255,255,.05));
+  --glass-filter:blur(48px) saturate(1.9);
+  --glass-border:color-mix(in srgb,var(--border) 45%,rgba(255,255,255,.5));
+  --glass-shadow:inset 0 1px 0 rgba(255,255,255,.65),inset 0 -1px 0 rgba(255,255,255,.14),0 10px 32px rgba(0,0,0,.30);
 }
 
 /* ---------- THEME 1 · Midnight Industrial ---------- */
@@ -157,17 +168,17 @@ a{color:var(--accent)}
 main{max-width:960px;margin:0 auto;padding:1rem}
 .view{display:none}.view.active{display:block}
 
-/* Search + stats — ONE smoked-glass sticky block (SPEC PLATE): search and
-   the stat/filter bar stick together under the header, glass at ~88% tint
-   so labels stay readable over scrolling photos. */
+/* Search + folder tabs + stats — ONE frosted-glass sticky block
+   (SPEC PLATE): they stick together under the header and share the
+   heavy-frost glass recipe (--glass-*) with the dock. */
 .sticky-search{
   position:sticky;top:calc(var(--header-h) + 6px);z-index:15;
   padding:.4rem .45rem;margin-bottom:.3rem;
-  background:color-mix(in srgb,var(--tabbar-bg) 88%,transparent);
-  background-image:linear-gradient(180deg,rgba(255,255,255,.22),rgba(255,255,255,.05) 55%,rgba(255,255,255,0));
-  -webkit-backdrop-filter:blur(30px) saturate(1.9);backdrop-filter:blur(30px) saturate(1.9);
-  border:var(--bw) solid color-mix(in srgb,var(--border) 55%,rgba(255,255,255,.35));border-radius:26px;
-  box-shadow:inset 0 1px 0 rgba(255,255,255,.45),inset 0 -1px 0 rgba(255,255,255,.08),0 8px 24px rgba(0,0,0,.22);
+  background:var(--glass-fill);
+  background-image:var(--glass-sheen);
+  -webkit-backdrop-filter:var(--glass-filter);backdrop-filter:var(--glass-filter);
+  border:var(--bw) solid var(--glass-border);border-radius:26px;
+  box-shadow:var(--glass-shadow);
 }
 .search-wrap input{
   width:100%;font-size:1rem;padding:.5rem .9rem;border-radius:999px;
@@ -184,6 +195,58 @@ main{max-width:960px;margin:0 auto;padding:1rem}
 .stat span{font-size:.6rem;color:var(--muted);text-transform:uppercase;letter-spacing:.05em}
 .stat.warn strong{color:var(--danger)}
 .stat.active{background:color-mix(in srgb,var(--danger) 18%,transparent);box-shadow:inset 0 0 0 2px var(--danger)}
+
+/* ---------- Folder tab strip (v31): physical folder tabs ----------
+ * Each tab is a real folder-tab silhouette — left edge vertical, top
+ * edge shorter than the base, right shoulder slanting down-out to
+ * the base (clip-path polygon; the wrap carries the drop-shadow,
+ * since clip-path kills box-shadow on the tab itself — the same
+ * trick the old red folder tiles used). Tabs bottom-align on the
+ * shared base line: the active tab stands taller in bright
+ * Milwaukee red and merges into the folder-body edge bar below the
+ * strip (the open folder's top edge); inactive tabs sit lower,
+ * smoked dark with a red tint. The strip is a carousel: horizontal
+ * scroll with snap-to-center. */
+.folder-tabs{
+  display:flex;align-items:flex-end;gap:5px;margin-top:.5rem;padding:2px 2px 0;
+  overflow-x:auto;overflow-y:hidden;scroll-snap-type:x proximity;
+  scrollbar-width:none;-webkit-overflow-scrolling:touch;
+}
+.folder-tabs::-webkit-scrollbar{display:none}
+.ftab-wrap{flex:none;display:flex;scroll-snap-align:center;filter:drop-shadow(0 3px 5px rgba(0,0,0,.30))}
+.ftab-wrap.active{filter:drop-shadow(0 4px 9px rgba(0,0,0,.42))}
+.ftab{
+  height:34px;min-width:58px;max-width:176px;border:none;cursor:pointer;font:inherit;
+  padding:.4rem 1.2rem .3rem .75rem;
+  font-size:.83rem;font-weight:700;color:rgba(255,255,255,.85);
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+  clip-path:polygon(0 0,calc(100% - 15px) 0,100% 100%,0 100%);
+  background:
+    linear-gradient(180deg,rgba(255,255,255,.16),rgba(255,255,255,0) 55%),
+    linear-gradient(158deg,rgba(219,1,28,.28),rgba(24,24,28,.62) 78%);
+  transition:height .15s ease;
+}
+.ftab.active{
+  height:43px;color:#fff;font-weight:800;
+  background:
+    linear-gradient(180deg,rgba(255,255,255,.30),rgba(255,255,255,.03) 52%),
+    linear-gradient(158deg,#e8122a,#a80115 80%);
+}
+.ftab-label{display:block;overflow:hidden;text-overflow:ellipsis}
+.ftab-plus{font-size:1.05rem;font-weight:800;color:rgba(255,255,255,.92)}
+/* The open folder's top edge: full width, directly under the strip,
+   in the active tab's reds so the selected tab reads as one piece
+   with the folder body below it. */
+.folder-edge{
+  height:4px;border-radius:2px;margin:1px 2px 0;
+  background:linear-gradient(90deg,rgba(219,1,28,.95),rgba(143,1,18,.8));
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.25);
+}
+/* Carousel step: the grid slides a touch in the direction of travel */
+.photo-grid.gx-next{animation:gridInNext .16s ease}
+.photo-grid.gx-prev{animation:gridInPrev .16s ease}
+@keyframes gridInNext{from{opacity:.3;transform:translateX(16px)}to{opacity:1;transform:none}}
+@keyframes gridInPrev{from{opacity:.3;transform:translateX(-16px)}to{opacity:1;transform:none}}
 
 /* #08 Photo grid — tracks are minmax(0,1fr): plain 1fr is
    minmax(auto,1fr), so one card's unbreakable min-content (a long
@@ -233,20 +296,6 @@ main{max-width:960px;margin:0 auto;padding:1rem}
 .stepper-strip .ss-qty{display:flex;align-items:center;justify-content:center;min-width:2.3rem;min-height:44px;padding:0 .1rem;font-weight:900;font-size:1rem;font-variant-numeric:tabular-nums}
 .empty{text-align:center;color:var(--muted);padding:2rem 0}
 
-/* ---------- Categories home: red glass folders ----------
- * The folders home gets a moody near-black backdrop (dark themes only)
- * so the translucent red glass has real depth to show through it. */
-html[data-theme="milwaukee"] body.folders-bg,
-html[data-theme="hivis"] body.folders-bg,
-html[data-theme="electric"] body.folders-bg{
-  background:
-    radial-gradient(620px 320px at 88% -60px, rgba(219,1,28,.22), rgba(219,1,28,0) 62%),
-    radial-gradient(720px 420px at -12% 34%, rgba(143,1,18,.17), rgba(143,1,18,0) 60%),
-    linear-gradient(155deg, rgba(219,1,28,.055), rgba(219,1,28,0) 42%),
-    #0a0a0b;
-}
-.folder-head{display:flex;align-items:center;justify-content:space-between;gap:.6rem;min-height:44px;margin:.5rem 0 .1rem}
-.folder-head-label{font-weight:800;font-size:.78rem;text-transform:uppercase;letter-spacing:.07em;color:var(--muted)}
 .pill-btn{
   min-height:44px;padding:.35rem 1.05rem;border-radius:999px;cursor:pointer;font:inherit;font-weight:700;font-size:.85rem;
   background:color-mix(in srgb,var(--tabbar-bg) 55%,transparent);color:var(--text);
@@ -255,74 +304,14 @@ html[data-theme="electric"] body.folders-bg{
   box-shadow:inset 0 1px 0 rgba(255,255,255,.35);
 }
 .pill-done{background:#ffffff;color:#000000;border-color:#ffffff;box-shadow:0 4px 14px rgba(0,0,0,.3)}
-/* All Items escape row — black glass */
-.all-items-row{
-  display:flex;align-items:center;gap:.65rem;width:100%;margin-top:.35rem;padding:.7rem .85rem;min-height:56px;
-  border-radius:16px;border:1px solid rgba(255,255,255,.16);cursor:pointer;font:inherit;text-align:left;color:#fff;
-  background:linear-gradient(180deg,rgba(255,255,255,.10),rgba(255,255,255,.02)),rgba(12,12,14,.55);
-  -webkit-backdrop-filter:blur(18px) saturate(1.4);backdrop-filter:blur(18px) saturate(1.4);
-  box-shadow:inset 0 1px 0 rgba(255,255,255,.22),0 6px 18px rgba(0,0,0,.28);
-}
-.all-items-row .air-icon{display:inline-flex;color:#fff}
-.all-items-row .air-icon .icon-svg{width:22px;height:22px}
-.air-main{font-weight:800;font-size:.95rem}
-.air-meta{margin-left:auto;color:rgba(255,255,255,.75);font-size:.8rem;font-weight:600;white-space:nowrap}
+/* Chevron tail shared by the supplier and shelf list rows */
 .air-chev{font-size:1.25rem;color:rgba(255,255,255,.8);line-height:1}
-/* Folder tiles — RED GLASS, deliberately see-through: low-alpha red
- * gradient + blur, bright top sheen, red-tinted ring; only a light
- * scrim behind the text zone keeps white names readable. The angular
- * corner cut is clip-path; depth comes from the wrap's drop-shadow
- * (clip-path would kill a box-shadow on the tile itself). */
-.folder-grid{display:grid;grid-template-columns:1fr 1fr;gap:.65rem;margin-top:.65rem}
-.folder-wrap{position:relative;filter:drop-shadow(0 10px 20px rgba(0,0,0,.35))}
-.folder-tile{
-  position:relative;height:100%;min-height:118px;padding:.75rem .8rem;border-radius:20px;color:#fff;cursor:pointer;
-  display:flex;flex-direction:column;gap:.3rem;
-  clip-path:polygon(0 0,calc(100% - 16px) 0,100% 16px,100% 100%,0 100%);
-  background:
-    linear-gradient(180deg,rgba(255,255,255,.20),rgba(255,255,255,0) 46%),
-    linear-gradient(158deg,rgba(219,1,28,.32),rgba(143,1,18,.20) 72%);
-  -webkit-backdrop-filter:blur(18px) saturate(1.5);backdrop-filter:blur(18px) saturate(1.5);
-  box-shadow:inset 0 0 0 1px rgba(255,90,100,.45),inset 0 1px 0 rgba(255,255,255,.5);
-}
-.folder-tile::after{
-  content:'';position:absolute;inset:0;pointer-events:none;
-  background:linear-gradient(180deg,rgba(15,0,2,0) 45%,rgba(15,0,2,.38));
-}
-.folder-tile > *{position:relative;z-index:1}
-.folder-tile.editing{cursor:default;box-shadow:inset 0 0 0 2px rgba(255,140,150,.95),inset 0 1px 0 rgba(255,255,255,.55)}
-.folder-icon{display:inline-flex;color:#fff;filter:drop-shadow(0 2px 6px rgba(0,0,0,.45))}
-.folder-icon .icon-svg{width:28px;height:28px}
-.folder-name{font-weight:600;font-size:15px;line-height:1.2;text-shadow:0 1px 6px rgba(0,0,0,.55)}
-.folder-meta{font-size:.74rem;font-weight:600;color:rgba(255,255,255,.88);text-shadow:0 1px 5px rgba(0,0,0,.55)}
-/* Attention pill rides on a small black-glass notch plate */
-.folder-notch{
-  position:absolute;top:0;right:0;z-index:2;background:rgba(8,2,3,.72);border-radius:0 0 0 12px;
-  padding:.3rem .42rem .34rem .52rem;-webkit-backdrop-filter:blur(6px);backdrop-filter:blur(6px);
-}
-.attn-pill{display:inline-block;font-size:.66rem;font-weight:900;letter-spacing:.03em;padding:.14rem .45rem;border-radius:999px;color:#140b00}
-.attn-out,.attn-crit{background:#ff5a00}
-.attn-low{background:#ffc400}
-.folder-x{
-  position:absolute;top:-9px;left:-9px;z-index:3;width:26px;height:26px;border-radius:50%;padding:0;
-  border:1px solid rgba(255,255,255,.35);background:rgba(10,10,12,.82);color:#fff;font-size:.72rem;cursor:pointer;
-  -webkit-backdrop-filter:blur(8px);backdrop-filter:blur(8px);
-  display:flex;align-items:center;justify-content:center;
-}
-.folder-name-input{
-  width:100%;font-size:16px;font-weight:600;color:#fff;padding:.32rem .5rem;border-radius:9px;
-  background:rgba(12,0,2,.55);border:1px solid rgba(255,255,255,.4);outline:none;font-family:inherit;
-}
-/* Drilled-in folder header */
+/* Drill-in header bar (supplier detail reuses this pattern) */
 .folder-bar{display:flex;align-items:center;gap:.7rem;margin:.55rem 0 .65rem}
 .folder-back{flex:none}
 .folder-bar-main{display:flex;flex-direction:column;min-width:0}
 .folder-bar-main strong{font-size:1.12rem;line-height:1.15}
 .folder-bar-main span{color:var(--muted);font-size:.78rem;font-weight:600}
-.folder-chip{
-  background:var(--surface2);color:var(--text);border:1.5px solid var(--border);border-left:4px solid var(--danger);
-  font-weight:800;font-size:.9rem;padding:.35rem .65rem;border-radius:8px;cursor:pointer;font-family:inherit;
-}
 /* ---------- Sorting Kit: banner, auto-sort, sort mode, rail, lookup ---------- */
 .sort-banner{
   display:flex;align-items:center;gap:.6rem;flex-wrap:wrap;margin-top:.55rem;
@@ -505,11 +494,11 @@ html[data-theme="electric"] body.folders-bg{
 .shelf-jump{
   position:sticky;top:calc(var(--header-h) + 6px);z-index:12;
   display:flex;align-items:center;gap:.4rem;padding:.35rem;margin-bottom:.6rem;
-  background:color-mix(in srgb,var(--tabbar-bg) 88%,transparent);
-  background-image:linear-gradient(180deg,rgba(255,255,255,.22),rgba(255,255,255,.05) 55%,rgba(255,255,255,0));
-  -webkit-backdrop-filter:blur(30px) saturate(1.9);backdrop-filter:blur(30px) saturate(1.9);
-  border:var(--bw) solid color-mix(in srgb,var(--border) 55%,rgba(255,255,255,.35));border-radius:18px;
-  box-shadow:inset 0 1px 0 rgba(255,255,255,.45),0 8px 24px rgba(0,0,0,.22);
+  background:var(--glass-fill);
+  background-image:var(--glass-sheen);
+  -webkit-backdrop-filter:var(--glass-filter);backdrop-filter:var(--glass-filter);
+  border:var(--bw) solid var(--glass-border);border-radius:18px;
+  box-shadow:var(--glass-shadow);
 }
 .shelf-jump span{font-weight:800;font-size:.75rem;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;padding-left:.3rem}
 .shelf-jump button{
@@ -556,11 +545,11 @@ html[data-theme="electric"] body.folders-bg{
 .locate-caption{
   position:fixed;left:50%;transform:translateX(-50%);bottom:calc(96px + env(safe-area-inset-bottom));z-index:35;
   width:min(94vw,560px);display:flex;align-items:center;gap:.5rem;padding:.55rem .4rem .55rem .85rem;
-  background:color-mix(in srgb,var(--tabbar-bg) 88%,transparent);
-  background-image:linear-gradient(180deg,rgba(255,255,255,.22),rgba(255,255,255,.05) 55%,rgba(255,255,255,0));
-  -webkit-backdrop-filter:blur(30px) saturate(1.9);backdrop-filter:blur(30px) saturate(1.9);
-  border:var(--bw) solid color-mix(in srgb,var(--border) 55%,rgba(255,255,255,.35));border-radius:18px;
-  box-shadow:inset 0 1px 0 rgba(255,255,255,.45),0 8px 24px rgba(0,0,0,.22);
+  background:var(--glass-fill);
+  background-image:var(--glass-sheen);
+  -webkit-backdrop-filter:var(--glass-filter);backdrop-filter:var(--glass-filter);
+  border:var(--bw) solid var(--glass-border);border-radius:18px;
+  box-shadow:var(--glass-shadow);
 }
 .locate-caption-text{flex:1;font-size:.82rem;cursor:pointer}
 .locate-caption-text strong{font-size:.92rem}
@@ -704,11 +693,11 @@ html[data-theme="electric"] body.folders-bg{
 .tabbar{
   position:fixed;left:50%;transform:translateX(-50%);bottom:calc(10px + env(safe-area-inset-bottom));z-index:30;
   width:min(94vw,400px);
-  background:color-mix(in srgb,var(--tabbar-bg) 88%,transparent);
-  background-image:linear-gradient(180deg,rgba(255,255,255,.22),rgba(255,255,255,.05) 55%,rgba(255,255,255,0));
-  -webkit-backdrop-filter:blur(30px) saturate(1.9);backdrop-filter:blur(30px) saturate(1.9);
-  border:var(--bw) solid color-mix(in srgb,var(--border) 55%,rgba(255,255,255,.35));border-radius:26px;
-  box-shadow:inset 0 1px 0 rgba(255,255,255,.45),inset 0 -1px 0 rgba(255,255,255,.08),0 8px 24px rgba(0,0,0,.22);
+  background:var(--glass-fill);
+  background-image:var(--glass-sheen);
+  -webkit-backdrop-filter:var(--glass-filter);backdrop-filter:var(--glass-filter);
+  border:var(--bw) solid var(--glass-border);border-radius:26px;
+  box-shadow:var(--glass-shadow);
   display:grid;grid-template-columns:repeat(5,1fr);padding:6px;
 }
 .tab{
@@ -796,7 +785,7 @@ html[data-theme="electric"] body.folders-bg{
 .sheet.nfc-pulse{animation:sheetUp .24s cubic-bezier(.32,.72,0,1),nfcFlash .6s ease-out}
 @keyframes nfcFlash{0%{box-shadow:0 0 0 0 color-mix(in srgb,var(--accent) 65%,transparent)}100%{box-shadow:0 0 0 16px transparent}}
 @media (prefers-reduced-motion: reduce){
-  .view.active,.sheet,.sheet.nfc-pulse{animation:none}
+  .view.active,.sheet,.sheet.nfc-pulse,.photo-grid.gx-next,.photo-grid.gx-prev{animation:none}
   .toast{transition:none}
   .photo-card,.tab,.btn,.qty-btn,.theme-card{transition:none}
 }

@@ -127,10 +127,11 @@
   var locateTarget = null;   // { id, name, bin, level } — blink-on-search target
   var selectedIcon = ICON_KEYS[0];
   var lowFilter = false;
-  /* Categories home state: null = folder browse · 'ALL' = all items ·
-   * '<folder name>' = drilled into that folder. */
-  var homeFolder = null;
-  var folderEdit = false;          // folder rename/remove edit mode
+  /* Folder tab strip state (v31): categoryFilter is the selected
+   * tab — null = All, otherwise a folder name (D.UNCAT included).
+   * The strip lives in the sticky block and filters the grid in
+   * place; there is no folder browse / drill-in state anymore. */
+  var categoryFilter = null;
   var pendingRemoveFolder = null;
   var fabMenuOpen = false;
   function itemCategory(i) { return D.categoryFor(i); }
@@ -375,7 +376,6 @@
       if (on) t.setAttribute('aria-current', 'page'); else t.removeAttribute('aria-current');
     });
     if (name !== 'map' && locateTarget) { locateTarget = null; $('locateCaption').classList.add('hidden'); }
-    if (name !== 'home') document.body.classList.remove('folders-bg');
     if (name === 'home') renderHome();
     if (name === 'add') prepAddForm();
     if (name === 'map') { renderMap(); if (locateTarget) setTimeout(activateLocate, 40); }
@@ -399,38 +399,18 @@
     $('statSegLow').classList.toggle('active', lowFilter);
     $('statSegLow').setAttribute('aria-pressed', lowFilter ? 'true' : 'false');
     $('filterHint').classList.toggle('hidden', !lowFilter);
-    /* Home states: folder browse (default) · drilled folder / All Items ·
-     * global results whenever a search or the LOW filter is active. */
+    /* Home is always the item grid now (v31): the folder tab strip
+     * in the sticky block picks which folder it shows. Searching (or
+     * the LOW filter) suspends the folder, as before: results are
+     * global and the caption says so. */
     var searching = !!q || lowFilter;
-    var browseFolders = !searching && homeFolder === null;
-    document.body.classList.toggle('folders-bg', browseFolders && $('view-home').classList.contains('active'));
     $('folderCaption').classList.toggle('hidden', !searching);
-    $('folderHead').classList.toggle('hidden', !browseFolders);
-    $('folderEditBtn').classList.toggle('hidden', folderEdit);
-    $('folderDoneBtn').classList.toggle('hidden', !folderEdit);
-    $('allItemsRow').classList.toggle('hidden', !browseFolders || folderEdit);
-    /* Sorting Kit entry: while unfiled items exist, the browse state
-     * carries a banner offering Auto-sort and Sort mode. */
-    var uncatCount = 0;
-    if (browseFolders) D.folderStats().forEach(function (s) { if (s.system) uncatCount = s.count; });
-    $('sortBanner').classList.toggle('hidden', !browseFolders || folderEdit || !uncatCount);
+    renderFolderTabs();
+    /* Sorting Kit entry: while unfiled items exist and no search is
+     * running, the banner above the grid offers Auto-sort / Sort mode. */
+    var uncatCount = items.filter(function (i) { return itemCategory(i) === D.UNCAT; }).length;
+    $('sortBanner').classList.toggle('hidden', !uncatCount || !!q);
     if (uncatCount) $('sortBannerText').textContent = uncatCount + (uncatCount === 1 ? ' item needs' : ' items need') + ' a folder';
-    $('folderGrid').classList.toggle('hidden', !browseFolders);
-    $('folderBar').classList.toggle('hidden', searching || homeFolder === null);
-    $('photoGrid').classList.toggle('hidden', browseFolders);
-    if (browseFolders) {
-      $('gridEmpty').classList.add('hidden');
-      $('allItemsMeta').textContent = items.length + ' items · ' + totalUnits + ' units';
-      renderFolders();
-      syncFab();
-      refreshChrome();
-      return;
-    }
-    if (!searching && homeFolder !== null) {
-      var inFolder = homeFolder === 'ALL' ? items : items.filter(function (i) { return itemCategory(i) === homeFolder; });
-      $('folderTitle').textContent = homeFolder === 'ALL' ? 'All Items' : homeFolder;
-      $('folderMeta').textContent = inFolder.length + ' items · ' + inFolder.reduce(function (s, i) { return s + i.qty; }, 0) + ' units';
-    }
     var filtered = items.filter(function (i) {
       if (lowFilter && i.qty > 5) return false;
       if (!q) return true;
@@ -439,8 +419,8 @@
       var compact = q.replace(/[\s·\-]/g, '');
       return compact.length > 1 && locShort(i).toLowerCase().replace(/[\s·]/g, '').indexOf(compact) !== -1;
     });
-    if (!searching && homeFolder !== null && homeFolder !== 'ALL') {
-      filtered = filtered.filter(function (i) { return itemCategory(i) === homeFolder; });
+    if (!searching && categoryFilter !== null) {
+      filtered = filtered.filter(function (i) { return itemCategory(i) === categoryFilter; });
     }
     if (lowFilter) filtered = filtered.slice().sort(function (a, b) { return a.qty - b.qty; });  // worst first: 0s, then 1–2, then 3–5
     $('photoGrid').innerHTML = filtered.map(function (i) {
@@ -461,7 +441,7 @@
         '</div></div>';
     }).join('');
     $('gridEmpty').textContent = (lowFilter && !q) ? 'Nothing is low right now.'
-      : (homeFolder && homeFolder !== 'ALL' && !q ? 'This folder is empty — tap + to add an item here.' : 'No items match your search.');
+      : (categoryFilter !== null && !q ? 'Nothing filed here yet.' : 'No items match your search.');
     $('gridEmpty').classList.toggle('hidden', filtered.length > 0);
     var grid = $('photoGrid');
     grid.querySelectorAll('[data-card]').forEach(function (card) {
@@ -496,119 +476,265 @@
     refreshChrome();
     syncFab();
   }
-  /* ---------- Categories home: red glass folders ----------
+  /* ---------- Folder tab strip (v31) ----------
    * Folders are category NAMES on the items (ETData owns the list and
-   * the rename/remove cascades). Tiles are red glass; edit mode turns
-   * each name into an inline field. Entry: the Edit pill, or a 450ms
-   * long-press on a tile (which focuses that folder's field). */
-  function folderPillHtml(s) {
-    if (!s.worst) return '';
-    var label = s.worstCount + ' ' + (s.worst === 'out' ? 'OUT' : (s.worst === 'crit' ? 'CRITICAL' : 'LOW'));
-    return '<span class="folder-notch"><span class="attn-pill attn-' + s.worst + '">' + label + '</span></span>';
+   * the rename/remove cascades). On Home they are a horizontal strip
+   * of physical folder tabs in the sticky block: All, every folder in
+   * list order, Uncategorized pinned last, and a "+" tab. Tapping a
+   * tab filters the grid in place — no drill-in page. The strip has
+   * carousel manners: scroll-snap, the selected tab centers itself,
+   * a direction-locked swipe over the grid steps through folders
+   * with wrap-around, and a user scroll of the strip itself selects
+   * whichever tab settles at the center. A 450ms long-press on a
+   * folder tab opens its rename/remove sheet. */
+  var tabKeysCache = [];        // last-rendered strip keys: null = All, else folder name
+  var tabsSig = '';             // rebuild signature (names + selection)
+  var stripProgUntil = 0;       // programmatic-centering guard for settle-select
+  var stripSettleTimer = null;
+
+  function tabKeys() {
+    var keys = [null];
+    D.folderStats().forEach(function (s) { keys.push(s.name); });
+    // folderStats only lists the system folder while it holds items;
+    // the strip always carries it, pinned last.
+    if (keys.indexOf(D.UNCAT) === -1) keys.push(D.UNCAT);
+    return keys;
   }
-  function renderFolders() {
-    $('folderGrid').innerHTML = D.folderStats().map(function (s) {
-      var meta = s.count + (s.count === 1 ? ' item' : ' items') + ' · ' + s.units + ' units';
-      if (folderEdit && !s.system) {
-        return '<div class="folder-wrap" data-wrap="' + esc(s.name) + '">' +
-          '<div class="folder-tile editing">' + folderPillHtml(s) +
-            '<span class="folder-icon">' + svgIcon(s.icon) + '</span>' +
-            '<input class="folder-name-input" data-folder-input data-old="' + esc(s.name) + '" value="' + esc(s.name) + '" aria-label="Rename folder ' + esc(s.name) + '" autocomplete="off">' +
-            '<span class="folder-meta">' + meta + '</span>' +
-          '</div>' +
-          '<button type="button" class="folder-x" data-remove="' + esc(s.name) + '" aria-label="Remove folder ' + esc(s.name) + '">✕</button>' +
-        '</div>';
-      }
-      return '<div class="folder-wrap" data-wrap="' + esc(s.name) + '">' +
-        '<div class="folder-tile" data-folder="' + esc(s.name) + '" role="button" tabindex="0" aria-label="Open folder ' + esc(s.name) + ', ' + meta + '">' +
-          folderPillHtml(s) +
-          '<span class="folder-icon">' + svgIcon(s.icon) + '</span>' +
-          '<span class="folder-name">' + esc(s.name) + '</span>' +
-          '<span class="folder-meta">' + meta + (s.system ? ' · system folder' : '') + '</span>' +
-        '</div></div>';
-    }).join('');
-    var grid = $('folderGrid');
-    if (folderEdit) {
-      grid.querySelectorAll('[data-remove]').forEach(function (b) {
-        b.addEventListener('click', function (e) { e.stopPropagation(); askRemoveFolder(b.getAttribute('data-remove')); });
-      });
-      grid.querySelectorAll('[data-folder-input]').forEach(function (inp) {
-        inp.addEventListener('blur', function () { commitFolderRename(inp); });
-        inp.addEventListener('keydown', function (e) {
-          if (e.key === 'Enter') { e.preventDefault(); inp.blur(); }
-          else if (e.key === 'Escape') { inp.value = inp.getAttribute('data-old'); inp.blur(); }
-        });
-      });
-    } else {
-      grid.querySelectorAll('[data-folder]').forEach(function (tile) {
-        attachFolderPress(tile, tile.getAttribute('data-folder'));
-      });
-    }
+  /* The strip only rebuilds when the folder set or the selection
+   * changes (renderHome runs on every keystroke and qty tap, and a
+   * rebuild mid-scroll would yank the strip). Scroll position is
+   * preserved across a rebuild; centering adjusts it afterwards. */
+  function renderFolderTabs() {
+    var strip = $('folderTabs');
+    if (!strip) return;
+    var keys = tabKeys();
+    var sig = keys.map(function (k) { return k === null ? '' : k; }).join('|') + '::' + (categoryFilter === null ? '' : categoryFilter);
+    if (sig === tabsSig && strip.children.length) { tabKeysCache = keys; return; }
+    var keepScroll = strip.scrollLeft;
+    tabsSig = sig;
+    tabKeysCache = keys;
+    strip.innerHTML = keys.map(function (k, idx) {
+      var active = k === categoryFilter;
+      var label = k === null ? 'All' : k;
+      return '<div class="ftab-wrap' + (active ? ' active' : '') + '">' +
+        '<button type="button" class="ftab' + (active ? ' active' : '') + '" role="tab" data-tk="' + idx + '"' +
+        ' aria-selected="' + (active ? 'true' : 'false') + '"><span class="ftab-label">' + esc(label) + '</span></button></div>';
+    }).join('') +
+      '<div class="ftab-wrap ftab-plus-wrap"><button type="button" class="ftab ftab-plus" id="folderTabPlus" aria-label="New folder">+</button></div>';
+    strip.scrollLeft = keepScroll;
+    strip.querySelectorAll('[data-tk]').forEach(function (btn) {
+      attachTabPress(btn, tabKeysCache[parseInt(btn.getAttribute('data-tk'), 10)]);
+    });
+    var plus = $('folderTabPlus');
+    if (plus) plus.addEventListener('click', function () { newFolderFlow(); });
   }
-  function openFolder(name) { homeFolder = name; renderHome(); window.scrollTo(0, 0); }
-  /* Tap opens the folder; a 450ms hold enters edit mode on it instead.
-   * The press timer + fired-flag keep the two from fighting. */
-  var lpTimer = null, lpFiredAt = 0;
-  function attachFolderPress(tile, name) {
-    tile.addEventListener('pointerdown', function () {
-      clearTimeout(lpTimer);
-      lpTimer = setTimeout(function () {
-        lpFiredAt = Date.now();
-        if (navigator.vibrate) { try { navigator.vibrate(30); } catch (e) { /* unsupported */ } }
-        enterFolderEdit(name);
+  /* Tap selects; a 450ms hold opens the folder's sheet instead (All
+   * and the system folder have no sheet). The press timer + fired
+   * flag keep the two from fighting, and a >10px move cancels the
+   * hold — the strip scrolls, so a hold that turns into a drag must
+   * not pop the sheet open mid-scroll. */
+  var tabLpTimer = null, tabLpFiredAt = 0, tabLpFiredKey = null;
+  function attachTabPress(btn, key) {
+    var startX = 0, startY = 0;
+    btn.addEventListener('pointerdown', function (e) {
+      startX = e.clientX; startY = e.clientY;
+      if (key === null || key === D.UNCAT) return;
+      clearTimeout(tabLpTimer);
+      tabLpTimer = setTimeout(function () {
+        tabLpFiredAt = Date.now();
+        tabLpFiredKey = key;
+        if (navigator.vibrate) { try { navigator.vibrate(30); } catch (err) { /* unsupported */ } }
+        openFolderSheet(key);
       }, 450);
     });
+    btn.addEventListener('pointermove', function (e) {
+      if (Math.abs(e.clientX - startX) > 10 || Math.abs(e.clientY - startY) > 10) clearTimeout(tabLpTimer);
+    });
     ['pointerup', 'pointerleave', 'pointercancel'].forEach(function (ev) {
-      tile.addEventListener(ev, function () { clearTimeout(lpTimer); });
+      btn.addEventListener(ev, function () { clearTimeout(tabLpTimer); });
     });
-    tile.addEventListener('click', function () {
-      if (Date.now() - lpFiredAt < 700) return;   // the long-press already acted
-      openFolder(name);
-    });
-    tile.addEventListener('keydown', function (e) {
-      if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openFolder(name); }
+    btn.addEventListener('click', function () {
+      // The long-press already acted — swallow THIS tab's trailing
+      // click only (a fast tap on a different tab still counts).
+      if (key === tabLpFiredKey && Date.now() - tabLpFiredAt < 700) return;
+      selectCategory(key, {});
     });
   }
-  function enterFolderEdit(focusName) {
-    folderEdit = true;
-    closeFabMenu();
+  function selectCategory(key, opts) {
+    opts = opts || {};
+    var prevIdx = tabKeysCache.indexOf(categoryFilter);
+    var changed = key !== categoryFilter;
+    categoryFilter = key;
     renderHome();
-    if (focusName) {
-      var target = null;
-      $('folderGrid').querySelectorAll('[data-folder-input]').forEach(function (el) {
-        if (el.getAttribute('data-old') === focusName) target = el;
-      });
-      if (target) { target.focus(); target.select(); }
+    if (changed) {
+      var newIdx = tabKeysCache.indexOf(key);
+      var dir = opts.dir || (prevIdx !== -1 && newIdx !== -1 ? Math.sign(newIdx - prevIdx) : 0);
+      animateGrid(dir);
     }
+    if (!opts.noCenter) centerActiveTab(true);
   }
-  function exitFolderEdit() {
-    commitAllFolderInputs();
-    folderEdit = false;
+  /* The grid slides a touch in the direction of travel (transform /
+   * opacity only, ~160ms; the reduced-motion block in styles.css
+   * turns it off). */
+  function animateGrid(dir) {
+    if (!dir) return;
+    var g = $('photoGrid');
+    g.classList.remove('gx-next', 'gx-prev');
+    void g.offsetWidth;
+    g.classList.add(dir > 0 ? 'gx-next' : 'gx-prev');
+  }
+  function activeTabEl() {
+    var strip = $('folderTabs');
+    if (!strip) return null;
+    var idx = tabKeysCache.indexOf(categoryFilter);
+    return idx === -1 ? null : strip.querySelector('[data-tk="' + idx + '"]');
+  }
+  /* Smooth-scroll the selected tab to the strip's center. While the
+   * animation runs, stripProgUntil guards the settle-select below:
+   * our own scrolling must never read as a user scroll. */
+  function centerActiveTab(smooth) {
+    var strip = $('folderTabs');
+    var el = activeTabEl();
+    if (!strip || !el) return;
+    var sr = strip.getBoundingClientRect(), er = el.getBoundingClientRect();
+    var delta = (er.left + er.width / 2) - (sr.left + sr.width / 2);
+    if (Math.abs(delta) < 2) return;
+    stripProgUntil = Date.now() + (smooth ? 500 : 150);
+    try { strip.scrollTo({ left: strip.scrollLeft + delta, behavior: smooth ? 'smooth' : 'auto' }); }
+    catch (e) { strip.scrollLeft = strip.scrollLeft + delta; }
+  }
+  /* Select-on-settle: a USER scroll of the strip (touch or wheel)
+   * that settles selects the tab nearest the strip center. No
+   * re-centering afterwards — the tab is already at the center, and
+   * centering again would fight the user's scroll. */
+  function initFolderStripScroll() {
+    var strip = $('folderTabs');
+    if (!strip) return;
+    strip.addEventListener('scroll', function () {
+      if (Date.now() < stripProgUntil) return;   // programmatic centering — ignore
+      clearTimeout(stripSettleTimer);
+      stripSettleTimer = setTimeout(settleSelectTab, 120);
+    }, { passive: true });
+  }
+  function settleSelectTab() {
+    if (editingOpen()) return;
+    var strip = $('folderTabs');
+    if (!strip) return;
+    var sr = strip.getBoundingClientRect();
+    var center = sr.left + sr.width / 2;
+    var best = null, bestDist = Infinity;
+    strip.querySelectorAll('[data-tk]').forEach(function (el) {
+      var r = el.getBoundingClientRect();
+      var d = Math.abs((r.left + r.width / 2) - center);
+      if (d < bestDist) { bestDist = d; best = el; }
+    });
+    if (!best) return;
+    var key = tabKeysCache[parseInt(best.getAttribute('data-tk'), 10)];
+    if (key !== undefined && key !== categoryFilter) selectCategory(key, { noCenter: true });
+  }
+  function stepCategory(dir) {
+    var keys = tabKeysCache.length ? tabKeysCache : tabKeys();
+    var idx = keys.indexOf(categoryFilter);
+    if (idx === -1) idx = 0;
+    selectCategory(keys[(idx + dir + keys.length) % keys.length], { dir: dir });
+  }
+  /* Carousel swipe over the grid: direction-locked (a mostly-vertical
+   * gesture is a scroll, never a folder step), ~56px threshold,
+   * wrap-around via stepCategory. Detection happens at touchend so
+   * vertical scrolling is never blocked; a claimed swipe swallows
+   * the tap the browser fires as the finger lifts, so it can't also
+   * open a card or press a stepper. Touches starting in the sticky
+   * block (search / tabs / stats) or on the FAB belong to those
+   * controls, and swipes are ignored while any sheet is open. */
+  var swipeStart = null;
+  var suppressClickAt = 0;
+  document.addEventListener('click', function (e) {
+    if (suppressClickAt && Date.now() - suppressClickAt < 400) {
+      suppressClickAt = 0;
+      e.preventDefault();
+      e.stopPropagation();
+    }
+  }, true);
+  $('view-home').addEventListener('touchstart', function (e) {
+    swipeStart = null;
+    if (e.touches.length !== 1 || !e.target || !e.target.closest) return;
+    if (e.target.closest('.sticky-search') || e.target.closest('.fab-btn') || e.target.closest('.fab-menu')) return;
+    var t = e.touches[0];
+    swipeStart = { x: t.clientX, y: t.clientY };
+  }, { passive: true });
+  $('view-home').addEventListener('touchend', function (e) {
+    if (!swipeStart) return;
+    var s = swipeStart; swipeStart = null;
+    if (editingOpen()) return;
+    var t = e.changedTouches && e.changedTouches[0];
+    if (!t) return;
+    var dx = t.clientX - s.x, dy = t.clientY - s.y;
+    if (Math.abs(dx) < 56 || Math.abs(dx) <= Math.abs(dy) * 1.4) return;
+    suppressClickAt = Date.now();
+    stepCategory(dx < 0 ? 1 : -1);
+  }, { passive: true });
+  /* New folder: ETData creates it with a placeholder name and the
+   * folder sheet opens on it straight away for the rename — the same
+   * flow the "+" tab and the FAB menu share. */
+  function newFolderFlow() {
+    closeFabMenu();
+    var cat = D.addCategory();
+    categoryFilter = null;
+    lowFilter = false;
+    $('searchInput').value = '';
     renderHome();
+    centerActiveTab(false);
+    openFolderSheet(cat.name);
+    toast('New folder — rename it now');
   }
-  function commitAllFolderInputs() {
-    $('folderGrid').querySelectorAll('[data-folder-input]').forEach(function (inp) { commitFolderRename(inp); });
+  /* ---------- Folder sheet: rename / remove one folder ----------
+   * Long-press a folder tab to open it. Rename rides ETData's
+   * renameCategory cascade (items follow, edit ops queue); when the
+   * renamed folder is the selected tab, the selection follows the
+   * new name. Remove goes through the shared confirm below. */
+  var folderSheetName = null;
+  function openFolderSheet(name) {
+    if (!name || name === D.UNCAT) return;
+    folderSheetName = name;
+    var s = D.folderStats().filter(function (x) { return x.name === name; })[0];
+    $('fsTitle').textContent = name;
+    $('fsMeta').textContent = s ? (s.count + (s.count === 1 ? ' item' : ' items') + ' · ' + s.units + ' units') : '';
+    $('fsNameInput').value = name;
+    $('fsError').classList.add('hidden');
+    $('folderSheetOverlay').classList.remove('hidden');
+    var inp = $('fsNameInput');
+    setTimeout(function () { try { inp.focus(); inp.select(); } catch (e) { /* focus is a bonus */ } }, 30);
   }
-  /* Commit on blur/Enter/Done. A valid rename updates the data in place
-   * (the input already shows the new name, so no re-render — focus stays
-   * put); a rejected one reverts the field and says why. */
-  function commitFolderRename(inp) {
-    if (!folderEdit) return;
-    var oldName = inp.getAttribute('data-old');
-    var newName = inp.value.trim();
-    if (newName === oldName) return;
+  function closeFolderSheet() { $('folderSheetOverlay').classList.add('hidden'); folderSheetName = null; }
+  $('fsClose').addEventListener('click', closeFolderSheet);
+  $('fsCancelBtn').addEventListener('click', closeFolderSheet);
+  $('folderSheetOverlay').addEventListener('click', function (e) { if (e.target === $('folderSheetOverlay')) closeFolderSheet(); });
+  $('fsNameInput').addEventListener('keydown', function (e) {
+    if (e.key === 'Enter') { e.preventDefault(); $('fsRenameBtn').click(); }
+  });
+  $('fsRenameBtn').addEventListener('click', function () {
+    if (!folderSheetName) return;
+    var oldName = folderSheetName;
+    var newName = $('fsNameInput').value.trim();
+    if (newName === oldName) { closeFolderSheet(); return; }
     var r = D.renameCategory(oldName, newName);
     if (!r.ok) {
-      inp.value = oldName;
-      toast(r.message || 'Could not rename folder');
+      $('fsError').textContent = r.message || 'Could not rename folder';
+      $('fsError').classList.remove('hidden');
       return;
     }
-    inp.setAttribute('data-old', newName);
-    inp.value = newName;
-    var wrap = inp.closest('[data-wrap]');
-    if (wrap) wrap.setAttribute('data-wrap', newName);
+    if (categoryFilter === oldName) categoryFilter = newName;   // the selected tab follows its folder
+    closeFolderSheet();
+    renderHome();
+    centerActiveTab(false);
     toast('Folder renamed' + (r.count ? ' — ' + r.count + ' item(s) updated' : ''));
-  }
+  });
+  $('fsRemoveBtn').addEventListener('click', function () {
+    if (!folderSheetName) return;
+    var name = folderSheetName;
+    closeFolderSheet();
+    askRemoveFolder(name);
+  });
   /* Remove: empty folders go instantly; folders with items ask first —
    * items move to Uncategorized, they are never deleted. */
   function askRemoveFolder(name) {
@@ -616,8 +742,10 @@
     var count = s ? s.count : 0;
     if (!count) {
       D.removeCategory(name);
+      if (categoryFilter === name) categoryFilter = null;   // a removed tab can't stay selected
       toast('Folder removed');
       renderHome();
+      centerActiveTab(false);
       return;
     }
     pendingRemoveFolder = name;
@@ -636,13 +764,11 @@
     var name = pendingRemoveFolder;
     closeRemoveConfirm();
     var r = D.removeCategory(name);
+    if (categoryFilter === name) categoryFilter = null;   // a removed tab can't stay selected
     toast('Folder removed — ' + (r.moved || 0) + ' item(s) moved to Uncategorized');
     renderHome();
+    centerActiveTab(false);
   });
-  $('folderEditBtn').addEventListener('click', function () { enterFolderEdit(null); });
-  $('folderDoneBtn').addEventListener('click', function () { exitFolderEdit(); });
-  $('allItemsRow').addEventListener('click', function () { openFolder('ALL'); });
-  $('folderBack').addEventListener('click', function () { homeFolder = null; renderHome(); window.scrollTo(0, 0); });
 
   /* ---------- Sorting Kit: file the Uncategorized pile ----------
    * suggestCategory proposes a folder from ordered phrase rules over
@@ -842,7 +968,7 @@
 
   /* ---------- FAB: red glass +, lower right, clear of the dock ---------- */
   function syncFab() {
-    var show = $('view-home').classList.contains('active') && !folderEdit;
+    var show = $('view-home').classList.contains('active');
     $('fabBtn').classList.toggle('hidden', !show);
     if (!show) closeFabMenu();
   }
@@ -862,15 +988,7 @@
     $('fabBtn').setAttribute('aria-expanded', 'true');
   });
   $('fabScrim').addEventListener('click', closeFabMenu);
-  $('fabNewFolder').addEventListener('click', function () {
-    closeFabMenu();
-    var cat = D.addCategory();
-    homeFolder = null;
-    lowFilter = false;
-    $('searchInput').value = '';
-    enterFolderEdit(cat.name);
-    toast('New folder — rename it now');
-  });
+  $('fabNewFolder').addEventListener('click', function () { newFolderFlow(); });
   $('fabNewItem').addEventListener('click', function () {
     closeFabMenu();
     openQuickAdd();
@@ -892,7 +1010,7 @@
     var names = D.getCategories().map(function (c) { return c.name; });
     names.push(D.UNCAT);
     sel.innerHTML = names.map(function (n) { return '<option>' + esc(n) + '</option>'; }).join('');
-    if (homeFolder && homeFolder !== 'ALL' && names.indexOf(homeFolder) !== -1) sel.value = homeFolder;
+    if (categoryFilter && names.indexOf(categoryFilter) !== -1) sel.value = categoryFilter;
     else if (names.indexOf(prev) !== -1) sel.value = prev;
     else sel.value = names[0];
   }
@@ -2299,7 +2417,7 @@
   }
   D.onQueueChange(function () { scheduleAutoFlush(); });
 
-  var EDIT_OVERLAYS = ['itemOverlay', 'binOverlay', 'countOverlay', 'shelfOverlay', 'orgOverlay', 'orgPickOverlay', 'nfcOverlay', 'qtyEditOverlay', 'autoSortOverlay', 'sortOverlay', 'folderRemoveOverlay', 'supClearOverlay', 'supRenameOverlay', 'supplierOverlay', 'orphanRemoveOverlay'];
+  var EDIT_OVERLAYS = ['itemOverlay', 'binOverlay', 'countOverlay', 'shelfOverlay', 'orgOverlay', 'orgPickOverlay', 'nfcOverlay', 'qtyEditOverlay', 'autoSortOverlay', 'sortOverlay', 'folderSheetOverlay', 'folderRemoveOverlay', 'supClearOverlay', 'supRenameOverlay', 'supplierOverlay', 'orphanRemoveOverlay'];
   function editingOpen() {
     for (var i = 0; i < EDIT_OVERLAYS.length; i++) {
       var o = $(EDIT_OVERLAYS[i]);
@@ -2488,6 +2606,7 @@
   initTheme();
   initNfcLive();
   initAddForm();
+  initFolderStripScroll();
   renderHome();
   renderSync();
   refreshChrome();
