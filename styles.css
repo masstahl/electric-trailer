@@ -396,8 +396,22 @@ main{max-width:960px;margin:0 auto;padding:1rem}
 .sort-folder-btn.sel{border-color:var(--accent);background:var(--accent-soft);box-shadow:0 0 0 2px var(--accent)}
 .sort-folder-btn.sel .sfb-icon{color:var(--accent)}
 #sBack[disabled]{opacity:.45}
+/* Item-sheet folder picker: a collapsed row naming the current
+   folder; tapping it expands the rail of chips underneath */
+.folder-pick{margin-top:.5rem}
+.folder-row{
+  display:flex;align-items:center;gap:.55rem;width:100%;min-height:48px;padding:.5rem .75rem;
+  border-radius:14px;border:1.5px solid var(--border);background:var(--surface2);color:var(--text);
+  font:inherit;cursor:pointer;text-align:left;
+}
+.folder-row:active{transform:scale(.99)}
+.folder-row-label{font-size:.78rem;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;flex:none}
+.folder-row-name{flex:1;min-width:0;font-weight:700;font-size:.95rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.folder-row .lt-chev{width:13px;height:13px;flex:none;transition:transform .15s ease}
+.folder-row.open .lt-chev{transform:rotate(180deg)}
+@media (prefers-reduced-motion: reduce){.folder-row .lt-chev{transition:none}}
+.folder-pick .folder-rail{margin-top:.45rem}
 /* Item-sheet folder rail: horizontal chips, current folder accent-filled */
-.folder-rail-label{margin-top:.5rem}
 .folder-rail{display:flex;gap:.45rem;overflow-x:auto;padding:.1rem .05rem .35rem;-webkit-overflow-scrolling:touch}
 .folder-rail-chip{
   display:inline-flex;align-items:center;gap:.4rem;flex:none;min-height:44px;padding:.4rem .7rem;
@@ -506,6 +520,10 @@ main{max-width:960px;margin:0 auto;padding:1rem}
 /* Collapsible Settings lists (v36): a summary + Show/Hide toggle is
  * all that shows while collapsed; expanded rows live in a capped
  * region that scrolls internally instead of stretching the page. */
+/* Settings Auto-sort entry: the whole card is the tap target */
+.set-autosort-card{cursor:pointer}
+.set-autosort-row{display:flex;align-items:center;gap:.7rem}
+.set-autosort-main{flex:1;min-width:0}
 .list-head{display:flex;align-items:center;gap:.55rem;margin:1.1rem 0 .5rem}
 .list-head h3{margin:0}
 .list-count{margin-right:auto;color:var(--muted);font-size:.85rem;font-weight:600}
@@ -683,6 +701,12 @@ main{max-width:960px;margin:0 auto;padding:1rem}
 }
 /* Real item photos (backend Photo column) cover the white plate */
 .sheet-hero .plate-img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
+/* Edit-photo pill rides the hero's corner, above the photo */
+.photo-edit-btn{position:absolute;right:.6rem;bottom:.6rem;z-index:2;min-height:40px;padding:.25rem .95rem;font-size:.8rem}
+/* Photo editor stacks above the item sheet it was opened from (like NFC tools) */
+#photoEditOverlay{z-index:55}
+.pe-hero{height:150px;margin-top:.6rem}
+#peFind{display:flex;align-items:center;justify-content:center;text-decoration:none}
 .detail-icon{font-size:4.2rem;line-height:1.1}
 .sheet h2{margin:.2rem 0 .1rem;font-size:1.45rem}
 .sheet-chips{display:flex;align-items:center;gap:.5rem;flex-wrap:wrap;margin:.45rem 0 .2rem}

@@ -235,6 +235,26 @@
     if (before !== folderName) queueChange('edit', id, 'Filed in ' + folderName + ': ' + item.name);
     return item;
   }
+  /* Set ONE item's photo (the backend Image column) — the item
+   * sheet's photo editor goes through here. Mirrors setCategory:
+   * mutate, save, one queued 'edit' op; a flush sends the item's
+   * full current row, Image included (see sheetFields — the photo
+   * field is carried even when empty, so clearing the photo here
+   * clears the sheet cell on flush instead of the old link
+   * surviving the next import). '' = no photo (icon fallback). */
+  function setPhoto(id, url) {
+    url = String(url == null ? '' : url).trim();
+    var items = getItems();
+    var item = null;
+    items.forEach(function (it) { if (it.id === id) item = it; });
+    if (!item) return null;
+    if (String(item.photo || '') === url) return item;   // unchanged — nothing to queue
+    item.photo = url;
+    item.updated = nowISO();
+    saveItems(items);
+    queueChange('edit', id, (url ? 'Photo updated: ' : 'Photo removed: ') + item.name);
+    return item;
+  }
   /* SPEC PLATE status tiers, mirrored for folder summaries:
    * 0 = OUT, 1–2 = CRITICAL, 3–5 = LOW, 6+ = OK. */
   function statusTier(q) { return q <= 0 ? 'out' : (q <= 2 ? 'crit' : (q <= 5 ? 'low' : 'ok')); }
@@ -988,7 +1008,10 @@
       supplier: item.supplier, category: categoryForItem(item),
       icon: item.icon || 'box', nfcId: item.nfcId || ''
     };
-    if (item.photo) f.photo = item.photo;
+    /* Photo is carried even when empty: an edit that cleared it
+     * must write the empty value (sheets.js maps it to the Image
+     * column unconditionally), or the removal would never land. */
+    f.photo = item.photo || '';
     return f;
   }
   function flushViaSheet(q, pending) {
@@ -1104,7 +1127,7 @@
     getQueue: getQueue, getMeta: getMeta,
     onQueueChange: function (fn) { if (typeof fn === 'function') queueListeners.push(fn); },
     getCategories: getCategories, addCategory: addCategory,
-    renameCategory: renameCategory, removeCategory: removeCategory, setCategory: setCategory,
+    renameCategory: renameCategory, removeCategory: removeCategory, setCategory: setCategory, setPhoto: setPhoto,
     folderStats: folderStats, categoryFor: categoryForItem, UNCAT: UNCAT,
     updateQty: updateQty, setQty: setQty, addItem: addItem,
     testConnection: testConnection, flushQueue: flushQueue, resetDemo: resetDemo,

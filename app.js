@@ -248,6 +248,7 @@
     qb.classList.toggle('hidden', pending === 0);
     var tc = $('tabQueueCount');
     tc.textContent = pending; tc.classList.toggle('hidden', pending === 0);
+    renderAutoSortCount();
   }
 
   /* ---------- shared qty-change path (cards, sheet, bin sheet, count) ----------
@@ -1169,6 +1170,8 @@
     var item = D.getItem(id);
     if (!item) { toast('Item not found: ' + id); return; }
     closeFolderJump();
+    closePhotoEditor();
+    folderRailOpen = false;   // the folder picker starts collapsed for every item
     currentItemId = id;
     $('dIcon').innerHTML = iconPlate(item);
     $('dName').textContent = item.name;
@@ -1264,14 +1267,29 @@
   $('dCopyBtn').addEventListener('click', function () {
     if (currentItemId) copyString(D.stickerUrl(currentItemId), 'Link copied');
   });
-  /* Folder rail in the item sheet (Sorting Kit): one chip per folder
-   * plus Uncategorized, the item's current folder filled with the
-   * accent. Tapping a chip files the item there on the spot — this
-   * replaces the old folder chip that only jumped Home into the
-   * folder; filing from wherever the item was found matters more. */
+  /* Folder picker in the item sheet (Sorting Kit rail, v38
+   * collapsible): a single row shows the item's current folder;
+   * tapping it expands the rail of folder chips (one per folder
+   * plus Uncategorized, the current folder filled with the accent)
+   * inline. Tapping a chip files the item there on the spot via
+   * ETData.setCategory and collapses the picker back to the row,
+   * now showing the new folder. Opening an item always starts
+   * collapsed (openItem resets folderRailOpen). */
+  var folderRailOpen = false;
+  function syncFolderRailChrome() {
+    $('dFolderRail').classList.toggle('hidden', !folderRailOpen);
+    var row = $('dFolderRow');
+    row.classList.toggle('open', folderRailOpen);
+    row.setAttribute('aria-expanded', folderRailOpen ? 'true' : 'false');
+  }
+  $('dFolderRow').addEventListener('click', function () {
+    folderRailOpen = !folderRailOpen;
+    syncFolderRailChrome();
+  });
   function renderFolderRail(item) {
     if (!item) return;
     var cur = itemCategory(item);
+    $('dFolderName').textContent = cur;
     var names = D.getCategories().map(function (c) { return { name: c.name, icon: c.icon }; });
     names.push({ name: D.UNCAT, icon: 'box' });
     $('dFolderRail').innerHTML = names.map(function (f) {
@@ -1284,13 +1302,16 @@
         if (!currentItemId) return;
         var name = b.getAttribute('data-rail-folder');
         var it = D.getItem(currentItemId);
-        if (!it || itemCategory(it) === name) return;
+        folderRailOpen = false;   // choosing (even the current folder) collapses the picker
+        if (!it) { syncFolderRailChrome(); return; }
+        if (itemCategory(it) === name) { renderFolderRail(it); return; }
         D.setCategory(currentItemId, name);
         renderFolderRail(D.getItem(currentItemId));
         refreshChrome();
         toast('Filed in ' + name);
       });
     });
+    syncFolderRailChrome();
   }
 
   /* ---------- NFC Live: always-on listening while the app is open ----------
@@ -2412,8 +2433,14 @@
       amazon: 'https://www.amazon.com/s?k=' + enc
     };
   }
+  /* The string the part-number searches look up: the SKU when the
+   * item has one, else its name. Shared by the item sheet's lookup
+   * row and the photo editor's "Find a different one". */
+  function lookupPartFor(item) {
+    return String((item && item.sku) || '').trim() || String((item && item.name) || '').trim();
+  }
   function renderPartLookup(item) {
-    var part = String((item && item.sku) || '').trim() || String((item && item.name) || '').trim();
+    var part = lookupPartFor(item);
     $('dLookup').classList.toggle('hidden', !part);
     if (!part) return;
     var hrefs = partLookupHrefs(part);
@@ -2421,6 +2448,74 @@
     $('dLkImages').href = hrefs.images;
     $('dLkAmazon').href = hrefs.amazon;
   }
+
+  /* ---------- Item photo editor ----------
+   * An item's photo comes from the backend's Image column. This
+   * sheet (opened by the item sheet's Edit photo pill) swaps it:
+   * "Find a different one" opens the SAME Google Images search the
+   * part-number lookup builds (partLookupHrefs on lookupPartFor —
+   * one builder, no fork), the user pastes a candidate's link, and
+   * Save routes through ETData.setPhoto — one queued 'edit' op
+   * carrying the Image field, live-synced like any other field
+   * edit. The item sheet hero and the grid card update in place.
+   * Remove clears back to the icon fallback. No device file
+   * upload: a pasted link is the whole mechanism. A bad link just
+   * degrades to the icon — plateImg's onerror already hides a
+   * failed image everywhere it renders. */
+  var photoEditId = null;
+  function openPhotoEditor() {
+    if (!currentItemId) return;
+    var item = D.getItem(currentItemId);
+    if (!item) return;
+    photoEditId = item.id;
+    $('peUrl').value = item.photo || '';
+    $('peError').classList.add('hidden');
+    var part = lookupPartFor(item);
+    $('peFind').classList.toggle('hidden', !part);
+    if (part) $('peFind').href = partLookupHrefs(part).images;
+    $('peRemove').classList.toggle('hidden', !item.photo);
+    syncPhotoPreview();
+    $('photoEditOverlay').classList.remove('hidden');
+  }
+  function syncPhotoPreview() {
+    var item = photoEditId ? D.getItem(photoEditId) : null;
+    if (!item) return;
+    /* The preview follows the field: what's pasted is what saving
+     * will show, icon underneath if it fails to load. */
+    $('pePreview').innerHTML = iconPlate({ photo: $('peUrl').value.trim(), icon: item.icon });
+  }
+  function closePhotoEditor() { $('photoEditOverlay').classList.add('hidden'); photoEditId = null; }
+  function applyPhoto(id, url) {
+    var item = D.getItem(id);
+    if (!item) { closePhotoEditor(); return; }
+    var had = !!item.photo;
+    D.setPhoto(id, url);
+    var updated = D.getItem(id);
+    if (currentItemId === id && updated) $('dIcon').innerHTML = iconPlate(updated);
+    renderHome({ preserveOrder: true });
+    refreshChrome();
+    closePhotoEditor();
+    if (url) toast('Photo updated');
+    else if (had) toast('Photo removed');
+  }
+  function savePhotoEditor() {
+    if (!photoEditId) return;
+    var raw = $('peUrl').value.trim();
+    if (raw && !/^https?:\/\//i.test(raw)) {
+      var err = $('peError');
+      err.textContent = 'That doesn\'t look like a photo link — it should start with http:// or https://';
+      err.classList.remove('hidden');
+      return;
+    }
+    applyPhoto(photoEditId, raw);   // an emptied field saves as a removal
+  }
+  $('dPhotoEditBtn').addEventListener('click', openPhotoEditor);
+  $('peClose').addEventListener('click', closePhotoEditor);
+  $('peCancel').addEventListener('click', closePhotoEditor);
+  $('photoEditOverlay').addEventListener('click', function (e) { if (e.target === $('photoEditOverlay')) closePhotoEditor(); });
+  $('peUrl').addEventListener('input', function () { $('peError').classList.add('hidden'); syncPhotoPreview(); });
+  $('peSave').addEventListener('click', savePhotoEditor);
+  $('peRemove').addEventListener('click', function () { if (photoEditId) applyPhoto(photoEditId, ''); });
   function updateSkuLookup() {
     var skuEl = $('addSku');
     if (!skuEl) return;
@@ -2610,7 +2705,7 @@
   }
   D.onQueueChange(function () { scheduleAutoFlush(); });
 
-  var EDIT_OVERLAYS = ['itemOverlay', 'binOverlay', 'countOverlay', 'shelfOverlay', 'orgOverlay', 'orgPickOverlay', 'nfcOverlay', 'qtyEditOverlay', 'autoSortOverlay', 'sortOverlay', 'folderSheetOverlay', 'folderRemoveOverlay', 'supClearOverlay', 'supRenameOverlay', 'supplierOverlay', 'orphanRemoveOverlay'];
+  var EDIT_OVERLAYS = ['itemOverlay', 'binOverlay', 'countOverlay', 'shelfOverlay', 'orgOverlay', 'orgPickOverlay', 'nfcOverlay', 'qtyEditOverlay', 'autoSortOverlay', 'sortOverlay', 'folderSheetOverlay', 'folderRemoveOverlay', 'supClearOverlay', 'supRenameOverlay', 'supplierOverlay', 'orphanRemoveOverlay', 'photoEditOverlay'];
   function editingOpen() {
     for (var i = 0; i < EDIT_OVERLAYS.length; i++) {
       var o = $(EDIT_OVERLAYS[i]);
@@ -2674,8 +2769,27 @@
     $('healthLastSync').textContent = fmtTime(D.getMeta().lastSync);
     $('healthError').textContent = D.getMeta().lastError || 'none';
     renderOrphans();
+    renderAutoSortCount();
     refreshChrome();
   }
+
+  /* ---------- Auto-sort in Settings ----------
+   * The Home banner only exists on Home; Settings carries its own
+   * Auto-sort entry (v38) so unfiled items can be reached from
+   * here too. It opens the SAME review overlay through the SAME
+   * openAutoSort the banner uses — including its empty state (at
+   * zero unfiled, openAutoSort itself toasts "Nothing to sort —
+   * everything has a folder"; nothing is forked). The count is
+   * live: renderSync refreshes it on Settings entry and after
+   * syncs, and refreshChrome (called after every queue/data
+   * change) keeps it current while Settings sits open. */
+  function renderAutoSortCount() {
+    var el = $('setAutoSortLine');
+    if (!el) return;
+    var n = uncatItems().length;
+    el.textContent = n + (n === 1 ? ' item needs' : ' items need') + ' a folder';
+  }
+  $('setAutoSortCard').addEventListener('click', function () { openAutoSort(); });
 
   /* ---------- Not-in-sheet items (orphans) ----------
    * ETData flags an item when the sheet bridge answers one of its

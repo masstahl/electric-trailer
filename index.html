@@ -192,6 +192,17 @@
       <button id="syncNowBtn" class="btn btn-primary btn-big">Sync now</button>
       <p id="syncResult" class="result"></p>
     </div>
+
+    <!-- Auto-sort: the same review overlay the Home banner opens -->
+    <div class="card set-autosort-card" id="setAutoSortCard">
+      <div class="set-autosort-row">
+        <div class="set-autosort-main">
+          <h3 style="margin:0">Auto-sort</h3>
+          <p class="muted small" id="setAutoSortLine" style="margin:.15rem 0 0">0 items need a folder</p>
+        </div>
+        <button type="button" id="setAutoSortBtn" class="btn btn-primary">Review</button>
+      </div>
+    </div>
     <div class="list-head">
       <h3>Queued changes</h3>
       <button type="button" id="queueToggle" class="pill-btn list-toggle hidden" aria-expanded="false"><span class="lt-label">Show</span><svg class="lt-chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="square" aria-hidden="true" focusable="false"><path d="M4 9 L12 17 L20 9"/></svg></button>
@@ -277,7 +288,7 @@
 <div id="itemOverlay" class="overlay hidden" role="dialog" aria-modal="true">
   <div class="sheet">
     <button id="closeDetail" class="close-btn" aria-label="Close">✕</button>
-    <div class="sheet-hero"><span class="detail-icon" id="dIcon"></span></div>
+    <div class="sheet-hero"><span class="detail-icon" id="dIcon"></span><button type="button" id="dPhotoEditBtn" class="pill-btn photo-edit-btn">Edit photo</button></div>
     <h2 id="dName">Item</h2>
     <p class="muted" id="dMeta">SKU · Bin · Supplier</p>
     <div class="sheet-chips">
@@ -294,8 +305,14 @@
       <span class="orphan-notice-text">Not in the sheet yet — its changes can't sync.</span>
       <button type="button" id="dOrphanAddBtn" class="btn btn-primary">Add to sheet</button>
     </div>
-    <p class="small-label folder-rail-label">Folder — tap to file here</p>
-    <div id="dFolderRail" class="folder-rail" role="group" aria-label="File this item in a folder"></div>
+    <div class="folder-pick">
+      <button type="button" id="dFolderRow" class="folder-row" aria-expanded="false" aria-controls="dFolderRail">
+        <span class="folder-row-label">Folder</span>
+        <span class="folder-row-name" id="dFolderName"></span>
+        <svg class="lt-chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="square" aria-hidden="true" focusable="false"><path d="M4 9 L12 17 L20 9"/></svg>
+      </button>
+      <div id="dFolderRail" class="folder-rail hidden" role="group" aria-label="File this item in a folder"></div>
+    </div>
     <button type="button" id="showOnShelfBtn" class="btn show-shelf-btn"><svg class="icon-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="miter" stroke-linecap="square" aria-hidden="true" focusable="false"><path d="M12 21.5 L5 13.8 V6.8 L12 2.8 L19 6.8 V13.8 Z"/><path d="M12 12.5 L9.3 9.8 L12 7.2 L14.7 9.8 Z"/></svg> Show on shelf</button>
     <div class="qty-display">
       <button type="button" id="dQtyBtn" class="qty-num" title="Tap to type a new quantity" aria-label="Quantity 0 for Item — tap to type a new quantity"><span id="dQty">0</span></button>
@@ -321,6 +338,23 @@
     <div class="sheet-footer">
       <button type="button" id="doneDetail" class="btn btn-primary btn-big">Done</button>
     </div>
+  </div>
+</div>
+
+<!-- ============ PHOTO EDITOR · swap the item's photo (opened from the item sheet) ============ -->
+<div id="photoEditOverlay" class="overlay hidden" role="dialog" aria-modal="true" aria-labelledby="peTitle">
+  <div class="sheet confirm-sheet">
+    <button type="button" id="peClose" class="close-btn" aria-label="Close">✕</button>
+    <h2 id="peTitle">Item photo</h2>
+    <div class="sheet-hero pe-hero"><span class="detail-icon" id="pePreview"></span></div>
+    <a id="peFind" class="btn btn-big" href="#" target="_blank" rel="noopener">Find a different one</a>
+    <div class="form">
+      <label>Photo link<input id="peUrl" type="url" inputmode="url" autocomplete="off" placeholder="https://…"></label>
+    </div>
+    <p id="peError" class="result err hidden"></p>
+    <button type="button" id="peSave" class="btn btn-primary btn-big">Save photo</button>
+    <button type="button" id="peRemove" class="btn btn-big">Remove photo</button>
+    <button type="button" id="peCancel" class="btn btn-big">Cancel</button>
   </div>
 </div>
 

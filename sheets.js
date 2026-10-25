@@ -120,7 +120,7 @@
     out.Quantity = f.qty;
     out.Location = f.bin;
     out.Vendor = f.supplier;
-    if (f.photo) out.Image = f.photo;
+    if (f.photo != null) out.Image = f.photo;   // '' is a real value: it clears the cell (photo removed)
     out.Category = f.category;
     out.Icon = f.icon;
     out['NFC ID'] = f.nfcId;
