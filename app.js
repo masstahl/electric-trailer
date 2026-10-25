@@ -393,7 +393,18 @@
   }
   document.querySelectorAll('.tab').forEach(function (t) {
     if (t.classList.contains('tab-add')) return;  // the dock + opens the create menu instead (below)
-    t.addEventListener('click', function () { showView(t.getAttribute('data-view')); });
+    t.addEventListener('click', function () {
+      var name = t.getAttribute('data-view');
+      /* v37: Home pressed while already on Home toggles the folder
+       * jump list — the double-tap All already had, on the dock.
+       * Capture both states BEFORE showView runs, because showView
+       * closes the list: a press with the list closed opens it, a
+       * press with it open leaves it closed. */
+      var wasHome = name === 'home' && $('view-home').classList.contains('active');
+      var jumpWas = jumpListOpen;
+      showView(name);
+      if (wasHome && !jumpWas) openFolderJump();
+    });
   });
 
   /* ---------- grid order: quantity, highest first (v34) ----------
@@ -693,6 +704,7 @@
   document.addEventListener('pointerdown', function (e) {
     if (!jumpListOpen) return;
     if (e.target && e.target.closest && e.target.closest('.folder-strip')) return;
+    if (e.target && e.target.closest && e.target.closest('.tab[data-view="home"]')) return;  // v37: the dock Home press is the list's own toggle (click handler above), not an outside press
     closeFolderJump();
   }, true);
   /* The grid slides a touch in the direction of travel (transform /
@@ -2810,6 +2822,11 @@
   renderHome();
   renderSync();
   refreshChrome();
+  /* v37: the app opens on the folder jump list — the All dropdown
+   * IS the home page (Matthew's ask). A sticker link (?item= /
+   * ?shelf=) still wins: it opens its item/shelf instead. */
+  var bootParams = new URLSearchParams(window.location.search);
+  if (!bootParams.get('item') && !bootParams.get('shelf')) openFolderJump();
   // Sheet mode: pull the sheet's rows so the app opens on real data.
   D.refreshFromBackend().then(function (r) {
     if (r && r.ok) {
