@@ -184,8 +184,9 @@ main{max-width:960px;margin:0 auto;padding:1rem}
   border:var(--bw) solid var(--glass-border);border-radius:26px;
   box-shadow:var(--glass-shadow);
 }
-/* The strip's own row below the glass panel — a small gap, no glass. */
-.folder-strip{margin-top:.45rem}
+/* The strip's own row below the glass panel — a small gap, no glass.
+   It anchors the folder jump-list panel (v33) that drops from it. */
+.folder-strip{margin-top:.45rem;position:relative}
 .search-wrap input{
   width:100%;font-size:1rem;padding:.5rem .9rem;border-radius:999px;
   border:2px solid var(--border);background:var(--input-bg);color:var(--text);outline:none;
@@ -247,6 +248,56 @@ main{max-width:960px;margin:0 auto;padding:1rem}
   background:linear-gradient(90deg,rgba(219,1,28,.95),rgba(143,1,18,.8));
   box-shadow:inset 0 1px 0 rgba(255,255,255,.25);
 }
+/* The All tab's chevron: flips while the jump list is open (v33). */
+.ftab .ftab-chev{width:11px;height:11px;margin-left:.32rem;vertical-align:-1px;transition:transform .15s ease}
+.ftab.jump-open .ftab-chev{transform:rotate(180deg)}
+@media (prefers-reduced-motion: reduce){.ftab .ftab-chev{transition:none}}
+/* ---------- Folder jump list (v33) ----------
+ * Tapping All a second time drops this panel from under the tab
+ * strip: every folder as a row — frosted red-glass folder icon,
+ * name, live item count — so a folder can be picked without
+ * scrolling the strip sideways. The panel floats OVER the grid
+ * (the grid never moves); a transparent scrim behind it takes the
+ * dismiss tap. Dark smoked glass in the create menu's red-glass
+ * family. */
+.folder-jump{
+  position:absolute;top:calc(100% + 6px);left:2px;right:2px;z-index:20;
+  padding:.35rem;border-radius:18px;
+  background:
+    linear-gradient(180deg,rgba(255,255,255,.14),rgba(255,255,255,0) 42%),
+    linear-gradient(158deg,rgba(219,1,28,.30),rgba(143,1,18,.20)),
+    rgba(18,13,14,.94);
+  -webkit-backdrop-filter:blur(24px) saturate(1.6);backdrop-filter:blur(24px) saturate(1.6);
+  border:1px solid rgba(255,90,100,.45);
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.35),0 18px 40px rgba(0,0,0,.5);
+}
+.folder-jump-list{max-height:min(52vh,430px);overflow-y:auto;-webkit-overflow-scrolling:touch}
+.fj-row{
+  display:flex;align-items:center;gap:.7rem;width:100%;min-height:52px;
+  padding:.45rem .6rem;border:none;border-top:1px solid rgba(255,255,255,.07);
+  border-radius:12px;background:none;color:#fff;font:inherit;text-align:left;cursor:pointer;
+}
+.fj-row:first-child{border-top:none}
+.fj-row:active{background:rgba(255,255,255,.12)}
+.fj-row.sel{background:linear-gradient(158deg,rgba(219,1,28,.5),rgba(143,1,18,.38))}
+/* Mini folder silhouette with the tab shoulder; the outer pseudo is
+   the ring, the inner one the red-glass fill (clip-path would clip
+   a plain box-shadow ring, so the ring is a second clipped shape). */
+.fj-icon{position:relative;flex:none;width:30px;height:23px}
+.fj-icon::before,.fj-icon::after{
+  content:'';position:absolute;clip-path:polygon(0 100%,0 0,42% 0,55% 24%,100% 24%,100% 100%);
+}
+.fj-icon::before{inset:0;background:linear-gradient(180deg,rgba(255,140,150,.85),rgba(255,90,100,.5))}
+.fj-icon::after{
+  inset:1.5px;
+  background:
+    linear-gradient(180deg,rgba(255,255,255,.38),rgba(255,255,255,.04) 55%),
+    linear-gradient(158deg,rgba(219,1,28,.92),rgba(143,1,18,.88));
+  -webkit-backdrop-filter:blur(6px) saturate(1.5);backdrop-filter:blur(6px) saturate(1.5);
+}
+.fj-name{flex:1;min-width:0;font-weight:700;font-size:.95rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.fj-count{flex:none;color:rgba(255,255,255,.55);font-weight:700;font-size:.9rem;font-variant-numeric:tabular-nums}
+.folder-jump-scrim{position:fixed;inset:0;z-index:14;background:transparent}
 /* Carousel step: the grid slides a touch in the direction of travel */
 .photo-grid.gx-next{animation:gridInNext .16s ease}
 .photo-grid.gx-prev{animation:gridInPrev .16s ease}

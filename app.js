@@ -135,6 +135,7 @@
   var categoryFilter = null;
   var pendingRemoveFolder = null;
   var addMenuOpen = false;
+  var jumpListOpen = false;   // folder jump list (v33): All tapped twice
   function itemCategory(i) { return D.categoryFor(i); }
 
   function esc(s) {
@@ -326,6 +327,7 @@
     restoreQtyEditFocus(state);
   }
   function openQtyEditor(opts) {
+    closeFolderJump();
     qtyEditState = {
       value: opts.value,
       onCommit: opts.onCommit,
@@ -370,6 +372,7 @@
   /* ---------- tabs ---------- */
   function showView(name) {
     closeAddMenu();
+    closeFolderJump();
     document.querySelectorAll('.view').forEach(function (v) { v.classList.remove('active'); });
     var el = $('view-' + name); if (el) el.classList.add('active');
     document.querySelectorAll('.tab').forEach(function (t) {
@@ -488,7 +491,10 @@
    * a direction-locked swipe over the grid steps through folders
    * with wrap-around, and a user scroll of the strip itself selects
    * whichever tab settles at the center. A 450ms long-press on a
-   * folder tab opens its rename/remove sheet. */
+   * folder tab opens its rename/remove sheet. Tapping All while
+   * All is already selected toggles the folder jump list (v33):
+   * every folder as a row under the strip, tap one to jump
+   * straight to it instead of scrolling the strip. */
   var tabKeysCache = [];        // last-rendered strip keys: null = All, else folder name
   var tabsSig = '';             // rebuild signature (names + selection)
   var stripProgUntil = 0;       // programmatic-centering guard for settle-select
@@ -510,7 +516,7 @@
     var strip = $('folderTabs');
     if (!strip) return;
     var keys = tabKeys();
-    var sig = keys.map(function (k) { return k === null ? '' : k; }).join('|') + '::' + (categoryFilter === null ? '' : categoryFilter);
+    var sig = keys.map(function (k) { return k === null ? '' : k; }).join('|') + '::' + (categoryFilter === null ? '' : categoryFilter) + (jumpListOpen ? '::J' : '');
     if (sig === tabsSig && strip.children.length) { tabKeysCache = keys; return; }
     var keepScroll = strip.scrollLeft;
     tabsSig = sig;
@@ -518,9 +524,17 @@
     strip.innerHTML = keys.map(function (k, idx) {
       var active = k === categoryFilter;
       var label = k === null ? 'All' : k;
+      // The All tab carries the jump list's chevron (v33): it flips
+      // while the list is open, so the second tap reads as a toggle.
+      var chev = k === null
+        ? '<svg class="ftab-chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="square" aria-hidden="true" focusable="false"><path d="M4 9 L12 17 L20 9"/></svg>'
+        : '';
+      var allAttrs = k === null
+        ? ' aria-haspopup="listbox" aria-expanded="' + (jumpListOpen ? 'true' : 'false') + '"'
+        : '';
       return '<div class="ftab-wrap' + (active ? ' active' : '') + '">' +
-        '<button type="button" class="ftab' + (active ? ' active' : '') + '" role="tab" data-tk="' + idx + '"' +
-        ' aria-selected="' + (active ? 'true' : 'false') + '"><span class="ftab-label">' + esc(label) + '</span></button></div>';
+        '<button type="button" class="ftab' + (active ? ' active' : '') + (k === null && jumpListOpen ? ' jump-open' : '') + '" role="tab" data-tk="' + idx + '"' +
+        ' aria-selected="' + (active ? 'true' : 'false') + '"' + allAttrs + '><span class="ftab-label">' + esc(label) + chev + '</span></button></div>';
     }).join('');
     strip.scrollLeft = keepScroll;
     strip.querySelectorAll('[data-tk]').forEach(function (btn) {
@@ -556,11 +570,15 @@
       // The long-press already acted — swallow THIS tab's trailing
       // click only (a fast tap on a different tab still counts).
       if (key === tabLpFiredKey && Date.now() - tabLpFiredAt < 700) return;
+      // All tapped while All is already selected toggles the folder
+      // jump list (v33); from any other folder, All just selects.
+      if (key === null && categoryFilter === null) { toggleFolderJump(); return; }
       selectCategory(key, {});
     });
   }
   function selectCategory(key, opts) {
     opts = opts || {};
+    closeFolderJump();   // any selection change dismisses the jump list
     var prevIdx = tabKeysCache.indexOf(categoryFilter);
     var changed = key !== categoryFilter;
     categoryFilter = key;
@@ -572,6 +590,59 @@
     }
     if (!opts.noCenter) centerActiveTab(true);
   }
+  /* ---------- Folder jump list (v33) ----------
+   * Tapping All while All is already selected drops a panel from
+   * under the tab strip listing every folder as a row — mini
+   * frosted red-glass folder icon, name, live item count — so a
+   * folder can be picked without scrolling the strip. Rows mirror
+   * the tab set minus All itself (Uncategorized last, same rule as
+   * the strip) and counts are read fresh from folderStats every
+   * time the list opens. A row tap rides the normal selection
+   * path, which closes the list and centers the tab. The list
+   * also closes on: All tapped again, the scrim, a view switch,
+   * a search starting, or any sheet/menu opening (the document
+   * pointerdown guard below + the explicit closes in showView /
+   * openItem / openFolderSheet / openQtyEditor / the dock +). */
+  function renderFolderJump() {
+    var counts = {};
+    D.folderStats().forEach(function (s) { counts[s.name] = s.count; });
+    $('folderJumpList').innerHTML = tabKeys().slice(1).map(function (name) {
+      var sel = name === categoryFilter;
+      return '<button type="button" class="fj-row' + (sel ? ' sel' : '') + '" role="option" aria-selected="' + (sel ? 'true' : 'false') + '" data-fj="' + esc(name) + '">' +
+        '<span class="fj-icon" aria-hidden="true"></span>' +
+        '<span class="fj-name">' + esc(name) + '</span>' +
+        '<span class="fj-count">' + (counts[name] || 0) + '</span></button>';
+    }).join('');
+    $('folderJumpList').querySelectorAll('[data-fj]').forEach(function (btn) {
+      btn.addEventListener('click', function () { selectCategory(btn.getAttribute('data-fj'), {}); });
+    });
+  }
+  function openFolderJump() {
+    if (jumpListOpen) return;
+    renderFolderJump();   // rows + counts are live at open time
+    jumpListOpen = true;
+    $('folderJump').classList.remove('hidden');
+    $('folderJumpScrim').classList.remove('hidden');
+    renderFolderTabs();   // flips the All tab's chevron / expanded state
+  }
+  function closeFolderJump() {
+    if (!jumpListOpen) return;
+    jumpListOpen = false;
+    $('folderJump').classList.add('hidden');
+    $('folderJumpScrim').classList.add('hidden');
+    renderFolderTabs();
+  }
+  function toggleFolderJump() { if (jumpListOpen) closeFolderJump(); else openFolderJump(); }
+  $('folderJumpScrim').addEventListener('click', closeFolderJump);
+  /* Any press outside the strip/panel dismisses the list — this is
+   * what closes it when another control goes on to open a sheet or
+   * menu. Presses on the tabs or inside the panel itself are the
+   * list's own business and leave it alone. */
+  document.addEventListener('pointerdown', function (e) {
+    if (!jumpListOpen) return;
+    if (e.target && e.target.closest && e.target.closest('.folder-strip')) return;
+    closeFolderJump();
+  }, true);
   /* The grid slides a touch in the direction of travel (transform /
    * opacity only, ~160ms; the reduced-motion block in styles.css
    * turns it off). */
@@ -616,7 +687,7 @@
     }, { passive: true });
   }
   function settleSelectTab() {
-    if (editingOpen()) return;
+    if (editingOpen() || jumpListOpen) return;
     var strip = $('folderTabs');
     if (!strip) return;
     var sr = strip.getBoundingClientRect();
@@ -657,6 +728,7 @@
   }, true);
   $('view-home').addEventListener('touchstart', function (e) {
     swipeStart = null;
+    if (jumpListOpen) return;   // the jump list's scrim owns touches while it is open
     if (e.touches.length !== 1 || !e.target || !e.target.closest) return;
     if (e.target.closest('.sticky-head') || e.target.closest('.tabbar') || e.target.closest('.add-menu')) return;
     var t = e.touches[0];
@@ -665,7 +737,7 @@
   $('view-home').addEventListener('touchend', function (e) {
     if (!swipeStart) return;
     var s = swipeStart; swipeStart = null;
-    if (editingOpen()) return;
+    if (editingOpen() || jumpListOpen) return;
     var t = e.changedTouches && e.changedTouches[0];
     if (!t) return;
     var dx = t.clientX - s.x, dy = t.clientY - s.y;
@@ -697,6 +769,7 @@
   var folderSheetName = null;
   function openFolderSheet(name) {
     if (!name || name === D.UNCAT) return;
+    closeFolderJump();
     folderSheetName = name;
     var s = D.folderStats().filter(function (x) { return x.name === name; })[0];
     $('fsTitle').textContent = name;
@@ -982,6 +1055,7 @@
     if (b) { b.classList.remove('open'); b.setAttribute('aria-expanded', 'false'); }
   }
   $('dockAddBtn').addEventListener('click', function () {
+    closeFolderJump();
     if (addMenuOpen) { closeAddMenu(); return; }
     addMenuOpen = true;
     $('addMenu').classList.remove('hidden');
@@ -1017,7 +1091,10 @@
     else sel.value = names[0];
   }
 
-  $('searchInput').addEventListener('input', renderHome);
+  $('searchInput').addEventListener('input', function () {
+    if (this.value.trim()) closeFolderJump();   // starting a search closes the jump list
+    renderHome();
+  });
   /* Stat bar tap-to-filter: LOW toggles the low-only view; Items/Units clear it. */
   $('statSegLow').addEventListener('click', function () { lowFilter = !lowFilter; renderHome(); });
   $('statSegItems').addEventListener('click', function () { if (lowFilter) { lowFilter = false; renderHome(); } });
@@ -1027,6 +1104,7 @@
   function openItem(id, viaNfc) {
     var item = D.getItem(id);
     if (!item) { toast('Item not found: ' + id); return; }
+    closeFolderJump();
     currentItemId = id;
     $('dIcon').innerHTML = iconPlate(item);
     $('dName').textContent = item.name;
