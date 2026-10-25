@@ -66,13 +66,6 @@
     <div id="folderJumpScrim" class="folder-jump-scrim hidden"></div>
     <p id="filterHint" class="muted small hidden">Showing low stock only (worst first) — tap <strong>low / out</strong> again to clear.</p>
     <p id="folderCaption" class="muted small hidden">Showing results across all folders.</p>
-    <div id="sortBanner" class="sort-banner hidden">
-      <span class="sort-banner-text" id="sortBannerText">0 items need a folder</span>
-      <span class="sort-banner-btns">
-        <button type="button" id="autoSortBtn" class="btn">Auto-sort</button>
-        <button type="button" id="sortModeBtn" class="btn">Sort mode</button>
-      </span>
-    </div>
     <div id="photoGrid" class="photo-grid"></div>
     <p id="gridEmpty" class="empty hidden">No items match your search.</p>
   </section>
@@ -193,7 +186,7 @@
       <p id="syncResult" class="result"></p>
     </div>
 
-    <!-- Auto-sort: the same review overlay the Home banner opens -->
+    <!-- Filing lives in Settings (v39): Auto-sort review + Sort mode -->
     <div class="card set-autosort-card" id="setAutoSortCard">
       <div class="set-autosort-row">
         <div class="set-autosort-main">
@@ -201,6 +194,15 @@
           <p class="muted small" id="setAutoSortLine" style="margin:.15rem 0 0">0 items need a folder</p>
         </div>
         <button type="button" id="setAutoSortBtn" class="btn btn-primary">Review</button>
+      </div>
+    </div>
+    <div class="card set-autosort-card" id="setSortModeCard">
+      <div class="set-autosort-row">
+        <div class="set-autosort-main">
+          <h3 style="margin:0">Sort mode</h3>
+          <p class="muted small" id="setSortModeLine" style="margin:.15rem 0 0">0 items need a folder</p>
+        </div>
+        <button type="button" id="setSortModeBtn" class="btn btn-primary">Start</button>
       </div>
     </div>
     <div class="list-head">

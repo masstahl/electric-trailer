@@ -368,15 +368,7 @@ main{max-width:960px;margin:0 auto;padding:1rem}
 .folder-bar-main{display:flex;flex-direction:column;min-width:0}
 .folder-bar-main strong{font-size:1.12rem;line-height:1.15}
 .folder-bar-main span{color:var(--muted);font-size:.78rem;font-weight:600}
-/* ---------- Sorting Kit: banner, auto-sort, sort mode, rail, lookup ---------- */
-.sort-banner{
-  display:flex;align-items:center;gap:.6rem;flex-wrap:wrap;margin-top:.55rem;
-  padding:.6rem .75rem;border-radius:16px;background:var(--surface);
-  border:var(--bw) solid var(--border);box-shadow:var(--card-shadow);
-}
-.sort-banner-text{font-weight:700;font-size:.92rem;flex:1;min-width:130px}
-.sort-banner-btns{display:flex;gap:.5rem}
-.sort-banner-btns .btn{min-height:44px}
+/* ---------- Sorting Kit: auto-sort, sort mode, rail, lookup ---------- */
 .autosort-sheet .list{margin:.55rem 0 .3rem}
 .autosort-select{
   flex:none;width:44%;min-height:44px;padding:.5rem .45rem;font-size:.9rem;font-family:inherit;

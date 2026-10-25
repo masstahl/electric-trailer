@@ -248,7 +248,7 @@
     qb.classList.toggle('hidden', pending === 0);
     var tc = $('tabQueueCount');
     tc.textContent = pending; tc.classList.toggle('hidden', pending === 0);
-    renderAutoSortCount();
+    renderSortCounts();
   }
 
   /* ---------- shared qty-change path (cards, sheet, bin sheet, count) ----------
@@ -467,11 +467,8 @@
     var searching = !!q || lowFilter;
     $('folderCaption').classList.toggle('hidden', !searching);
     renderFolderTabs();
-    /* Sorting Kit entry: while unfiled items exist and no search is
-     * running, the banner above the grid offers Auto-sort / Sort mode. */
-    var uncatCount = items.filter(function (i) { return itemCategory(i) === D.UNCAT; }).length;
-    $('sortBanner').classList.toggle('hidden', !uncatCount || !!q);
-    if (uncatCount) $('sortBannerText').textContent = uncatCount + (uncatCount === 1 ? ' item needs' : ' items need') + ' a folder';
+    /* Filing (Auto-sort / Sort mode) lives in Settings only (v39) —
+     * Home carries no banner; nothing above the grid but the grid. */
     var filtered = items.filter(function (i) {
       if (lowFilter && i.qty > 5) return false;
       if (!q) return true;
@@ -984,8 +981,9 @@
   function uncatItems() {
     return D.getItems().filter(function (i) { return itemCategory(i) === D.UNCAT; });
   }
-  $('autoSortBtn').addEventListener('click', openAutoSort);
-  $('sortModeBtn').addEventListener('click', startSort);
+  /* Auto-sort and Sort Mode are launched from their Settings
+   * cards (v39) — see renderSortCounts / the Settings wiring near
+   * renderSync. Their old Home-banner buttons are gone. */
 
   /* ----- Auto-sort: propose every unfiled item, review, apply ----- */
   function openAutoSort() {
@@ -2769,27 +2767,29 @@
     $('healthLastSync').textContent = fmtTime(D.getMeta().lastSync);
     $('healthError').textContent = D.getMeta().lastError || 'none';
     renderOrphans();
-    renderAutoSortCount();
+    renderSortCounts();
     refreshChrome();
   }
 
-  /* ---------- Auto-sort in Settings ----------
-   * The Home banner only exists on Home; Settings carries its own
-   * Auto-sort entry (v38) so unfiled items can be reached from
-   * here too. It opens the SAME review overlay through the SAME
-   * openAutoSort the banner uses — including its empty state (at
-   * zero unfiled, openAutoSort itself toasts "Nothing to sort —
-   * everything has a folder"; nothing is forked). The count is
-   * live: renderSync refreshes it on Settings entry and after
-   * syncs, and refreshChrome (called after every queue/data
-   * change) keeps it current while Settings sits open. */
-  function renderAutoSortCount() {
-    var el = $('setAutoSortLine');
-    if (!el) return;
+  /* ---------- Filing in Settings: Auto-sort + Sort mode ----------
+   * Filing lives ONLY here (v39 — the Home banner is gone): two
+   * cards, Auto-sort (the review overlay) and Sort mode (one item
+   * at a time), both through the SAME entry points they have
+   * always used — openAutoSort / startSort, nothing forked —
+   * including their shared empty state (at zero unfiled, each
+   * toasts "Nothing to sort — everything has a folder"). The
+   * count lines are live: renderSync refreshes them on Settings
+   * entry and after syncs, and refreshChrome (called after every
+   * queue/data change) keeps them current while Settings sits
+   * open. */
+  function renderSortCounts() {
     var n = uncatItems().length;
-    el.textContent = n + (n === 1 ? ' item needs' : ' items need') + ' a folder';
+    var text = n + (n === 1 ? ' item needs' : ' items need') + ' a folder';
+    var a = $('setAutoSortLine'); if (a) a.textContent = text;
+    var s = $('setSortModeLine'); if (s) s.textContent = text;
   }
   $('setAutoSortCard').addEventListener('click', function () { openAutoSort(); });
+  $('setSortModeCard').addEventListener('click', function () { startSort(); });
 
   /* ---------- Not-in-sheet items (orphans) ----------
    * ETData flags an item when the sheet bridge answers one of its
