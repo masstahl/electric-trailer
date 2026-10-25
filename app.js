@@ -2567,6 +2567,18 @@
     var av = $('view-add');
     return !!(av && av.classList.contains('active'));
   }
+  /* ---------- App-update gate (v35) ----------
+   * The service-worker bootstrap in index.html reloads the page when
+   * a new build takes over — but never mid-task. It asks this gate
+   * whether the user is busy: any editing sheet open (the same
+   * predicate the auto-refresher uses), a live Count Mode session,
+   * or the create menu up. A takeover that arrives while busy stays
+   * pending in the bootstrap and is applied once this reports idle. */
+  window.ETUpdateGate = {
+    isBusy: function () {
+      return editingOpen() || countSession !== null || addMenuOpen;
+    }
+  };
   function maybeAutoRefresh(force) {
     if (!D.isLive() || document.hidden) return;
     if (syncRunning || syncRefreshRunning) return;

@@ -564,9 +564,64 @@
 <script src="sheets.js"></script>
 <script src="app.js"></script>
 <script>
+/* Service worker: offline shell + quiet auto-update (v35).
+ * The shell is cache-first on purpose (see sw.js): a build is a
+ * coherent snapshot, so a new version must swap in all at once —
+ * mixed old/new files would be worse. The swap lives here: check
+ * for a new worker when the app returns to the foreground, and
+ * when a new worker takes control, reload exactly once so this
+ * visit lands on the new build. If the user is mid-task the app
+ * says so through window.ETUpdateGate and the reload waits until
+ * they're done. Silent by design — no banner, no toast; the app
+ * just comes back current. */
 if ('serviceWorker' in navigator) {
+  var etHadController = !!navigator.serviceWorker.controller;
+  var etBornAt = Date.now();
+  var etReg = null, etLastCheck = 0;
+  var etPendingReload = false, etReloaded = false;
+
+  function etCheckForUpdate() {
+    if (!etReg || !etReg.update) return;
+    var now = Date.now();
+    if (now - etLastCheck < 60000) return;   // at most one check a minute
+    etLastCheck = now;
+    try {
+      var p = etReg.update();
+      if (p && p.catch) p.catch(function () { /* offline: check again next return */ });
+    } catch (e) { /* update checks are best-effort, never fatal */ }
+  }
+  function etBusy() {
+    try { return !!(window.ETUpdateGate && window.ETUpdateGate.isBusy()); }
+    catch (e) { return false; }
+  }
+  function etTryReload() {
+    if (!etPendingReload || etReloaded) return;
+    if (Date.now() - etBornAt < 2000) return;   // let the page settle first
+    if (etBusy()) return;                        // mid-task: stay pending
+    var last = 0;
+    try { last = +window.sessionStorage.getItem('et-sw-reload-at') || 0; } catch (e) { /* storage blocked */ }
+    if (Date.now() - last < 15000) { etPendingReload = false; return; }   // loop guard
+    etReloaded = true;
+    try { window.sessionStorage.setItem('et-sw-reload-at', String(Date.now())); } catch (e) { /* storage blocked */ }
+    window.location.reload();
+  }
+  navigator.serviceWorker.addEventListener('controllerchange', function () {
+    if (!etHadController) return;   // a first-ever install claiming the page is not an update
+    etPendingReload = true;
+    etTryReload();
+  });
+  document.addEventListener('visibilitychange', function () {
+    if (document.hidden) return;
+    etCheckForUpdate();
+    etTryReload();
+  });
+  window.addEventListener('focus', function () { etTryReload(); });
+  setInterval(etTryReload, 5000);
   window.addEventListener('load', function () {
-    navigator.serviceWorker.register('sw.js').catch(function () { /* offline shell is a bonus, not required */ });
+    navigator.serviceWorker.register('sw.js').then(function (reg) {
+      etReg = reg;
+      etCheckForUpdate();   // one check as soon as we're registered
+    }).catch(function () { /* offline shell is a bonus, not required */ });
   });
 }
 </script>
