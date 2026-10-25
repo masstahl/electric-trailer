@@ -192,7 +192,10 @@
       <button id="syncNowBtn" class="btn btn-primary btn-big">Sync now</button>
       <p id="syncResult" class="result"></p>
     </div>
-    <h3>Queued changes</h3>
+    <div class="list-head">
+      <h3>Queued changes</h3>
+      <button type="button" id="queueToggle" class="pill-btn list-toggle hidden" aria-expanded="false"><span class="lt-label">Show</span><svg class="lt-chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="square" aria-hidden="true" focusable="false"><path d="M4 9 L12 17 L20 9"/></svg></button>
+    </div>
     <div id="queueList" class="list"></div>
 
     <!-- Appearance: 7 switchable looks, saved on this device -->
@@ -250,7 +253,11 @@
     </div>
     <!-- Not in the sheet: shown only while flagged items exist (renderOrphans) -->
     <div id="orphanBlock" class="card hidden">
-      <h3 style="margin-top:0">Not in the sheet</h3>
+      <div class="list-head" style="margin-top:0">
+        <h3>Not in the sheet</h3>
+        <span id="orphanCount" class="list-count"></span>
+        <button type="button" id="orphanToggle" class="pill-btn list-toggle hidden" aria-expanded="false"><span class="lt-label">Show</span><svg class="lt-chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="square" aria-hidden="true" focusable="false"><path d="M4 9 L12 17 L20 9"/></svg></button>
+      </div>
       <p class="muted small">These items are on this device but have no row in the Google Sheet, so their changes can't sync. <strong>Add to sheet</strong> creates the row with the item's current details — it keeps its place everywhere. <strong>Remove</strong> deletes the item from this device only; the sheet is not changed.</p>
       <div id="orphanList" class="list"></div>
       <p id="orphanResult" class="result"></p>

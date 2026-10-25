@@ -388,7 +388,7 @@
     if (name === 'add') prepAddForm();
     if (name === 'map') { renderMap(); if (locateTarget) setTimeout(activateLocate, 40); }
     if (name === 'suppliers') renderSuppliers();
-    if (name === 'sync') { renderQueue(); renderSync(); }
+    if (name === 'sync') { queueExpanded = false; orphansExpanded = false; renderQueue(); renderSync(); }
     window.scrollTo(0, 0);
   }
   document.querySelectorAll('.tab').forEach(function (t) {
@@ -2487,6 +2487,34 @@
     selectIcon(ICON_KEYS[0]);
   });
   /* ---------- #16 Offline-First / Sync Queue ---------- */
+  /* v36: the Settings lists (queued changes, not-in-sheet items)
+   * start COLLAPSED — Settings shows the summary counts plus a
+   * Show/Hide toggle, and the rows render only while expanded,
+   * inside a height-capped region that scrolls internally. Pure
+   * presentation: the queue, the sync engine and every action are
+   * untouched. The flags reset on every Settings entry (showView),
+   * never persist, and re-renders preserve the expanded state (and
+   * the region's scroll position) while Settings stays open. */
+  var queueExpanded = false, orphansExpanded = false;
+  function syncListChrome(listEl, togEl, expanded) {
+    listEl.classList.toggle('hidden', !expanded);
+    listEl.classList.toggle('list-scroll', expanded);
+    togEl.classList.toggle('open', expanded);
+    togEl.setAttribute('aria-expanded', expanded ? 'true' : 'false');
+    var lbl = togEl.querySelector('.lt-label');
+    if (lbl) lbl.textContent = expanded ? 'Hide' : 'Show';
+  }
+  function syncQueueChrome(hasEntries) {
+    var tog = $('queueToggle');
+    tog.classList.toggle('hidden', !hasEntries);
+    if (!hasEntries) {
+      /* Empty queue: today's plain message in place, no toggle. */
+      $('queueList').classList.remove('hidden');
+      $('queueList').classList.remove('list-scroll');
+      return;
+    }
+    syncListChrome($('queueList'), tog, queueExpanded);
+  }
   function renderQueue() {
     $('queueNetStatus').textContent = navigator.onLine ? 'Online' : 'Offline';
     var q = D.getQueue();
@@ -2494,13 +2522,25 @@
     $('queuePendingCount').textContent = pending.length;
     $('queueLastSync').textContent = fmtTime(D.getMeta().lastSync);
     var sorted = q.slice().reverse();
-    $('queueList').innerHTML = sorted.length ? sorted.map(function (c) {
+    var listEl = $('queueList');
+    var keepScroll = queueExpanded ? listEl.scrollTop : 0;
+    listEl.innerHTML = sorted.length ? sorted.map(function (c) {
       return '<div class="list-item queue-item' + (c.synced ? ' synced' : '') + '"><span class="li-icon">' + (c.synced ? svgIcon('check') : svgIcon('sync')) + '</span>' +
         '<span class="li-main"><span class="li-name">' + esc(c.detail) + '</span><br><span class="li-when">' + esc(c.type) + ' · ' + fmtTime(c.at) + '</span></span>' +
         '<span class="sync-tag' + (c.synced ? ' done' : '') + '">' + (c.synced ? 'SYNCED' : 'PENDING') + '</span></div>';
     }).join('') : '<p class="muted">No changes yet — adjust a quantity and it will appear here.</p>';
+    syncQueueChrome(sorted.length > 0);
+    if (queueExpanded && sorted.length) listEl.scrollTop = keepScroll;
     refreshChrome();
   }
+  $('queueToggle').addEventListener('click', function () {
+    queueExpanded = !queueExpanded;
+    syncQueueChrome(D.getQueue().length > 0);
+  });
+  $('orphanToggle').addEventListener('click', function () {
+    orphansExpanded = !orphansExpanded;
+    syncListChrome($('orphanList'), $('orphanToggle'), orphansExpanded);
+  });
   $('syncNowBtn').addEventListener('click', function () {
     var out = $('syncResult');
     out.textContent = 'Syncing…'; out.className = 'result';
@@ -2649,7 +2689,12 @@
     var entries = orphanEntries();
     block.classList.toggle('hidden', !entries.length);
     if (!entries.length) return;
-    $('orphanList').innerHTML = entries.map(function (it) {
+    /* v36: count stays visible; the rows sit behind the toggle. */
+    $('orphanCount').textContent = entries.length + (entries.length === 1 ? ' item' : ' items');
+    $('orphanToggle').classList.remove('hidden');
+    var oList = $('orphanList');
+    var keepScroll = orphansExpanded ? oList.scrollTop : 0;
+    oList.innerHTML = entries.map(function (it) {
       var label = orphanLabel(it);
       var sub = [];
       if (it.sku && it.sku !== label) sub.push(it.sku);
@@ -2659,12 +2704,14 @@
         '<span class="orphan-actions"><button type="button" class="btn btn-primary" data-orphan-add="' + esc(it.id) + '">Add to sheet</button>' +
         '<button type="button" class="btn" data-orphan-remove="' + esc(it.id) + '">Remove</button></span></div>';
     }).join('');
-    $('orphanList').querySelectorAll('[data-orphan-add]').forEach(function (b) {
+    oList.querySelectorAll('[data-orphan-add]').forEach(function (b) {
       b.addEventListener('click', function () { addOrphanFromUi(b.getAttribute('data-orphan-add'), $('orphanResult')); });
     });
-    $('orphanList').querySelectorAll('[data-orphan-remove]').forEach(function (b) {
+    oList.querySelectorAll('[data-orphan-remove]').forEach(function (b) {
       b.addEventListener('click', function () { askRemoveOrphan(b.getAttribute('data-orphan-remove')); });
     });
+    syncListChrome(oList, $('orphanToggle'), orphansExpanded);
+    if (orphansExpanded) oList.scrollTop = keepScroll;
   }
   /* Shared Add action (Sync Health row + item-sheet notice). The add
    * op rides the live-sync auto-flush — ETData's queueChange notify
