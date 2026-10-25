@@ -168,18 +168,24 @@ a{color:var(--accent)}
 main{max-width:960px;margin:0 auto;padding:1rem}
 .view{display:none}.view.active{display:block}
 
-/* Search + folder tabs + stats — ONE frosted-glass sticky block
-   (SPEC PLATE): they stick together under the header and share the
-   heavy-frost glass recipe (--glass-*) with the dock. */
-.sticky-search{
+/* Sticky header (v32): ONE sticky wrapper under the app header.
+   The frosted-glass panel (heavy-frost --glass-* recipe, shared with
+   the dock) holds ONLY search + stats; the folder tab strip sits
+   UNDERNEATH the panel as its own row on the plain app background. */
+.sticky-head{
   position:sticky;top:calc(var(--header-h) + 6px);z-index:15;
-  padding:.4rem .45rem;margin-bottom:.3rem;
+  margin-bottom:.3rem;
+}
+.sticky-search{
+  padding:.4rem .45rem;
   background:var(--glass-fill);
   background-image:var(--glass-sheen);
   -webkit-backdrop-filter:var(--glass-filter);backdrop-filter:var(--glass-filter);
   border:var(--bw) solid var(--glass-border);border-radius:26px;
   box-shadow:var(--glass-shadow);
 }
+/* The strip's own row below the glass panel — a small gap, no glass. */
+.folder-strip{margin-top:.45rem}
 .search-wrap input{
   width:100%;font-size:1rem;padding:.5rem .9rem;border-radius:999px;
   border:2px solid var(--border);background:var(--input-bg);color:var(--text);outline:none;
@@ -208,7 +214,7 @@ main{max-width:960px;margin:0 auto;padding:1rem}
  * smoked dark with a red tint. The strip is a carousel: horizontal
  * scroll with snap-to-center. */
 .folder-tabs{
-  display:flex;align-items:flex-end;gap:5px;margin-top:.5rem;padding:2px 2px 0;
+  display:flex;align-items:flex-end;gap:5px;padding:2px 2px 0;
   overflow-x:auto;overflow-y:hidden;scroll-snap-type:x proximity;
   scrollbar-width:none;-webkit-overflow-scrolling:touch;
 }
@@ -233,7 +239,6 @@ main{max-width:960px;margin:0 auto;padding:1rem}
     linear-gradient(158deg,#e8122a,#a80115 80%);
 }
 .ftab-label{display:block;overflow:hidden;text-overflow:ellipsis}
-.ftab-plus{font-size:1.05rem;font-weight:800;color:rgba(255,255,255,.92)}
 /* The open folder's top edge: full width, directly under the strip,
    in the active tab's reds so the selected tab reads as one piece
    with the folder body below it. */
@@ -414,23 +419,12 @@ main{max-width:960px;margin:0 auto;padding:1rem}
 /* Map tab Shelves section: free-text locations below the elevation */
 .shelves-head{margin:1.2rem 0 .3rem}
 
-/* FAB — red glass disc, lower right, ~18px clear above the dock */
-.fab-btn{
-  position:fixed;right:16px;bottom:calc(96px + env(safe-area-inset-bottom));z-index:28;
-  width:62px;height:62px;border-radius:50%;cursor:pointer;color:#fff;
-  display:flex;align-items:center;justify-content:center;
-  background:
-    linear-gradient(180deg,rgba(255,255,255,.22),rgba(255,255,255,0) 48%),
-    linear-gradient(158deg,rgba(219,1,28,.42),rgba(143,1,18,.30));
-  -webkit-backdrop-filter:blur(18px) saturate(1.5);backdrop-filter:blur(18px) saturate(1.5);
-  border:1px solid rgba(255,90,100,.5);
-  box-shadow:inset 0 1px 0 rgba(255,255,255,.5),0 10px 24px rgba(0,0,0,.4);
-}
-.fab-btn span{font-size:32px;font-weight:300;line-height:1;transform:translateY(-2px);transition:transform .18s ease}
-.fab-btn.open span{transform:rotate(45deg) translateY(0)}
-.fab-scrim{position:fixed;inset:0;z-index:27;background:rgba(0,0,0,.35)}
-.fab-menu{
-  position:fixed;right:16px;bottom:calc(168px + env(safe-area-inset-bottom));width:208px;z-index:28;padding:.35rem;border-radius:18px;
+/* Create menu (v32) — opened by the dock's glass + medallion and
+   anchored above the dock center; same red-glass recipe as the old
+   floating button it replaced. */
+.add-scrim{position:fixed;inset:0;z-index:29;background:rgba(0,0,0,.35)}
+.add-menu{
+  position:fixed;left:50%;transform:translateX(-50%);bottom:calc(96px + env(safe-area-inset-bottom));width:208px;z-index:31;padding:.35rem;border-radius:18px;
   background:
     linear-gradient(180deg,rgba(255,255,255,.16),rgba(255,255,255,0) 45%),
     linear-gradient(158deg,rgba(219,1,28,.38),rgba(143,1,18,.28)),
@@ -439,13 +433,12 @@ main{max-width:960px;margin:0 auto;padding:1rem}
   border:1px solid rgba(255,90,100,.5);
   box-shadow:inset 0 1px 0 rgba(255,255,255,.4),0 14px 30px rgba(0,0,0,.45);
 }
-.fab-menu button{
+.add-menu button{
   display:flex;align-items:center;width:100%;min-height:48px;padding:.55rem .65rem;border:none;border-radius:12px;
   background:none;color:#fff;font:inherit;font-weight:700;font-size:.95rem;cursor:pointer;text-align:left;
 }
-.fab-menu button:active{background:rgba(255,255,255,.14)}
+.add-menu button:active{background:rgba(255,255,255,.14)}
 .confirm-sheet .btn-big{margin-top:.55rem}
-@media (prefers-reduced-motion: reduce){.fab-btn span{transition:none}}
 
 /* Cards, lists, forms */
 .card{background:var(--surface);border:var(--bw) solid var(--border);border-radius:var(--radius);padding:1rem;margin-bottom:1rem;box-shadow:var(--card-shadow)}
@@ -706,11 +699,23 @@ main{max-width:960px;margin:0 auto;padding:1rem}
 }
 .tab span{display:block;font-size:1.3rem;line-height:1.25}
 .tab.active{color:var(--tabbar-active);background:color-mix(in srgb,var(--tabbar-active) 16%,transparent)}
-.tab-add span{
-  background:var(--accent);color:var(--accent-text);width:41px;height:41px;margin:-15px auto 1px;
-  border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:1.1rem;
-  box-shadow:0 3px 10px rgba(0,0,0,.3),var(--glow);
+/* The dock's one create control (v32): a round frosted red-glass
+   medallion — the old floating button's recipe, dock-scaled and
+   raised above the dock's top edge. Its + rotates to a ✕ while the
+   create menu is open (.tab-add.open). */
+.tab-add .add-medallion{
+  width:48px;height:48px;margin:-17px auto 0;border-radius:50%;
+  display:flex;align-items:center;justify-content:center;color:#fff;
+  background:
+    linear-gradient(180deg,rgba(255,255,255,.22),rgba(255,255,255,0) 48%),
+    linear-gradient(158deg,rgba(219,1,28,.42),rgba(143,1,18,.30));
+  -webkit-backdrop-filter:blur(18px) saturate(1.5);backdrop-filter:blur(18px) saturate(1.5);
+  border:1px solid rgba(255,90,100,.5);
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.5),0 8px 20px rgba(0,0,0,.38);
 }
+.tab-add .add-plus{display:block;font-size:30px;font-weight:300;line-height:1;transform:translateY(-1px);transition:transform .18s ease}
+.tab-add.open .add-plus{transform:rotate(45deg) translateY(0)}
+@media (prefers-reduced-motion: reduce){.tab-add .add-plus{transition:none}}
 .tab-count{
   position:absolute;top:-2px;right:calc(50% - 22px);background:var(--red);color:#fff;
   font-style:normal;font-size:.68rem;font-weight:800;min-width:20px;height:20px;border-radius:999px;

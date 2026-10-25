@@ -129,11 +129,12 @@
   var lowFilter = false;
   /* Folder tab strip state (v31): categoryFilter is the selected
    * tab — null = All, otherwise a folder name (D.UNCAT included).
-   * The strip lives in the sticky block and filters the grid in
-   * place; there is no folder browse / drill-in state anymore. */
+   * The strip sits under the search panel in the sticky header and
+   * filters the grid in place; there is no folder browse /
+   * drill-in state anymore. */
   var categoryFilter = null;
   var pendingRemoveFolder = null;
-  var fabMenuOpen = false;
+  var addMenuOpen = false;
   function itemCategory(i) { return D.categoryFor(i); }
 
   function esc(s) {
@@ -368,6 +369,7 @@
 
   /* ---------- tabs ---------- */
   function showView(name) {
+    closeAddMenu();
     document.querySelectorAll('.view').forEach(function (v) { v.classList.remove('active'); });
     var el = $('view-' + name); if (el) el.classList.add('active');
     document.querySelectorAll('.tab').forEach(function (t) {
@@ -384,6 +386,7 @@
     window.scrollTo(0, 0);
   }
   document.querySelectorAll('.tab').forEach(function (t) {
+    if (t.classList.contains('tab-add')) return;  // the dock + opens the create menu instead (below)
     t.addEventListener('click', function () { showView(t.getAttribute('data-view')); });
   });
 
@@ -400,7 +403,7 @@
     $('statSegLow').setAttribute('aria-pressed', lowFilter ? 'true' : 'false');
     $('filterHint').classList.toggle('hidden', !lowFilter);
     /* Home is always the item grid now (v31): the folder tab strip
-     * in the sticky block picks which folder it shows. Searching (or
+     * under the search panel picks which folder it shows. Searching (or
      * the LOW filter) suspends the folder, as before: results are
      * global and the caption says so. */
     var searching = !!q || lowFilter;
@@ -474,13 +477,12 @@
       });
     });
     refreshChrome();
-    syncFab();
   }
   /* ---------- Folder tab strip (v31) ----------
    * Folders are category NAMES on the items (ETData owns the list and
    * the rename/remove cascades). On Home they are a horizontal strip
-   * of physical folder tabs in the sticky block: All, every folder in
-   * list order, Uncategorized pinned last, and a "+" tab. Tapping a
+   * of physical folder tabs under the search panel: All, every folder
+   * in list order, Uncategorized pinned last. Tapping a
    * tab filters the grid in place — no drill-in page. The strip has
    * carousel manners: scroll-snap, the selected tab centers itself,
    * a direction-locked swipe over the grid steps through folders
@@ -519,14 +521,11 @@
       return '<div class="ftab-wrap' + (active ? ' active' : '') + '">' +
         '<button type="button" class="ftab' + (active ? ' active' : '') + '" role="tab" data-tk="' + idx + '"' +
         ' aria-selected="' + (active ? 'true' : 'false') + '"><span class="ftab-label">' + esc(label) + '</span></button></div>';
-    }).join('') +
-      '<div class="ftab-wrap ftab-plus-wrap"><button type="button" class="ftab ftab-plus" id="folderTabPlus" aria-label="New folder">+</button></div>';
+    }).join('');
     strip.scrollLeft = keepScroll;
     strip.querySelectorAll('[data-tk]').forEach(function (btn) {
       attachTabPress(btn, tabKeysCache[parseInt(btn.getAttribute('data-tk'), 10)]);
     });
-    var plus = $('folderTabPlus');
-    if (plus) plus.addEventListener('click', function () { newFolderFlow(); });
   }
   /* Tap selects; a 450ms hold opens the folder's sheet instead (All
    * and the system folder have no sheet). The press timer + fired
@@ -644,8 +643,9 @@
    * vertical scrolling is never blocked; a claimed swipe swallows
    * the tap the browser fires as the finger lifts, so it can't also
    * open a card or press a stepper. Touches starting in the sticky
-   * block (search / tabs / stats) or on the FAB belong to those
-   * controls, and swipes are ignored while any sheet is open. */
+   * header (search panel / tab strip / stats) or on the dock and
+   * its create menu belong to those controls, and swipes are
+   * ignored while any sheet is open. */
   var swipeStart = null;
   var suppressClickAt = 0;
   document.addEventListener('click', function (e) {
@@ -658,7 +658,7 @@
   $('view-home').addEventListener('touchstart', function (e) {
     swipeStart = null;
     if (e.touches.length !== 1 || !e.target || !e.target.closest) return;
-    if (e.target.closest('.sticky-search') || e.target.closest('.fab-btn') || e.target.closest('.fab-menu')) return;
+    if (e.target.closest('.sticky-head') || e.target.closest('.tabbar') || e.target.closest('.add-menu')) return;
     var t = e.touches[0];
     swipeStart = { x: t.clientX, y: t.clientY };
   }, { passive: true });
@@ -674,10 +674,12 @@
     stepCategory(dx < 0 ? 1 : -1);
   }, { passive: true });
   /* New folder: ETData creates it with a placeholder name and the
-   * folder sheet opens on it straight away for the rename — the same
-   * flow the "+" tab and the FAB menu share. */
+   * folder sheet opens on it straight away for the rename. Runs from
+   * the dock + create menu; folders live on Home, so land there
+   * first if the menu was opened from another view. */
   function newFolderFlow() {
-    closeFabMenu();
+    closeAddMenu();
+    if (!$('view-home').classList.contains('active')) showView('home');
     var cat = D.addCategory();
     categoryFilter = null;
     lowFilter = false;
@@ -966,31 +968,31 @@
   $('sDoneBtn').addEventListener('click', function () { closeSort(true); });
   $('sortOverlay').addEventListener('click', function (e) { if (e.target === $('sortOverlay')) closeSort(false); });
 
-  /* ---------- FAB: red glass +, lower right, clear of the dock ---------- */
-  function syncFab() {
-    var show = $('view-home').classList.contains('active');
-    $('fabBtn').classList.toggle('hidden', !show);
-    if (!show) closeFabMenu();
+  /* ---------- Dock + : the one create control (v32) ----------
+   * A round frosted red-glass medallion in the dock (the old
+   * floating button's look, dock-scaled). It is the app's single
+   * add control: tapping it opens the create menu — New Item /
+   * New Folder — anchored above the dock center, and the +
+   * rotates to a ✕ while the menu is open. */
+  function closeAddMenu() {
+    addMenuOpen = false;
+    var m = $('addMenu'), s = $('addScrim'), b = $('dockAddBtn');
+    if (m) m.classList.add('hidden');
+    if (s) s.classList.add('hidden');
+    if (b) { b.classList.remove('open'); b.setAttribute('aria-expanded', 'false'); }
   }
-  function closeFabMenu() {
-    fabMenuOpen = false;
-    $('fabMenu').classList.add('hidden');
-    $('fabScrim').classList.add('hidden');
-    $('fabBtn').classList.remove('open');
-    $('fabBtn').setAttribute('aria-expanded', 'false');
-  }
-  $('fabBtn').addEventListener('click', function () {
-    if (fabMenuOpen) { closeFabMenu(); return; }
-    fabMenuOpen = true;
-    $('fabMenu').classList.remove('hidden');
-    $('fabScrim').classList.remove('hidden');
-    $('fabBtn').classList.add('open');
-    $('fabBtn').setAttribute('aria-expanded', 'true');
+  $('dockAddBtn').addEventListener('click', function () {
+    if (addMenuOpen) { closeAddMenu(); return; }
+    addMenuOpen = true;
+    $('addMenu').classList.remove('hidden');
+    $('addScrim').classList.remove('hidden');
+    $('dockAddBtn').classList.add('open');
+    $('dockAddBtn').setAttribute('aria-expanded', 'true');
   });
-  $('fabScrim').addEventListener('click', closeFabMenu);
-  $('fabNewFolder').addEventListener('click', function () { newFolderFlow(); });
-  $('fabNewItem').addEventListener('click', function () {
-    closeFabMenu();
+  $('addScrim').addEventListener('click', closeAddMenu);
+  $('addNewFolder').addEventListener('click', function () { newFolderFlow(); });
+  $('addNewItem').addEventListener('click', function () {
+    closeAddMenu();
     openQuickAdd();
   });
   function openQuickAdd() {
