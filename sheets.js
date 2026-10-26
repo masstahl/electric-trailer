@@ -194,9 +194,41 @@
     });
   }
 
+  /* Photo upload (v40): POST { action:'uploadPhoto', name,
+   * dataBase64 } to the bridge, which commits the image into the
+   * app repo's photos/ folder and answers { ok:true, url }. Sent as
+   * text/plain for the same reason as flushOps (no CORS preflight).
+   * A bridge deployed from an older apps-script.gs doesn't know the
+   * action: it falls into the ops path and answers { ok:true,
+   * results:[] } — an ok with no url, which is translated here into
+   * the "script needs updating" message instead of a fake success. */
+  function uploadPhoto(name, dataBase64) {
+    if (!isConfigured()) {
+      return Promise.resolve({ ok: false, error: 'Photo upload needs the Google Sheet connection — paste the Sheet link in Settings → Google Sheet first.' });
+    }
+    var c = getConfig();
+    var payload = { action: 'uploadPhoto', name: String(name || 'photo'), dataBase64: String(dataBase64 || '') };
+    if (c.token) payload.token = c.token;  // legacy setups only
+    return fetch(c.url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+      body: JSON.stringify(payload)
+    }).then(function (res) { return res.text(); }).then(function (text) {
+      var body = null;
+      try { body = JSON.parse(text); } catch (e) { /* non-JSON body */ }
+      if (!body) return { ok: false, error: 'The Sheet link did not answer — check the link (it should end in /exec) and that the deployment is live.' };
+      if (body.ok && body.url) return { ok: true, url: String(body.url) };
+      if (body.ok) return { ok: false, error: 'Uploads are not available yet — the sheet script needs the current apps-script.gs (see SETUP.md).' };
+      return { ok: false, error: String(body.error || 'Upload failed.') };
+    }).catch(function (err) {
+      return { ok: false, error: unreachable(err) };
+    });
+  }
+
   window.ETSheets = {
     getConfig: getConfig, saveConfig: saveConfig, isConfigured: isConfigured,
     fetchRows: fetchRows, flushOps: flushOps, testConnection: testConnection,
+    uploadPhoto: uploadPhoto,
     toSheetFields: toSheetFields
   };
 })();

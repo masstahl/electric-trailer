@@ -100,6 +100,33 @@ redeploy a **New version** (see above), and type the same token into
 **Settings → Google Sheet → Token** on each device — the two must
 match exactly, or the app answers "Bad token".
 
+**Photo uploads (optional, one-time):** the app's item photo
+editor can upload a photo taken on the device (**Edit photo →
+Upload a photo** — pick or shoot, crop, done). Uploaded photos are
+stored as files in this repo's `photos/` folder and served from
+its public site; the item's `Image` cell receives the photo's
+link automatically. The bridge commits the file to GitHub, which
+needs a GitHub token — stored in the script's private properties,
+**never** pasted into the script code or the app:
+
+1. On GitHub: **Settings → Developer settings → Personal access
+   tokens → Fine-grained tokens → Generate new token**. Set
+   **Repository access: Only select repositories** → this
+   repository, and under **Permissions → Repository permissions**
+   set **Contents: Read and write**. Generate and copy the token.
+2. In the sheet: **Extensions → Apps Script**, then the gear
+   (**Project Settings**) → **Script Properties** → **Add
+   property**: name `GITHUB_TOKEN`, value = the token from step 1.
+   Save.
+3. Make sure the editor holds the current `apps-script.gs` from
+   this repo (paste it over what's there if it predates uploads),
+   then **Deploy → Manage deployments → ✏️ Edit → Version: New
+   version → Deploy** — the `/exec` link stays the same.
+
+Until these steps are done, the Upload button answers "Uploads are
+not set up on the sheet script" and everything else — including
+setting a photo by pasting a link — works as before.
+
 ---
 
 ## Step 3 — Match your sheet's columns
@@ -150,6 +177,11 @@ image fails to load, the icon simply shows through). Practical notes:
   upload them to Google Drive, set sharing to "anyone with the
   link", and use the Drive file link as the value.
 - One photo per row. Leave the cell blank for icon-only items.
+- Photos can also be uploaded straight from a device in the app
+  (**item → Edit photo → Upload a photo**) once the one-time
+  upload setup is done — see "Photo uploads" in Step 2. The
+  uploaded file lands in this repo's `photos/` folder and its
+  public link is written into the `Image` cell for you.
 
 ### Folders (categories)
 

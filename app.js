@@ -2514,6 +2514,227 @@
   $('peUrl').addEventListener('input', function () { $('peError').classList.add('hidden'); syncPhotoPreview(); });
   $('peSave').addEventListener('click', savePhotoEditor);
   $('peRemove').addEventListener('click', function () { if (photoEditId) applyPhoto(photoEditId, ''); });
+
+  /* ---------- Item photo upload (Uppy) ----------
+   * The photo editor's "Upload a photo" — the gap the link-only
+   * editor (above) left on purpose, because a photo taken on the
+   * device had nowhere to live. Now it does: the sheet bridge
+   * (apps-script.gs, action=uploadPhoto) commits the image into
+   * this repo's photos/ folder and answers with its public URL,
+   * which then rides the exact same applyPhoto → ETData.setPhoto
+   * funnel as a pasted link. Uppy (core + Dashboard + image editor,
+   * one pinned standalone bundle) is loaded LAZILY from the CDN the
+   * first time Upload is tapped: it is not in the app shell, not in
+   * the service-worker precache, and if it can't load (offline) the
+   * link field keeps working untouched. Before upload, the picked
+   * image is shrunk on a canvas to the house spec — max 900px on
+   * the longest side, JPEG q80 — so uploads match the existing
+   * photos/ set. A failed upload never touches the item's photo. */
+  var UPPY_VERSION = '4.18.3';
+  var UPPY_BASE = 'https://cdn.jsdelivr.net/npm/uppy@' + UPPY_VERSION + '/dist/';
+  var PHOTO_MAX_EDGE = 900;
+  var PHOTO_JPEG_QUALITY = 0.8;
+  var uppyLoadPromise = null;
+  var uppyInstance = null;
+  var uppyInjected = 0;    // CDN script tags injected (kept observable for tests)
+  var uploadCtx = null;    // { id, base } — the item being photographed
+
+  /* The box a w×h image shrinks into: longest side capped at max,
+   * aspect kept, never upscaled. */
+  function fitWithin(w, h, max) {
+    max = max || PHOTO_MAX_EDGE;
+    w = Number(w) || 0; h = Number(h) || 0;
+    if (!w || !h || Math.max(w, h) <= max) return { width: w, height: h };
+    var s = max / Math.max(w, h);
+    return { width: Math.max(1, Math.round(w * s)), height: Math.max(1, Math.round(h * s)) };
+  }
+
+  function loadUppy() {
+    if (window.Uppy && window.Uppy.Uppy) return Promise.resolve(window.Uppy);
+    if (uppyLoadPromise) return uppyLoadPromise;
+    uppyLoadPromise = new Promise(function (resolve, reject) {
+      var css = document.createElement('link');
+      css.rel = 'stylesheet'; css.href = UPPY_BASE + 'uppy.min.css';
+      document.head.appendChild(css);
+      var s = document.createElement('script');
+      s.src = UPPY_BASE + 'uppy.min.js'; s.async = true;
+      s.onload = function () {
+        if (window.Uppy && window.Uppy.Uppy) resolve(window.Uppy);
+        else reject(new Error('Photo upload could not start.'));
+      };
+      s.onerror = function () { reject(new Error('Photo upload needs a connection — check signal and try again.')); };
+      uppyInjected++;
+      document.head.appendChild(s);
+    });
+    /* A failed load clears the memo so the next tap retries. */
+    uppyLoadPromise.then(null, function () { uppyLoadPromise = null; });
+    return uppyLoadPromise;
+  }
+
+  function blobToBase64(blob) {
+    return new Promise(function (resolve, reject) {
+      var r = new FileReader();
+      r.onload = function () {
+        var s = String(r.result || '');
+        var comma = s.indexOf(',');
+        resolve(comma === -1 ? s : s.slice(comma + 1));
+      };
+      r.onerror = function () { reject(new Error('That photo could not be read.')); };
+      r.readAsDataURL(blob);
+    });
+  }
+
+  function shrinkImageToJpeg(blob) {
+    var decoded;
+    if (window.createImageBitmap) {
+      decoded = window.createImageBitmap(blob);
+    } else {
+      decoded = new Promise(function (resolve, reject) {
+        var url = URL.createObjectURL(blob);
+        var img = new Image();
+        img.onload = function () { resolve(img); };
+        img.onerror = function () { URL.revokeObjectURL(url); reject(new Error('decode failed')); };
+        img.src = url;
+        img._objectUrl = url;
+      });
+    }
+    return decoded.then(function (src) {
+      var w = src.naturalWidth || src.width || 0;
+      var h = src.naturalHeight || src.height || 0;
+      var dims = fitWithin(w, h);
+      var canvas = document.createElement('canvas');
+      canvas.width = dims.width; canvas.height = dims.height;
+      var ctx = canvas.getContext && canvas.getContext('2d');
+      if (!ctx) throw new Error('That photo could not be processed on this device.');
+      ctx.drawImage(src, 0, 0, dims.width, dims.height);
+      if (src._objectUrl) URL.revokeObjectURL(src._objectUrl);
+      if (src.close) src.close();
+      return new Promise(function (resolve, reject) {
+        canvas.toBlob(function (out) {
+          if (out) resolve(out);
+          else reject(new Error('That photo could not be processed on this device.'));
+        }, 'image/jpeg', PHOTO_JPEG_QUALITY);
+      });
+    }).catch(function (err) {
+      if (err && /could not be (processed|read)/.test(err.message || '')) throw err;
+      throw new Error('That photo could not be read on this device.');
+    });
+  }
+
+  /* Suggested file base name for the bridge (it re-slugs and
+   * de-collides on its side; this is just the starting point). */
+  function uploadBaseName(item) {
+    var raw = String((item && (item.sku || item.name || item.id)) || 'photo');
+    return raw.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') || 'photo';
+  }
+
+  /* The uploader plugin: Uppy handles picking, editing and
+   * progress; the actual send is shrink → base64 → the bridge's
+   * uploadPhoto action, with the bridge's plain-word errors
+   * surfaced straight into Uppy's error state. (A class, unlike
+   * the rest of this file: Uppy's BasePlugin is an ES class and
+   * can only be extended with class syntax.) */
+  function defineBridgeUploader(U) {
+    class BridgeUploader extends U.BasePlugin {
+      constructor(uppy, opts) {
+        super(uppy, opts || {});
+        this.type = 'uploader';
+        this.id = 'ETBridgeUploader';
+        this.handleUpload = this.handleUpload.bind(this);
+      }
+      install() { this.uppy.addUploader(this.handleUpload); }
+      uninstall() { this.uppy.removeUploader(this.handleUpload); }
+      handleUpload(fileIDs) {
+        var self = this;
+        var jobs = (fileIDs || []).map(function (id) {
+          var file = self.uppy.getFile(id);
+          if (!file) return Promise.resolve();
+          return shrinkImageToJpeg(file.data)
+            .then(function (jpeg) {
+              self.uppy.emit('upload-progress', file, { uploader: self, bytesUploaded: 0, bytesTotal: jpeg.size || 0 });
+              return blobToBase64(jpeg);
+            })
+            .then(function (b64) {
+              return window.ETSheets.uploadPhoto(uploadCtx ? uploadCtx.base : 'photo', b64);
+            })
+            .then(function (res) {
+              if (!res || !res.ok || !res.url) throw new Error((res && res.error) || 'Upload failed — try again.');
+              self.uppy.emit('upload-progress', file, { uploader: self, bytesUploaded: 1, bytesTotal: 1 });
+              self.uppy.emit('upload-success', file, { status: 200, body: { url: res.url }, uploadURL: res.url });
+            })
+            .catch(function (err) {
+              self.uppy.emit('upload-error', file, err instanceof Error ? err : new Error(String(err)));
+            });
+        });
+        return Promise.all(jobs);
+      }
+    }
+    return BridgeUploader;
+  }
+
+  function getUppy() {
+    if (uppyInstance) return uppyInstance;
+    var U = window.Uppy;
+    var uppy = new U.Uppy({
+      autoProceed: false,
+      allowMultipleUploads: false,
+      restrictions: { maxNumberOfFiles: 1, maxFileSize: 20 * 1024 * 1024, allowedFileTypes: ['image/*'] }
+    });
+    uppy.use(U.Dashboard, {
+      inline: false,
+      closeModalOnClickOutside: true,
+      proudlyDisplayPoweredByUppy: false,
+      showNativePhotoCameraButton: true
+    });
+    if (U.ImageEditor) uppy.use(U.ImageEditor, { target: U.Dashboard, quality: 0.85 });
+    if (U.ThumbnailGenerator) uppy.use(U.ThumbnailGenerator, { thumbnailWidth: 360, waitForThumbnailsBeforeUpload: false });
+    uppy.use(defineBridgeUploader(U));
+    uppy.on('complete', function (result) {
+      var first = result && result.successful && result.successful[0];
+      var url = first && first.response && first.response.body && first.response.body.url;
+      if (url && uploadCtx) {
+        var dash = uppy.getPlugin('Dashboard');
+        if (dash && dash.closeModal) dash.closeModal();
+        var id = uploadCtx.id;
+        uploadCtx = null;
+        applyPhoto(id, url);
+        /* Clear the finished file so the next open starts empty. */
+        uppy.getFiles().forEach(function (f) { uppy.removeFile(f.id); });
+      } else if (result && result.failed && result.failed.length) {
+        var f = result.failed[0];
+        var msg = typeof f.error === 'string' ? f.error : (f.error && f.error.message);
+        toast(msg || 'Upload failed — try again.', 4000);
+      }
+    });
+    uppyInstance = uppy;
+    return uppy;
+  }
+
+  function openPhotoUploader() {
+    if (!photoEditId) return;
+    var item = D.getItem(photoEditId);
+    if (!item) return;
+    uploadCtx = { id: item.id, base: uploadBaseName(item) };
+    loadUppy().then(function () {
+      var dash = getUppy().getPlugin('Dashboard');
+      if (dash && dash.openModal) dash.openModal();
+    }).catch(function (err) {
+      toast((err && err.message) || 'Photo upload could not start.', 4000);
+    });
+  }
+  $('peUpload').addEventListener('click', openPhotoUploader);
+
+  /* Small surface for the test harness (and future debugging):
+   * the pure helpers, the loader, and whether the CDN script had
+   * to be injected at all. */
+  window.ETUpload = {
+    loadUppy: loadUppy,
+    fitWithin: fitWithin,
+    shrinkImageToJpeg: shrinkImageToJpeg,
+    openPhotoUploader: openPhotoUploader,
+    debug: function () { return { version: UPPY_VERSION, injected: uppyInjected, hasInstance: !!uppyInstance }; }
+  };
+
   function updateSkuLookup() {
     var skuEl = $('addSku');
     if (!skuEl) return;

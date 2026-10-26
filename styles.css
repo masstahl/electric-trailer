@@ -872,3 +872,23 @@ main{max-width:960px;margin:0 auto;padding:1rem}
   .toast{transition:none}
   .photo-card,.tab,.btn,.qty-btn,.theme-card{transition:none}
 }
+
+/* ---------- Uppy photo upload (v40) ----------
+ * Uppy itself is loaded lazily from a CDN the first time the photo
+ * editor's Upload button is tapped (see app.js) — only its theme
+ * overrides live here: the dashboard wears the app's dark surfaces
+ * with the Milwaukee-red accent. */
+.uppy-Dashboard-inner{background:#17181d;color:#f2f3f5}
+.uppy-Dashboard-AddFiles{border:1.5px dashed rgba(255,255,255,.22)}
+.uppy-Dashboard-AddFilesPanel{background:#1d1e24}
+.uppy-Dashboard-Item-preview{background:#101116}
+.uppy-Dashboard-Item-name,.uppy-Dashboard-Item-status{color:#e8e9ec}
+.uppy-Dashboard-Item-statusSize,.uppy-Dashboard-note{color:#a7abb5}
+.uppy-DashboardContent-bar,.uppy-DashboardContent-panel,.uppy-StatusBar{background:#1d1e24;color:#f2f3f5;border-color:rgba(255,255,255,.12)}
+.uppy-DashboardContent-title,.uppy-StatusBar-title{color:#f2f3f5}
+.uppy-c-btn-primary{background:#DB011C;color:#fff}
+.uppy-c-btn-primary:hover,.uppy-c-btn-primary:focus{background:#b50117}
+.uppy-StatusBar-actionBtn--upload{background:#DB011C!important}
+.uppy-Dashboard-progress,.uppy-StatusBar-progress{background:#DB011C}
+.uppy-Dashboard-Item-progress{background:rgba(219,1,28,.85)}
+.uppy-Dashboard-browse{color:#ff5b6a}
