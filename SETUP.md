@@ -125,14 +125,29 @@ needs a GitHub token — stored in the script's private properties,
 4. Authorize the script to reach GitHub (one time): uploads call
    an external service (`UrlFetchApp`), which Google blocks until
    the script's owner grants the `script.external_request`
-   permission. In the Apps Script editor, pick any function from
-   the toolbar's function dropdown and click **Run** →
-   **Authorization required → Review permissions** → choose the
-   owner's account → on "Google hasn't verified this app" choose
-   **Advanced → Go to the project** → **Allow**. (A code error
-   after Allow is expected — the grant is what matters.) Without
-   this step, uploads fail with "You do not have permission to
-   call UrlFetchApp.fetch".
+   permission. The prompt only appears when a function that
+   actually calls `UrlFetchApp` runs, so paste this temporary
+   helper at the end of the script, save, select
+   **authorizeUploads** in the toolbar's function dropdown, and
+   click **Run**:
+
+   ```javascript
+   function authorizeUploads() {
+     var r = UrlFetchApp.fetch('https://api.github.com', { muteHttpExceptions: true });
+     Logger.log(r.getResponseCode());
+   }
+   ```
+
+   → **Authorization required → Review permissions** → choose
+   the owner's account → on "Google hasn't verified this app"
+   choose **Advanced → Go to the project** → **Allow**. Any HTTP
+   code in the run log means the grant worked; the helper can be
+   deleted afterward. No redeploy is needed after authorizing.
+   (If the prompt still never appears, the project's
+   `appsscript.json` manifest may cap `oauthScopes` — add
+   `https://www.googleapis.com/auth/script.external_request` to
+   the list.) Without this step, uploads fail with "You do not
+   have permission to call UrlFetchApp.fetch".
 
 Until these steps are done, the Upload button answers "Uploads are
 not set up on the sheet script" and everything else — including
