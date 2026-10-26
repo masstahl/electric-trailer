@@ -4,7 +4,7 @@
  * they always go to the network, and edits made offline are queued
  * by the app instead.
  */
-var CACHE = 'electric-trailer-v40';
+var CACHE = 'electric-trailer-v41';
 var SHELL = [
   './',
   'index.html',

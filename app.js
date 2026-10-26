@@ -2529,7 +2529,12 @@
    * link field keeps working untouched. Before upload, the picked
    * image is shrunk on a canvas to the house spec — max 900px on
    * the longest side, JPEG q80 — so uploads match the existing
-   * photos/ set. A failed upload never touches the item's photo. */
+   * photos/ set. A failed upload never touches the item's photo.
+   * (v41: decode goes through a bitmap→<img> fallback chain, the
+   * shrink halves stepwise instead of one giant draw, the editor's
+   * output is capped at 1600px, and a failure rejects with its
+   * real stage-tagged error — toasted verbatim — instead of
+   * dissolving into Uppy's generic "Failed to upload".) */
   var UPPY_VERSION = '4.18.3';
   var UPPY_BASE = 'https://cdn.jsdelivr.net/npm/uppy@' + UPPY_VERSION + '/dist/';
   var PHOTO_MAX_EDGE = 900;
@@ -2571,6 +2576,33 @@
     return uppyLoadPromise;
   }
 
+  /* Stage-tagged upload errors: the message alone says which
+   * stage failed, in plain words — decode/read on this device,
+   * canvas/process on this device, or the bridge (whose own
+   * plain-word texts pass through verbatim, unchanged). The
+   * err.stage tag rides along for the debug surface. */
+  var PHOTO_READ_ERROR = 'That photo could not be read on this device.';
+  var PHOTO_PROCESS_ERROR = 'That photo could not be processed on this device.';
+  function stageError(stage, message) {
+    var err = new Error(message);
+    err.stage = stage;
+    return err;
+  }
+
+  /* The most recent upload failure, as toasted: the 'complete'
+   * handler consults it so the same failure is never toasted
+   * twice, and the debug surface reports it. */
+  var lastFailureToast = { msg: '', at: 0 };
+  var failureToastCount = 0;
+  var lastFailureInfo = null;   // { stage, message }
+  function noteUploadFailure(err) {
+    var msg = (err && err.message) || 'Upload failed — try again.';
+    lastFailureInfo = { stage: (err && err.stage) || 'bridge', message: msg };
+    lastFailureToast = { msg: msg, at: Date.now() };
+    failureToastCount++;
+    toast(msg, 4000);
+  }
+
   function blobToBase64(blob) {
     return new Promise(function (resolve, reject) {
       var r = new FileReader();
@@ -2579,45 +2611,100 @@
         var comma = s.indexOf(',');
         resolve(comma === -1 ? s : s.slice(comma + 1));
       };
-      r.onerror = function () { reject(new Error('That photo could not be read.')); };
+      r.onerror = function () { reject(stageError('read', PHOTO_READ_ERROR)); };
       r.readAsDataURL(blob);
     });
   }
 
-  function shrinkImageToJpeg(blob) {
-    var decoded;
-    if (window.createImageBitmap) {
-      decoded = window.createImageBitmap(blob);
-    } else {
-      decoded = new Promise(function (resolve, reject) {
-        var url = URL.createObjectURL(blob);
-        var img = new Image();
-        img.onload = function () { resolve(img); };
-        img.onerror = function () { URL.revokeObjectURL(url); reject(new Error('decode failed')); };
-        img.src = url;
-        img._objectUrl = url;
+  /* Decode a picked photo into a drawable source, with a fallback
+   * chain: createImageBitmap first (EXIF orientation requested),
+   * then the <img> + object-URL path — iOS Safari auto-orients via
+   * EXIF there and tolerates formats the bitmap decoder rejects
+   * (fresh camera captures can be HEIC). Only when BOTH fail is
+   * the photo unreadable on this device.
+   * Resolves { src, width, height, via, dispose }. */
+  function decodeImage(blob) {
+    function bitmapAttempt() {
+      return Promise.resolve().then(function () {
+        try { return window.createImageBitmap(blob, { imageOrientation: 'from-image' }); }
+        catch (e) { return window.createImageBitmap(blob); }
+      }).then(function (bmp) {
+        return {
+          src: bmp, width: bmp.width || 0, height: bmp.height || 0, via: 'bitmap',
+          dispose: function () { if (bmp.close) bmp.close(); }
+        };
       });
     }
-    return decoded.then(function (src) {
-      var w = src.naturalWidth || src.width || 0;
-      var h = src.naturalHeight || src.height || 0;
-      var dims = fitWithin(w, h);
-      var canvas = document.createElement('canvas');
-      canvas.width = dims.width; canvas.height = dims.height;
-      var ctx = canvas.getContext && canvas.getContext('2d');
-      if (!ctx) throw new Error('That photo could not be processed on this device.');
-      ctx.drawImage(src, 0, 0, dims.width, dims.height);
-      if (src._objectUrl) URL.revokeObjectURL(src._objectUrl);
-      if (src.close) src.close();
+    function imgAttempt() {
       return new Promise(function (resolve, reject) {
-        canvas.toBlob(function (out) {
-          if (out) resolve(out);
-          else reject(new Error('That photo could not be processed on this device.'));
+        var url = URL.createObjectURL(blob);
+        var img = new Image();
+        img.onload = function () {
+          resolve({
+            src: img, width: img.naturalWidth || img.width || 0, height: img.naturalHeight || img.height || 0,
+            via: 'img', dispose: function () { URL.revokeObjectURL(url); }
+          });
+        };
+        img.onerror = function () { URL.revokeObjectURL(url); reject(new Error('image element could not decode the photo')); };
+        img.src = url;
+      });
+    }
+    var chain = window.createImageBitmap
+      ? bitmapAttempt().catch(function () { return imgAttempt(); })
+      : imgAttempt();
+    return chain.catch(function () { throw stageError('read', PHOTO_READ_ERROR); });
+  }
+
+  /* One drawImage onto a fresh w×h canvas. Any canvas trouble is
+   * a process-stage failure. */
+  function drawStep(src, w, h) {
+    var canvas = document.createElement('canvas');
+    canvas.width = w; canvas.height = h;
+    var ctx = canvas.getContext && canvas.getContext('2d');
+    if (!ctx) throw stageError('process', PHOTO_PROCESS_ERROR);
+    try { ctx.drawImage(src, 0, 0, w, h); }
+    catch (e) { throw stageError('process', PHOTO_PROCESS_ERROR); }
+    return canvas;
+  }
+
+  var PHOTO_STEP_EDGE = 1600;   // stepwise halving stops at/below this long edge
+  var lastShrinkInfo = null;    // { via, steps:[…], final } — debug/test seam
+
+  /* Shrink to the house spec (≤900px long edge, JPEG q80) the
+   * gentle way: decode, then HALVE through intermediate canvases
+   * until the long edge is ≤1600, then one final draw to size.
+   * A single drawImage from a 48MP camera frame straight to
+   * 900px is exactly what iOS Safari chokes on — it no longer
+   * happens anywhere in this path. */
+  function shrinkImageToJpeg(blob) {
+    return decodeImage(blob).then(function (dec) {
+      var steps = [];
+      var w = dec.width, h = dec.height, cur = dec.src, out;
+      try {
+        if (!w || !h) throw stageError('read', PHOTO_READ_ERROR);
+        while (Math.max(w, h) > PHOTO_STEP_EDGE) {
+          w = Math.max(1, Math.round(w / 2));
+          h = Math.max(1, Math.round(h / 2));
+          cur = drawStep(cur, w, h);
+          steps.push(w + 'x' + h);
+        }
+        var dims = fitWithin(w, h);
+        out = drawStep(cur, dims.width, dims.height);
+        steps.push(dims.width + 'x' + dims.height);
+      } finally {
+        dec.dispose();
+      }
+      lastShrinkInfo = { via: dec.via, steps: steps, final: steps[steps.length - 1] };
+      return new Promise(function (resolve, reject) {
+        if (!out.toBlob) { reject(stageError('process', PHOTO_PROCESS_ERROR)); return; }
+        out.toBlob(function (b) {
+          if (b) resolve(b);
+          else reject(stageError('process', PHOTO_PROCESS_ERROR));
         }, 'image/jpeg', PHOTO_JPEG_QUALITY);
       });
     }).catch(function (err) {
-      if (err && /could not be (processed|read)/.test(err.message || '')) throw err;
-      throw new Error('That photo could not be read on this device.');
+      if (err && err.stage) throw err;
+      throw stageError('read', PHOTO_READ_ERROR);
     });
   }
 
@@ -2630,10 +2717,16 @@
 
   /* The uploader plugin: Uppy handles picking, editing and
    * progress; the actual send is shrink → base64 → the bridge's
-   * uploadPhoto action, with the bridge's plain-word errors
-   * surfaced straight into Uppy's error state. (A class, unlike
-   * the rest of this file: Uppy's BasePlugin is an ES class and
-   * can only be extended with class syntax.) */
+   * uploadPhoto action. On failure the plugin records the real
+   * error on the file, says it out loud through the app toast
+   * (Uppy's dashboard would otherwise show only its generic
+   * "Failed to upload" line), and then REJECTS with the same
+   * error — Uppy v4's uploader contract (its built-in uploaders
+   * do exactly this): a step that swallows its failures leaves
+   * core presenting its generic text, while a rejection makes
+   * core record the genuine error. (A class, unlike the rest of
+   * this file: Uppy's BasePlugin is an ES class and can only be
+   * extended with class syntax.) */
   function defineBridgeUploader(U) {
     class BridgeUploader extends U.BasePlugin {
       constructor(uppy, opts) {
@@ -2658,12 +2751,15 @@
               return window.ETSheets.uploadPhoto(uploadCtx ? uploadCtx.base : 'photo', b64);
             })
             .then(function (res) {
-              if (!res || !res.ok || !res.url) throw new Error((res && res.error) || 'Upload failed — try again.');
+              if (!res || !res.ok || !res.url) throw stageError('bridge', (res && res.error) || 'Upload failed — try again.');
               self.uppy.emit('upload-progress', file, { uploader: self, bytesUploaded: 1, bytesTotal: 1 });
               self.uppy.emit('upload-success', file, { status: 200, body: { url: res.url }, uploadURL: res.url });
             })
             .catch(function (err) {
-              self.uppy.emit('upload-error', file, err instanceof Error ? err : new Error(String(err)));
+              var e = err instanceof Error ? err : new Error(String(err));
+              self.uppy.emit('upload-error', file, e);
+              noteUploadFailure(e);
+              throw e;
             });
         });
         return Promise.all(jobs);
@@ -2686,7 +2782,16 @@
       proudlyDisplayPoweredByUppy: false,
       showNativePhotoCameraButton: true
     });
-    if (U.ImageEditor) uppy.use(U.ImageEditor, { target: U.Dashboard, quality: 0.85 });
+    if (U.ImageEditor) uppy.use(U.ImageEditor, {
+      target: U.Dashboard,
+      quality: 0.85,
+      /* Cap the editor's output: an edited photo leaves the editor
+       * at ≤1600px on its long edge instead of natural (possibly
+       * 48MP) resolution — its save() passes croppedCanvasOptions
+       * to cropper's getCroppedCanvas. The upload shrink below
+       * then only ever starts from ≤1600px too. */
+      cropperOptions: { croppedCanvasOptions: { maxWidth: PHOTO_STEP_EDGE, maxHeight: PHOTO_STEP_EDGE } }
+    });
     if (U.ThumbnailGenerator) uppy.use(U.ThumbnailGenerator, { thumbnailWidth: 360, waitForThumbnailsBeforeUpload: false });
     uppy.use(defineBridgeUploader(U));
     uppy.on('complete', function (result) {
@@ -2703,7 +2808,13 @@
       } else if (result && result.failed && result.failed.length) {
         var f = result.failed[0];
         var msg = typeof f.error === 'string' ? f.error : (f.error && f.error.message);
-        toast(msg || 'Upload failed — try again.', 4000);
+        /* Backstop only: the uploader already toasted this exact
+         * failure as it happened — never say the same one twice. */
+        var alreadyToasted = !!msg && msg === lastFailureToast.msg && (Date.now() - lastFailureToast.at) < 10000;
+        if (!alreadyToasted) {
+          if (msg) noteUploadFailure(new Error(msg));
+          else toast('Upload failed — try again.', 4000);
+        }
       }
     });
     uppyInstance = uppy;
@@ -2732,7 +2843,15 @@
     fitWithin: fitWithin,
     shrinkImageToJpeg: shrinkImageToJpeg,
     openPhotoUploader: openPhotoUploader,
-    debug: function () { return { version: UPPY_VERSION, injected: uppyInjected, hasInstance: !!uppyInstance }; }
+    instance: function () { return uppyInstance; },
+    debug: function () {
+      return {
+        version: UPPY_VERSION, injected: uppyInjected, hasInstance: !!uppyInstance,
+        lastShrink: lastShrinkInfo,
+        lastFailure: lastFailureInfo,
+        failureToasts: failureToastCount
+      };
+    }
   };
 
   function updateSkuLookup() {
