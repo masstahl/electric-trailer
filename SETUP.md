@@ -122,6 +122,17 @@ needs a GitHub token — stored in the script's private properties,
    this repo (paste it over what's there if it predates uploads),
    then **Deploy → Manage deployments → ✏️ Edit → Version: New
    version → Deploy** — the `/exec` link stays the same.
+4. Authorize the script to reach GitHub (one time): uploads call
+   an external service (`UrlFetchApp`), which Google blocks until
+   the script's owner grants the `script.external_request`
+   permission. In the Apps Script editor, pick any function from
+   the toolbar's function dropdown and click **Run** →
+   **Authorization required → Review permissions** → choose the
+   owner's account → on "Google hasn't verified this app" choose
+   **Advanced → Go to the project** → **Allow**. (A code error
+   after Allow is expected — the grant is what matters.) Without
+   this step, uploads fail with "You do not have permission to
+   call UrlFetchApp.fetch".
 
 Until these steps are done, the Upload button answers "Uploads are
 not set up on the sheet script" and everything else — including
