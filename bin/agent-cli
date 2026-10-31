@@ -1,0 +1,171 @@
+#!/usr/bin/env node
+/* agent-cli — Electric Trailer repo: the repeated lookups, one place.
+ * Node stdlib only. Read-only. Every subcommand: --help, --json.
+ * Repo root = parent dir of this file's bin/. */
+'use strict';
+const fs = require('fs');
+const path = require('path');
+const crypto = require('crypto');
+const { execFileSync } = require('child_process');
+
+const ROOT = path.resolve(__dirname, '..');
+const LIVE = 'https://masstahl.github.io/electric-trailer/';
+const CORE_FILES = ['index.html', 'styles.css', 'app.js', 'appsheet.js',
+  'sheets.js', 'sw.js', 'manifest.webmanifest', 'apps-script.gs'];
+
+const argv = process.argv.slice(2);
+const JSON_OUT = argv.includes('--json');
+const args = argv.filter(a => a !== '--json');
+const cmd = args[0];
+
+function git() {
+  return execFileSync('git', Array.from(arguments),
+    { cwd: ROOT, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).trim();
+}
+function fail(msg) { process.stderr.write('error: ' + msg + '\n'); process.exit(1); }
+function emit(obj, lines) {
+  if (JSON_OUT) process.stdout.write(JSON.stringify(obj) + '\n');
+  else process.stdout.write(lines.join('\n') + '\n');
+}
+function swVersion(text) {
+  const m = /CACHE\s*=\s*'electric-trailer-(v[0-9]+)'/.exec(text || '');
+  return m ? m[1] : null;
+}
+function photoList() {
+  const dir = path.join(ROOT, 'photos');
+  return fs.readdirSync(dir).filter(f => !f.startsWith('.'))
+    .map(f => ({ name: f, bytes: fs.statSync(path.join(dir, f)).size,
+                 mtime: fs.statSync(path.join(dir, f)).mtimeMs }));
+}
+async function fetchText(url) {
+  const r = await fetch(url, { signal: AbortSignal.timeout(20000) });
+  if (!r.ok) throw new Error('HTTP ' + r.status + ' ' + url);
+  return r.text();
+}
+
+/* ---------- subcommands ---------- */
+
+function cmdStatus() {
+  const head = git('log', '-1', '--format=%h%x09%cI%x09%s').split('\t');
+  const dirty = git('status', '--porcelain').split('\n').filter(Boolean).length;
+  const o = {
+    head: head[0], head_date: head[1], head_subject: head[2],
+    branch: git('rev-parse', '--abbrev-ref', 'HEAD'), dirty_files: dirty,
+    sw_version: swVersion(fs.readFileSync(path.join(ROOT, 'sw.js'), 'utf8')),
+    photos: photoList().length
+  };
+  emit(o, ['head: ' + o.head + ' ' + o.head_date + ' ' + o.head_subject,
+    'branch: ' + o.branch, 'dirty_files: ' + dirty,
+    'sw_version: ' + o.sw_version, 'photos: ' + o.photos]);
+}
+
+function cmdPhotos() {
+  const list = photoList();
+  const total = list.reduce((s, f) => s + f.bytes, 0);
+  let lastCommit = null, added = [];
+  try {
+    lastCommit = git('log', '-1', '--format=%h %cI %s', '--', 'photos');
+    added = git('log', '-1', '--diff-filter=A', '--format=', '--name-only', '--', 'photos')
+      .split('\n').filter(Boolean).map(p => path.basename(p));
+  } catch (e) { /* git-less copy: mtime only */ }
+  const newestMtime = list.slice().sort((a, b) => b.mtime - a.mtime)[0];
+  const o = { count: list.length, total_bytes: total, last_photos_commit: lastCommit,
+    added_in_last_photos_commit: added,
+    newest_by_mtime: newestMtime ? newestMtime.name : null };
+  emit(o, ['count: ' + o.count, 'total_bytes: ' + total,
+    'last_photos_commit: ' + (lastCommit || 'unknown'),
+    'added_then: ' + (added.join(', ') || 'none'),
+    'newest_by_mtime: ' + (o.newest_by_mtime || 'none')]);
+}
+
+async function cmdVersion() {
+  const repo = swVersion(fs.readFileSync(path.join(ROOT, 'sw.js'), 'utf8'));
+  let live = null, liveErr = null;
+  try { live = swVersion(await fetchText(LIVE + 'sw.js')); }
+  catch (e) { liveErr = e.message; }
+  const o = { repo_sw_version: repo, live_sw_version: live, match: repo === live };
+  if (liveErr) o.live_error = liveErr;
+  emit(o, ['repo: ' + repo, 'live: ' + (live || 'unreachable (' + liveErr + ')'),
+    'match: ' + o.match]);
+}
+
+async function cmdDrift() {
+  let remote = null;
+  try { remote = git('ls-remote', 'origin', 'HEAD').split(/\s/)[0].slice(0, 7); } catch (e) {}
+  const local = git('rev-parse', '--short=7', 'HEAD');
+  const files = {};
+  for (const f of CORE_FILES) {
+    const localBuf = fs.readFileSync(path.join(ROOT, f));
+    const lh = crypto.createHash('sha256').update(localBuf).digest('hex');
+    let same = null, err = null;
+    try {
+      const liveBuf = Buffer.from(await (await fetch(LIVE + f,
+        { signal: AbortSignal.timeout(20000) })).arrayBuffer());
+      same = crypto.createHash('sha256').update(liveBuf).digest('hex') === lh;
+    } catch (e) { err = e.message; }
+    files[f] = err ? 'error:' + err : (same ? 'same' : 'DIFF');
+  }
+  const o = { local_head: local, remote_head: remote,
+    head_match: remote ? local === remote : null, files };
+  const lines = ['local_head: ' + local, 'remote_head: ' + (remote || 'unknown'),
+    'head_match: ' + o.head_match];
+  for (const f of CORE_FILES) lines.push(f + ': ' + files[f]);
+  emit(o, lines);
+}
+
+async function cmdRows() {
+  const base = process.env.ET_BRIDGE_URL;
+  if (!base) fail('ET_BRIDGE_URL not set — the Sheet link (Apps Script Web app /exec URL) lives only in app Settings on a device; export ET_BRIDGE_URL=<link> (and ET_TOKEN=<token> if the script sets one)');
+  let url = base + (base.includes('?') ? '&' : '?') + 'action=rows';
+  if (process.env.ET_TOKEN) url += '&token=' + encodeURIComponent(process.env.ET_TOKEN);
+  let data;
+  try { data = JSON.parse(await fetchText(url)); }
+  catch (e) { fail('bridge fetch failed: ' + e.message); }
+  if (!data.ok) fail('bridge said: ' + (data.error || 'not ok'));
+  const rows = data.rows || [];
+  const norm = v => String(v == null ? '' : v).trim().toUpperCase();
+  const dupOf = key => {
+    const seen = {};
+    rows.forEach((r, i) => { const k = norm(r[key]); if (k) (seen[k] = seen[k] || []).push(i); });
+    return Object.entries(seen).filter(([, v]) => v.length > 1)
+      .map(([k, v]) => ({ code: k, rows: v.map(i => i + 2),
+        qty: v.map(i => rows[i].Quantity) }));
+  };
+  const known = rows.map((r, i) => ({ r, i })).filter(({ r }) =>
+    norm(r['Item ID']) === 'EC410001' || norm(r.Name) === 'EC410001')
+    .map(({ r, i }) => ({ sheet_row: i + 2, description: r.Description || '',
+      name: r.Name || '', qty: r.Quantity }));
+  const o = { rows: rows.length, dup_item_id: dupOf('Item ID'), dup_part_code: dupOf('Name'),
+    known_EC410001: known,
+    known_EC410001_note: 'REPORT ONLY — known duplicate left by design (qty 3 vs 4); never merge or fix without Matthew\u2019s word' };
+  const lines = ['rows: ' + rows.length,
+    'dup_item_id: ' + (o.dup_item_id.length ? JSON.stringify(o.dup_item_id) : 'none'),
+    'dup_part_code: ' + (o.dup_part_code.length ? JSON.stringify(o.dup_part_code) : 'none'),
+    'EC410001: ' + (known.length ? JSON.stringify(known) : 'not present') + ' (report only, do not merge)'];
+  emit(o, lines);
+}
+
+/* ---------- help / dispatch ---------- */
+
+const HELP = {
+  status: 'status [--json]\n  Repo state in one shot: HEAD commit, branch, dirty file count, sw.js version, photo count.',
+  photos: 'photos [--json]\n  photos/ count + total bytes, newest photo (last commit touching photos/ and what it added, plus newest by mtime).',
+  version: 'version [--json]\n  App version = sw.js CACHE name. Repo copy vs live GitHub Pages copy, and whether they match.',
+  drift: 'drift [--json]\n  Live-vs-repo drift: local HEAD vs origin HEAD, and sha256 of each core file vs what GitHub Pages serves.',
+  rows: 'rows [--json]\n  Sheet data via the Apps Script bridge: row count, duplicate Item IDs / part codes, and the known EC410001 duplicate (report only, never merged).\n  Needs ET_BRIDGE_URL (the /exec Sheet link from app Settings); ET_TOKEN if the script sets one. Fails with a clear error if unset.'
+};
+
+const CMDS = { status: cmdStatus, photos: cmdPhotos, version: cmdVersion,
+  drift: cmdDrift, rows: cmdRows };
+
+if (!cmd || cmd === '--help' || cmd === '-h' || cmd === 'help') {
+  process.stdout.write('agent-cli — electric-trailer repeated lookups\nusage: agent-cli <command> [--json]\ncommands:\n' +
+    Object.keys(CMDS).map(c => '  ' + c).join('\n') +
+    '\nrun "agent-cli <command> --help" for detail\n');
+  process.exit(0);
+}
+if (!CMDS[cmd]) fail('unknown command: ' + cmd + ' (try --help)');
+if (args.includes('--help') || args.includes('-h')) {
+  process.stdout.write(HELP[cmd] + '\n'); process.exit(0);
+}
+Promise.resolve(CMDS[cmd]()).catch(e => fail(e.message));
