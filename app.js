@@ -13,7 +13,7 @@
   var $ = function (id) { return document.getElementById(id); };
   /* The build this code IS (v42): version.json on the server carries
    * the newest build's number; the checker below compares the two. */
-  var APP_VERSION = 43;
+  var APP_VERSION = 44;
   var AISLES = ['A', 'B', 'C', 'D'];
   var BINS = [];
   AISLES.forEach(function (a) { for (var i = 1; i <= 6; i++) BINS.push(a + i); });
@@ -481,7 +481,12 @@
       return compact.length > 1 && locShort(i).toLowerCase().replace(/[\s·]/g, '').indexOf(compact) !== -1;
     });
     if (!searching && categoryFilter !== null) {
-      filtered = filtered.filter(function (i) { return itemCategory(i) === categoryFilter; });
+      /* Display membership (v44): the folder's primary items plus
+       * anything whose tags the folder claims — primaries are
+       * never rewritten for display, the item just shows. */
+      var shown = {};
+      folderDisplayItems(categoryFilter).forEach(function (i) { shown[i.id] = 1; });
+      filtered = filtered.filter(function (i) { return !!shown[i.id]; });
     }
     /* Quantity order (v34) applies to every grid this function
      * renders — All, a folder tab, search results, and the LOW view
@@ -669,7 +674,7 @@
    * openItem / openFolderSheet / openQtyEditor / the dock +). */
   function renderFolderJump() {
     var counts = {};
-    D.folderStats().forEach(function (s) { counts[s.name] = s.count; });
+    folderDisplayStats().forEach(function (s) { counts[s.name] = s.count; });
     $('folderJumpList').innerHTML = tabKeys().slice(1).map(function (name) {
       var sel = name === categoryFilter;
       return '<button type="button" class="fj-row' + (sel ? ' sel' : '') + '" role="option" aria-selected="' + (sel ? 'true' : 'false') + '" data-fj="' + esc(name) + '">' +
@@ -838,7 +843,7 @@
     if (!name || name === D.UNCAT) return;
     closeFolderJump();
     folderSheetName = name;
-    var s = D.folderStats().filter(function (x) { return x.name === name; })[0];
+    var s = folderDisplayStats().filter(function (x) { return x.name === name; })[0];
     $('fsTitle').textContent = name;
     $('fsMeta').textContent = s ? (s.count + (s.count === 1 ? ' item' : ' items') + ' · ' + s.units + ' units') : '';
     $('fsNameInput').value = name;
@@ -876,6 +881,10 @@
     renderHome();
     centerActiveTab(false);
     toast('Folder renamed' + (r.count ? ' — ' + r.count + ' item(s) updated' : ''));
+    /* v44: a create/rename can give unfiled items a tag home —
+     * run the auto-file pass before the v42 sweep so the sweep's
+     * own announcement stays the last word. */
+    autoFileByTags();
     if (wasCreate) sweepIntoFolder(newName);
   });
   /* ---------- Folder-first sweep (v42) ----------
@@ -893,15 +902,25 @@
    * the batch carries Auto-sort's UNDO toast. Zero matches: the
    * folder is simply created, no toast, no ops. */
   var SWEEP_STOPWORDS = { and: 1, the: 1, for: 1, a: 1, an: 1, of: 1 };
+  /* One plural rule for the whole app (sweep, tags, suggestions):
+   * glasses → glass, boxes → box, switches → switch (only s/x/z/
+   * ch/sh stems truly add "es"); diodes → diode, fuses → fuse,
+   * tubes → tube (those just add "s"); resistors → resistor. */
+  function singularizeToken(t) {
+    if (/sses$/.test(t)) return t.replace(/sses$/, 'ss');
+    if (t.length > 4 && /es$/.test(t)) {
+      var stem = t.slice(0, -2);
+      return /(x|z|ch|sh)$/.test(stem) ? stem : t.slice(0, -1);
+    }
+    if (t.length > 3 && /s$/.test(t) && !/ss$/.test(t)) return t.slice(0, -1);
+    return t;
+  }
   function sweepTerms(folderName) {
     var terms = [], seen = {};
     function add(t) { if (t && !seen[t]) { seen[t] = 1; terms.push(t); } }
     String(folderName || '').toLowerCase().split(/[^a-z0-9]+/).forEach(function (raw) {
       if (!raw || raw.length < 3 || SWEEP_STOPWORDS[raw]) return;
-      var t = raw;
-      if (/sses$/.test(t)) t = t.replace(/sses$/, 'ss');
-      else if (t.length > 4 && /es$/.test(t)) t = t.slice(0, -2);
-      else if (t.length > 3 && /s$/.test(t) && !/ss$/.test(t)) t = t.slice(0, -1);
+      var t = singularizeToken(raw);
       add(t);
       if (t.length >= 7) add(t.slice(0, 5));
     });
@@ -920,10 +939,216 @@
     hits.forEach(function (it) { D.setCategory(it.id, folderName); });
     renderHome(); refreshChrome();
     showUndoToast('Moved ' + hits.length + ' item' + (hits.length === 1 ? '' : 's') + ' into ' + folderName, function () {
-      hits.forEach(function (it) { D.setCategory(it.id, prev[it.id]); });
+      hits.forEach(function (it) {
+        D.setCategory(it.id, prev[it.id]);
+        if (prev[it.id] === D.UNCAT) noteManualUnfile(it.id);   // an undo is a decision — tags must not re-file it
+      });
       renderHome(); refreshChrome();
     });
   }
+  /* ---------- Tag engine (v44) ----------
+   * Items carry computed TAGS, derived fresh from name + SKU on
+   * every read — nothing is stored, so nothing can drift. Matching
+   * is TOKEN-based (whole words and phrases over the token stream),
+   * never substring: 'lamp' cannot hide inside "Clamps", and 'led'
+   * means Lighting only with a lighting context around it — an LED
+   * sold as a component (through-hole, 5mm, an OLED display) is a
+   * DIODE, and gets tagged that way instead. A folder OWNS the tags
+   * named by its own words (folderTags), so a folder called
+   * "Resistors/ diodes/ capacitors" claims resistor + diode +
+   * capacitor items by itself. Display membership, the true
+   * Uncategorized residue and the one-time auto-file below are all
+   * built on these two functions. */
+  function tagTokens(str) {
+    return String(str == null ? '' : str).toLowerCase().replace(/μ/g, 'µ')
+      .split(/[^a-z0-9µ]+/).filter(function (t) { return !!t; }).map(singularizeToken);
+  }
+  function phraseInTokens(toks, phraseToks) {
+    if (!phraseToks.length || phraseToks.length > toks.length) return false;
+    for (var i = 0; i + phraseToks.length <= toks.length; i++) {
+      var ok = true;
+      for (var j = 0; j < phraseToks.length; j++) { if (toks[i + j] !== phraseToks[j]) { ok = false; break; } }
+      if (ok) return true;
+    }
+    return false;
+  }
+  /* The dictionary. words/phrases are matched against the item's
+   * singularized tokens; requiresAny gates the whole entry (the
+   * display family only fires when a display word is truly there);
+   * folderWords count ONLY toward folderTags (a folder named
+   * "Lights" claims the lighting tag), never toward item tags. */
+  var TAG_DICT = [
+    { tag: 'lighting', folderWords: ['light'], words: ['bulb', 'lamp', 't8', 't5', 'fluorescent', 'halogen', 'fixture', 'recessed', 'ballast', 'luminaire', 'a19', 'a21', 'par38', 'br30', 'r20'], phrases: ['tape light', 'strip light', 'shop light', 'work light', 'flood light', 'high bay'] },
+    { tag: 'diode', words: ['diode', 'schottky', 'zener', 'rectifier'] },
+    { tag: 'led-component', words: ['led'] },
+    { tag: 'resistor', words: ['resistor', 'ohm', 'kohm', 'mohm', 'trimpot', 'potentiometer'] },
+    { tag: 'capacitor', words: ['capacitor', 'uf', 'µf', 'farad'] },
+    { tag: 'transistor', words: ['transistor', 'mosfet', 'igbt'] },
+    { tag: 'relay', words: ['relay', 'ssr'], phrases: ['solid state'] },
+    { tag: 'sensor', words: ['sensor', 'thermocouple', 'proximity'], phrases: ['temp sensor'] },
+    { tag: 'display', words: ['display', 'oled', 'lcd', 'i2c', 'spi', 'module'], requiresAny: ['display', 'oled', 'lcd'] },
+    { tag: 'switch', words: ['switch', 'toggle', 'dimmer'] },
+    { tag: 'wire', words: ['wire', 'thhn', 'romex', 'awg', 'conductor', 'cable', 'spool'], phrases: ['zip cord'] },
+    { tag: 'conduit', words: ['conduit', 'emt', 'pvc', 'coupling', 'elbow', 'bushing'], phrases: ['terminal adapter'] },
+    { tag: 'breaker', words: ['breaker', 'gfci', 'afci', 'fuse', 'disconnect', 'surge'], phrases: ['load center'] },
+    { tag: 'box', words: ['box', 'enclosure', 'junction', 'cover'], phrases: ['wall plate'] },
+    { tag: 'device', words: ['receptacle', 'outlet', 'dimmer', 'switch'], phrases: ['wall plate'] },
+    { tag: 'fastener', words: ['clamp', 'screw', 'bolt', 'nut', 'washer', 'anchor', 'strap', 'hook', 'staple'], phrases: ['zip tie'] },
+    { tag: 'tool', words: ['meter', 'tester', 'crimper', 'stripper', 'wrench', 'driver'], phrases: ['fish tape'] },
+    { tag: 'power', words: ['inverter', 'transformer', 'battery', 'solar'], phrases: ['charge controller', 'power supply'] }
+  ];
+  TAG_DICT.forEach(function (e) {
+    e._words = {}; e.words.forEach(function (w) { e._words[singularizeToken(w)] = 1; });
+    e._phrases = (e.phrases || []).map(tagTokens);
+    e._requires = (e.requiresAny || []).map(singularizeToken);
+  });
+  var tagCache = {};
+  function computeTags(item) {
+    if (!item) return [];
+    var key = item.id + '|' + (item.name || '') + '|' + (item.sku || '');
+    if (tagCache[key]) return tagCache[key].slice();
+    var toks = tagTokens((item.name || '') + ' ' + (item.sku || ''));
+    var set = {};
+    toks.forEach(function (t) { set[t] = 1; });
+    function has(w) { return !!set[singularizeToken(w)]; }
+    var tags = [];
+    TAG_DICT.forEach(function (e) {
+      if (e.tag === 'led-component') return;   // decided by the LED rule below, not the bare word
+      if (e._requires.length && !e._requires.some(function (w) { return !!set[w]; })) return;
+      var hit = e.words.some(function (w) { return !!set[singularizeToken(w)]; }) ||
+        e._phrases.some(function (p) { return phraseInTokens(toks, p); });
+      if (hit) tags.push(e.tag);
+    });
+    /* The LED rule: 'led' is a lighting word only in a lighting
+     * context — and a component context vetoes that reading
+     * outright, because a through-hole / 5mm / OLED part is a
+     * diode that happens to emit light, not a luminaire. */
+    if (set.led) {
+      var compCtx = phraseInTokens(toks, tagTokens('through hole')) || has('5mm') || has('3mm') ||
+        phraseInTokens(toks, tagTokens('t 1')) || has('oled') || has('display') || has('lcd') ||
+        has('anode') || has('cathode') || has('forward') || has('ma');
+      var lightCtx = ['bulb', 'tube', 'lamp', 'fixture', 'light', 'tape', 'strip', 'bay', 'panel', 'retrofit', 'a19', 'a21', 'par38', 'br30', 'r20'].some(has);
+      if (compCtx) {
+        var li = tags.indexOf('lighting');
+        if (li !== -1) tags.splice(li, 1);
+        if (tags.indexOf('diode') === -1) tags.push('diode');
+        tags.push('led-component');
+      } else if (lightCtx && tags.indexOf('lighting') === -1) {
+        tags.push('lighting');
+      }
+    }
+    tagCache[key] = tags.slice();
+    return tags;
+  }
+  /* The tags a folder claims = every dictionary tag whose name (or
+   * hyphen parts) or any of its key words appears as a token in the
+   * folder's name. Pure function of the name — custom folders work
+   * exactly like the seeded ones. */
+  function folderTags(folderName) {
+    var fset = {};
+    tagTokens(folderName).forEach(function (t) { fset[t] = 1; });
+    var out = [];
+    TAG_DICT.forEach(function (e) {
+      var nameHit = e.tag.split('-').every(function (p) { return !!fset[singularizeToken(p)]; });
+      var wordHit = e.words.some(function (w) { return !!fset[singularizeToken(w)]; }) ||
+        (e.folderWords || []).some(function (w) { return !!fset[singularizeToken(w)]; });
+      if (nameHit || wordHit) out.push(e.tag);
+    });
+    return out;
+  }
+  function tagsIntersect(a, b) { return a.some(function (t) { return b.indexOf(t) !== -1; }); }
+  /* Folders that exist for tag purposes: the saved list plus any
+   * name a backend row introduced (folderStats' set), never the
+   * system folder. */
+  function existingFolderNames() {
+    return D.folderStats().map(function (s) { return s.name; }).filter(function (n) { return n !== D.UNCAT; });
+  }
+  /* Display membership (v44): a folder's grid shows its primary
+   * items PLUS anything whose tags the folder claims. Primary
+   * categories are never rewritten by this — it is a read rule.
+   * The Uncategorized grid is the true residue (uncatItems). */
+  function folderDisplayItems(folderName) {
+    if (folderName === D.UNCAT) return uncatItems();
+    var ft = folderTags(folderName);
+    return D.getItems().filter(function (i) {
+      if (itemCategory(i) === folderName) return true;
+      return !!ft.length && tagsIntersect(computeTags(i), ft);
+    });
+  }
+  /* folderStats with DISPLAY counts (same names/order/shape), so
+   * the numbers a user reads — jump list, folder sheet — match the
+   * grid they are about to open. */
+  function folderDisplayStats() {
+    return D.folderStats().map(function (s) {
+      var mine = folderDisplayItems(s.name);
+      return {
+        name: s.name, icon: s.icon, system: s.system,
+        count: mine.length,
+        units: mine.reduce(function (sum, i) { return sum + i.qty; }, 0)
+      };
+    }).filter(function (s) { return !s.system || s.count > 0; });
+  }
+  /* ---------- Auto-file by tags (v44) ----------
+   * After data loads (and after a folder is created or renamed),
+   * an unfiled item whose tags are claimed by EXACTLY ONE folder is
+   * filed there through D.setCategory — the ordinary funnel, so
+   * the move syncs like any hand filing — and the whole pass is
+   * announced with ONE undo toast, Auto-sort style. An id is
+   * auto-filed at most once EVER: ids persist in localStorage
+   * 'et-tag-autofiled', and a manual un-filing (folder rail, an
+   * undo) burns the id too, so the app never fights the user for
+   * an item. Two-or-more folder claims stay display-only. */
+  var TAG_AUTOFILE_KEY = 'et-tag-autofiled';
+  function tagAutofiledIds() {
+    try { var v = JSON.parse(window.localStorage.getItem(TAG_AUTOFILE_KEY) || '[]'); return Array.isArray(v) ? v : []; }
+    catch (e) { return []; }
+  }
+  function tagAutofileMark(ids) {
+    if (!ids.length) return;
+    var cur = tagAutofiledIds(), seen = {};
+    cur.forEach(function (id) { seen[id] = 1; });
+    ids.forEach(function (id) { if (!seen[id]) { cur.push(id); seen[id] = 1; } });
+    try { window.localStorage.setItem(TAG_AUTOFILE_KEY, JSON.stringify(cur)); } catch (e) { /* storage blocked */ }
+  }
+  function noteManualUnfile(id) { if (id) tagAutofileMark([id]); }
+  function autoFileByTags() {
+    if (editingOpen()) return 0;   // never under an open sheet — the refresh gate's rule
+    var folders = existingFolderNames();
+    if (!folders.length) return 0;
+    var burned = {};
+    tagAutofiledIds().forEach(function (id) { burned[id] = 1; });
+    var claim = {};
+    folders.forEach(function (f) { claim[f] = folderTags(f); });
+    var plan = [];
+    D.getItems().forEach(function (it) {
+      if (itemCategory(it) !== D.UNCAT || burned[it.id]) return;
+      var tags = computeTags(it);
+      if (!tags.length) return;
+      var matches = folders.filter(function (f) { return tagsIntersect(tags, claim[f]); });
+      if (matches.length === 1) plan.push({ id: it.id, folder: matches[0] });
+    });
+    if (!plan.length) return 0;
+    tagAutofileMark(plan.map(function (p) { return p.id; }));
+    plan.forEach(function (p) { D.setCategory(p.id, p.folder); });
+    renderHome(); refreshChrome();
+    showUndoToast('Filed ' + plan.length + ' item' + (plan.length === 1 ? '' : 's') + ' by their tags', function () {
+      plan.forEach(function (p) { D.setCategory(p.id, D.UNCAT); });
+      renderHome(); refreshChrome();
+    });
+    return plan.length;
+  }
+  /* Test/debug surface (same idiom as ETUpload / ETPhotoView). */
+  window.ETTags = {
+    computeTags: computeTags,
+    folderTags: folderTags,
+    uncatItems: uncatItems,
+    suggestCategory: suggestCategory,
+    folderDisplayItems: folderDisplayItems,
+    folderDisplayStats: folderDisplayStats,
+    autoFileByTags: autoFileByTags,
+    autofiledIds: tagAutofiledIds
+  };
+
   $('fsRemoveBtn').addEventListener('click', function () {
     if (!folderSheetName) return;
     var name = folderSheetName;
@@ -1029,15 +1254,46 @@
     if (!item) return null;
     var known = {};
     D.getCategories().forEach(function (c) { known[c.name] = true; });
-    var hay = (' ' + (item.name || '') + ' ' + (item.sku || '') + ' ').toLowerCase();
+    /* v44: the tag vote runs first — when exactly one folder
+     * claims the item's tags by name, that IS the suggestion
+     * (this is what files a resistor into a folder the user named
+     * "Resistors/ diodes/ capacitors"). */
+    var tags = computeTags(item);
+    if (tags.length) {
+      var claim = D.getCategories().filter(function (c) {
+        return tagsIntersect(tags, folderTags(c.name));
+      });
+      if (claim.length === 1) return claim[0].name;
+    }
+    /* The rule table, now matched on TOKENS: a rule word must be a
+     * whole token (or a contiguous phrase) in the item's tokens —
+     * 'lamp' no longer matches inside "Clamps". Order and the
+     * first-hit-decides rule are unchanged. */
+    var toks = tagTokens((item.name || '') + ' ' + (item.sku || ''));
+    var tset = {};
+    toks.forEach(function (t) { tset[t] = 1; });
     for (var r = 0; r < SUGGEST_RULES.length; r++) {
-      if (hay.indexOf(SUGGEST_RULES[r][0]) !== -1) return known[SUGGEST_RULES[r][1]] ? SUGGEST_RULES[r][1] : null;
+      var rk = tagTokens(SUGGEST_RULES[r][0]);
+      var hit = rk.length === 1 ? !!tset[rk[0]] : phraseInTokens(toks, rk);
+      if (hit) return known[SUGGEST_RULES[r][1]] ? SUGGEST_RULES[r][1] : null;
     }
     var byIcon = ICON_FOLDER[iconKeyFor(item)];
     return (byIcon && known[byIcon]) ? byIcon : null;
   }
+  /* Uncategorized (v44) = the true residue: no primary folder AND
+   * no tag home in any existing folder. Tag-homed items display in
+   * their folders and are auto-filed once (autoFileByTags), so what
+   * remains here is what genuinely needs a human. */
   function uncatItems() {
-    return D.getItems().filter(function (i) { return itemCategory(i) === D.UNCAT; });
+    var folders = existingFolderNames();
+    var claim = {};
+    folders.forEach(function (f) { claim[f] = folderTags(f); });
+    return D.getItems().filter(function (i) {
+      if (itemCategory(i) !== D.UNCAT) return false;
+      var tags = computeTags(i);
+      if (!tags.length) return true;
+      return !folders.some(function (f) { return tagsIntersect(tags, claim[f]); });
+    });
   }
   /* Auto-sort and Sort Mode are launched from their Settings
    * cards (v39) — see renderSortCounts / the Settings wiring near
@@ -1091,7 +1347,10 @@
      * setCategory calls queue their own edit ops, which land on the
      * backend as the items' original Category values. */
     showUndoToast('Filed ' + picks.length + ' item' + (picks.length === 1 ? '' : 's'), function () {
-      picks.forEach(function (p) { D.setCategory(p.id, prev[p.id]); });
+      picks.forEach(function (p) {
+        D.setCategory(p.id, prev[p.id]);
+        if (prev[p.id] === D.UNCAT) noteManualUnfile(p.id);   // an undo is a decision — tags must not re-file it
+      });
       renderHome(); refreshChrome();
     });
   });
@@ -1235,6 +1494,7 @@
     $('dBinChip').textContent = locShort(item);
     $('dBinChip').setAttribute('aria-label', locLong(item) + ' — see everything at this location');
     renderPartLookup(item);
+    renderItemTags(item);
     renderFolderRail(item);
     renderOrphanNotice();
     $('dCost').textContent = money(item.cost) + ' each';
@@ -1256,6 +1516,16 @@
     pill.textContent = qtyLabel(item.qty);
     $('dCost').textContent = money(item.cost) + ' each';
     $('dUpdated').textContent = 'Last updated ' + fmtTime(item.updated) + (navigator.onLine ? '' : ' · queued (offline)');
+  }
+  /* Computed tags on the item sheet (v44): read-only chips under
+   * the description line — they explain themselves by matching the
+   * folders the item shows up in. */
+  function renderItemTags(item) {
+    var block = $('dTagsBlock');
+    if (!block) return;
+    var tags = computeTags(item);
+    block.classList.toggle('hidden', !tags.length);
+    $('dTags').innerHTML = tags.map(function (t) { return '<span class="tag-chip">' + esc(t) + '</span>'; }).join('');
   }
   function closeItem() { $('itemOverlay').classList.add('hidden'); currentItemId = null; renderHome({ preserveOrder: true }); }
   $('closeDetail').addEventListener('click', closeItem);
@@ -1362,6 +1632,7 @@
         if (!it) { syncFolderRailChrome(); return; }
         if (itemCategory(it) === name) { renderFolderRail(it); return; }
         D.setCategory(currentItemId, name);
+        if (name === D.UNCAT) noteManualUnfile(currentItemId);   // a hand un-filing stands — tags never re-file it
         renderFolderRail(D.getItem(currentItemId));
         refreshChrome();
         toast('Filed in ' + name);
@@ -3386,6 +3657,7 @@
         renderHome(); refreshChrome();
         if (currentShelf !== null && !$('shelfOverlay').classList.contains('hidden')) renderShelf();
         if ($('view-sync').classList.contains('active')) renderSync();
+        autoFileByTags();   // v44: a merge can land newly tag-homed items
       }
     });
   }
@@ -3573,7 +3845,7 @@
     out.textContent = 'Connecting…'; out.className = 'result';
     D.testConnection().then(function (r) {
       out.textContent = r.message; out.className = 'result ' + (r.ok ? 'ok' : 'err');
-      if (r.ok) { renderHome(); refreshChrome(); }
+      if (r.ok) { renderHome(); refreshChrome(); autoFileByTags(); }
       renderSync();
     });
   });
@@ -3596,6 +3868,7 @@
       syncLastRefresh = Date.now();   // the load pull counts as a refresh for the poll
       renderHome(); renderSync(); refreshChrome();
       if (currentShelf !== null && !$('shelfOverlay').classList.contains('hidden')) renderShelf();
+      autoFileByTags();   // v44: file what the import just homed
       openFromUrl();   // a sticker link whose item only just arrived
     }
   });
@@ -3603,6 +3876,7 @@
    * load — the manual Sync button is the fallback, not the routine. */
   scheduleAutoFlush(1500);
   checkAppVersion(false);   // v42: one version check on open (throttled, silent)
+  autoFileByTags();   // v44: one pass over the loaded book (local mode's load IS this data; sheet mode re-runs it after the import merge above)
   fitSticky();
   openFromUrl();
 })();

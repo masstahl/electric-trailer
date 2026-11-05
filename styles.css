@@ -1,4 +1,6 @@
-/* Electric Trailer — styles. System fonts only: fast + works offline.
+/* Electric Trailer — styles. System fonts for text: fast + works offline
+ * (v44 adds ONE optional display serif for big figures, loaded as a
+ * progressive enhancement with Georgia/serif fallback — see index.html).
  * All colors come from CSS custom properties. The active theme is set as
  * <html data-theme="..."> (see the THEME blocks below + app.js / index.html
  * head script, localStorage key 'et-theme'). Components must only use the
@@ -6,6 +8,10 @@
 
 :root{
   --radius:20px;
+  /* Big-figure face (item quantity, stats numerals). The default is
+   * the app's own sans stack — every theme renders exactly as before
+   * unless the theme opts into the display serif (Milwaukee, v44). */
+  --font-display:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
   --bw:1px;                    /* border width (Hi-Vis bumps this up) */
   --card-shadow:0 1px 3px rgba(15,23,42,.08);
   --glow:none;
@@ -120,6 +126,19 @@
   --tabbar-bg:#161617; --tabbar-text:#a3a3a3; --tabbar-active:#ff3b47;
   --input-bg:#242426; --overlay:rgba(0,0,0,.72);
   --badge-bg:#242426; --badge-text:#fda4af; --badge-border:#db011c;
+  /* v44 Milwaukee Glass: the shared glass recipe pushed to the
+   * mock-up's softness — a deep red-charcoal tint at half opacity,
+   * a 40px frost, a milky rose sheen and a rose edge. The dock, the
+   * sticky search block, the shelf jump bar and the locate caption
+   * all read these tokens, so the whole chrome turns to red glass
+   * at once; the item sheet's glass panel uses the same recipe. */
+  --glass-fill:rgba(46,13,20,.50);
+  --glass-sheen:linear-gradient(180deg,rgba(255,235,238,.34),rgba(255,255,255,.10) 55%,rgba(255,255,255,.04));
+  --glass-filter:blur(40px) saturate(1.75);
+  --glass-border:rgba(255,120,130,.38);
+  --glass-shadow:inset 0 1px 0 rgba(255,255,255,.5),inset 0 -1px 0 rgba(255,255,255,.10),0 12px 36px rgba(0,0,0,.45);
+  --radius:24px;
+  --font-display:'Cormorant Garamond',Georgia,'Times New Roman',serif;
   --card-shadow:0 1px 6px rgba(0,0,0,.5);
   --glow:0 0 16px rgba(219,1,28,.45);
   --ok-bg:#052e1b; --ok-text:#4ade80;
@@ -909,3 +928,66 @@ main{max-width:960px;margin:0 auto;padding:1rem}
 .pv-stage{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;overflow:hidden;touch-action:none}
 .pv-img{max-width:100%;max-height:100%;width:auto;height:auto;user-select:none;-webkit-user-select:none;-webkit-touch-callout:none}
 #dIcon .plate-img{cursor:zoom-in}
+
+/* ---------- Milwaukee Glass (v44) ----------
+ * Presentation only: nothing here moves, renames or hides a control.
+ * The reskin rides the shared glass tokens (above, Milwaukee block)
+ * plus the item sheet's new overlap structure: the photo hero runs
+ * full-bleed across the top and the content sits in a glass panel
+ * pulled UP over the hero's bottom edge — the Leafora / Farm
+ * Service signature. Other themes keep the opaque panel; only
+ * Milwaukee turns it to red glass and puts the serif on the big
+ * figures. */
+[data-theme="milwaukee"] body{
+  background-image:
+    radial-gradient(120% 55% at 50% -8%,rgba(219,1,28,.17),transparent 60%),
+    radial-gradient(90% 45% at 50% 112%,rgba(219,1,28,.10),transparent 60%);
+}
+[data-theme="milwaukee"] .card,
+[data-theme="milwaukee"] .list-item,
+[data-theme="milwaukee"] .photo-card{
+  background-color:var(--glass-fill);background-image:var(--glass-sheen);
+  -webkit-backdrop-filter:var(--glass-filter);backdrop-filter:var(--glass-filter);
+  border-color:var(--glass-border);box-shadow:var(--glass-shadow);
+}
+/* Folder tabs keep their silhouette; the glass frosts behind them. */
+[data-theme="milwaukee"] .ftab{-webkit-backdrop-filter:blur(14px) saturate(1.6);backdrop-filter:blur(14px) saturate(1.6)}
+/* Big figures in the display face (serif under Milwaukee via
+ * --font-display; the other themes keep the sans stack). */
+.qty-display span{font-family:var(--font-display)}
+.stat strong{font-family:var(--font-display)}
+[data-theme="milwaukee"] .qty-display span{font-size:3.5rem;font-weight:600}
+[data-theme="milwaukee"] .stat strong{font-size:1.3rem;font-weight:600}
+/* Item sheet: hero full-bleed, content in the overlapping panel. */
+.item-sheet{padding:0}
+.item-sheet .sheet-hero{border-radius:26px 26px 0 0;margin-bottom:0}
+.item-sheet .close-btn{z-index:4}
+.sheet-glass{
+  position:relative;margin:-30px .65rem .65rem;padding:1rem 1rem 1.15rem;
+  border-radius:24px;background:var(--surface);
+  border:var(--bw) solid var(--border);box-shadow:var(--card-shadow);
+}
+.item-sheet .sheet-footer{
+  bottom:-1.15rem;margin:.9rem -1rem -1.15rem;
+  padding:.7rem 1rem calc(.9rem + env(safe-area-inset-bottom));
+  border-radius:0 0 24px 24px;background:var(--surface);
+}
+[data-theme="milwaukee"] .item-sheet{background:linear-gradient(180deg,#1a1116,#100d0f)}
+[data-theme="milwaukee"] .sheet-glass{
+  background-color:rgba(46,13,20,.55);
+  background-image:linear-gradient(180deg,rgba(255,235,238,.16),rgba(255,255,255,.045) 45%,rgba(255,255,255,.02));
+  -webkit-backdrop-filter:blur(40px) saturate(1.75);backdrop-filter:blur(40px) saturate(1.75);
+  border-color:rgba(255,120,130,.35);
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.35),0 18px 44px rgba(0,0,0,.55);
+}
+[data-theme="milwaukee"] .item-sheet .sheet-footer{background:rgba(46,13,20,.94);border-top-color:rgba(255,120,130,.28)}
+[data-theme="milwaukee"] .item-sheet .close-btn{
+  background:rgba(18,7,10,.74);color:#fff;border:1px solid rgba(255,255,255,.28);
+  -webkit-backdrop-filter:blur(12px);backdrop-filter:blur(12px);
+}
+/* Item tags (v44): computed chips under the description line, in
+ * the FOLDER row's caption style. Read-only — display only. */
+.d-tags{display:flex;gap:.55rem;align-items:flex-start;margin:.3rem 0 .15rem}
+.d-tags-label{font-size:.78rem;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;padding-top:.24rem;flex:none}
+.d-tags-chips{display:flex;flex-wrap:wrap;gap:.35rem;min-width:0}
+.tag-chip{font-size:.74rem;font-weight:700;line-height:1.5;padding:.1rem .55rem;border-radius:999px;background:var(--surface2);border:var(--bw) solid var(--border);color:var(--text);white-space:nowrap}

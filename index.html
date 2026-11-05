@@ -25,6 +25,13 @@
 </script>
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="stylesheet" href="styles.css">
+<!-- v44 display serif for big figures: progressive enhancement only —
+     the stylesheet falls back to Georgia/serif (then the sans stack)
+     whenever this has not loaded or the device is offline. -->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@500;600;700&display=swap" rel="stylesheet" media="print" onload="this.media='all'">
+<noscript><link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@500;600;700&display=swap" rel="stylesheet"></noscript>
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Crect width='24' height='24' fill='%23141414'/%3E%3Cpath d='M13.2 2.2 L4.8 13.6 H10.8 L9.2 21.8 L19.2 9.6 H12.8 Z' fill='%23db011c'/%3E%3C/svg%3E">
 </head>
 <body>
@@ -263,7 +270,7 @@
       <div class="kv"><span>Pending queue</span><strong id="healthQueue">–</strong></div>
       <div class="kv"><span>Last sync</span><strong id="healthLastSync">never</strong></div>
       <div class="kv"><span>Last error</span><strong id="healthError" class="error-text">none</strong></div>
-      <div class="kv"><span>App version</span><strong id="appVersionVal">v42</strong></div>
+      <div class="kv"><span>App version</span><strong id="appVersionVal">v44</strong></div>
       <button type="button" id="checkUpdateBtn" class="btn">Check for update</button>
     </div>
     <!-- Not in the sheet: shown only while flagged items exist (renderOrphans) -->
@@ -290,11 +297,13 @@
 
 <!-- ============ ITEM DETAIL · #02 NFC Tap-to-Open ============ -->
 <div id="itemOverlay" class="overlay hidden" role="dialog" aria-modal="true">
-  <div class="sheet">
+  <div class="sheet item-sheet">
     <button id="closeDetail" class="close-btn" aria-label="Close">✕</button>
     <div class="sheet-hero" id="dHero"><span class="detail-icon" id="dIcon"></span><button type="button" id="dPhotoEditBtn" class="pill-btn photo-edit-btn">Edit photo</button></div>
+    <div class="sheet-glass">
     <h2 id="dName">Item</h2>
     <p class="muted" id="dMeta">SKU · Bin · Supplier</p>
+    <div class="d-tags hidden" id="dTagsBlock"><span class="d-tags-label">Tags</span><span class="d-tags-chips" id="dTags"></span></div>
     <div class="sheet-chips">
       <button type="button" class="bin-chip" id="dBinChip" title="See everything at this location">A · L2 · P1</button>
       <span class="qty-pill qty-ok" id="dStatus">0 in stock</span>
@@ -341,6 +350,7 @@
     <p id="dWriteStatus" class="write-status hidden"><span id="dWriteStatusText"></span><button type="button" id="dWriteCancel" class="pill-btn">Cancel</button></p>
     <div class="sheet-footer">
       <button type="button" id="doneDetail" class="btn btn-primary btn-big">Done</button>
+    </div>
     </div>
   </div>
 </div>
