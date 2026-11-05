@@ -691,8 +691,12 @@ main{max-width:960px;margin:0 auto;padding:1rem}
   background:#fff;border-radius:16px;height:180px;position:relative;overflow:hidden;
   display:flex;align-items:center;justify-content:center;margin-bottom:.8rem;
 }
-/* Real item photos (backend Photo column) cover the white plate */
-.sheet-hero .plate-img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
+/* Real item photos (backend Photo column) are framed WHOLE on the
+ * white plate — contain, never cropped, with breathing room — so the
+ * whole part is always visible (v43). This one rule covers the item
+ * hero, the photo-editor preview and the count/shelf heroes, which
+ * all share .sheet-hero. */
+.sheet-hero .plate-img{position:absolute;inset:0;width:100%;height:100%;object-fit:contain;padding:10px;box-sizing:border-box}
 /* Edit-photo pill rides the hero's corner, above the photo */
 .photo-edit-btn{position:absolute;right:.6rem;bottom:.6rem;z-index:2;min-height:40px;padding:.25rem .95rem;font-size:.8rem}
 /* Photo editor stacks above the item sheet it was opened from (like NFC tools) */
@@ -831,17 +835,20 @@ main{max-width:960px;margin:0 auto;padding:1rem}
   display:flex;align-items:center;justify-content:center;width:100%;height:44px;margin:0 auto;position:relative;
   /* SPEC PLATE: the plate is WHITE in every theme (same as the item
      sheet's hero plate) — the fallback angular icon inks dark on it,
-     and a real photo covers the whole plate (object-fit:cover below). */
+     and a real photo is framed whole on it (object-fit:contain below). */
   color:#23262b;background:#ffffff;font-size:1rem;line-height:1;
   clip-path:polygon(14% 0,100% 0,100% 86%,86% 100%,0 100%,0 14%);
 }
-/* Photo covers the plate; the icon stays underneath as the fallback */
+/* Photo framed WHOLE on the plate — contain, never cropped (v43);
+ * the icon stays underneath as the fallback */
 .photo-card .pc-icon .plate-img,.list-item .li-icon .plate-img{
-  position:absolute;inset:0;width:100%;height:100%;object-fit:cover;
+  position:absolute;inset:0;width:100%;height:100%;object-fit:contain;padding:3px;box-sizing:border-box;
 }
 .photo-card .pc-icon .icon-svg{width:30px;height:30px}
 .list-item .li-icon{
-  font-size:1rem;color:var(--muted);background:var(--surface2);flex:none;position:relative;
+  /* Same white SPEC PLATE as the cards and hero (v43): white-background
+     product photos blend into it seamlessly under contain framing. */
+  font-size:1rem;color:#23262b;background:#ffffff;flex:none;position:relative;
   width:44px;height:44px;display:inline-flex;align-items:center;justify-content:center;
   clip-path:polygon(22% 0,100% 0,100% 78%,78% 100%,0 100%,0 22%);
 }
@@ -892,3 +899,13 @@ main{max-width:960px;margin:0 auto;padding:1rem}
 .uppy-Dashboard-progress,.uppy-StatusBar-progress{background:#DB011C}
 .uppy-Dashboard-Item-progress{background:rgba(219,1,28,.85)}
 .uppy-Dashboard-browse{color:#ff5b6a}
+
+/* ---------- Photo viewer (v43): full-screen look at one photo.
+ * Opens framed WHOLE at 1x (contain, centered on a near-black
+ * backdrop); pinch / double-tap / wheel zoom to 4x and drag panning
+ * are for detail. The stage swallows every touch (touch-action:none)
+ * so the sheet behind never scrolls or zooms while viewing. */
+.photo-viewer{background:rgba(0,0,0,.95);z-index:65}
+.pv-stage{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;overflow:hidden;touch-action:none}
+.pv-img{max-width:100%;max-height:100%;width:auto;height:auto;user-select:none;-webkit-user-select:none;-webkit-touch-callout:none}
+#dIcon .plate-img{cursor:zoom-in}

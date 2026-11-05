@@ -13,7 +13,7 @@
   var $ = function (id) { return document.getElementById(id); };
   /* The build this code IS (v42): version.json on the server carries
    * the newest build's number; the checker below compares the two. */
-  var APP_VERSION = 42;
+  var APP_VERSION = 43;
   var AISLES = ['A', 'B', 'C', 'D'];
   var BINS = [];
   AISLES.forEach(function (a) { for (var i = 1; i <= 6; i++) BINS.push(a + i); });
@@ -2573,6 +2573,163 @@
   $('peSave').addEventListener('click', savePhotoEditor);
   $('peRemove').addEventListener('click', function () { if (photoEditId) applyPhoto(photoEditId, ''); });
 
+  /* ---------- Photo viewer: tap-to-zoom (v43) ----------
+   * Tapping the item sheet's hero photo opens it full-screen, framed
+   * WHOLE at 1x like everywhere else in the app (the Part-1 contain
+   * rule) — zoom is for detail only: pinch (Pointer Events, two
+   * tracked pointers) or wheel up to 4x, double-tap toggles 1x ↔
+   * 2.5x about the tap point, drag pans while zoomed with the pan
+   * clamped so the photo can't be flung off-screen. The transform
+   * fully resets on open and on close, so every open starts framed
+   * whole. The Edit photo pill keeps its own job; only a tap on the
+   * hero image itself opens the viewer, and there is no viewer
+   * inside the photo editor. */
+  var PV_MAX = 4, PV_DBL = 2.5;
+  var pv = { scale: 1, tx: 0, ty: 0, pointers: new Map(), pinch: null, panAnchor: null, moved: false, lastTap: 0, lastTapX: 0, lastTapY: 0 };
+  function pvApply() {
+    $('pvImg').style.transform = 'translate(' + pv.tx + 'px, ' + pv.ty + 'px) scale(' + pv.scale + ')';
+  }
+  function pvReset() {
+    pv.scale = 1; pv.tx = 0; pv.ty = 0;
+    pv.pointers.clear(); pv.pinch = null; pv.panAnchor = null; pv.moved = false; pv.lastTap = 0;
+    pvApply();
+  }
+  /* The photo's on-screen size at 1x: the stage box contain-fits the
+   * image's natural size (.pv-img max-width/max-height do the same
+   * in CSS). Pan clamps derive from it: at scale s the photo may
+   * drift at most (displayed*s − stage)/2 on each axis. */
+  function pvFit() {
+    var st = $('pvStage'), img = $('pvImg');
+    var sw = st.clientWidth || 0, sh = st.clientHeight || 0;
+    var nw = img.naturalWidth || 0, nh = img.naturalHeight || 0;
+    if (!sw || !sh || !nw || !nh) return { w: sw, h: sh, sw: sw, sh: sh };
+    var k = Math.min(sw / nw, sh / nh);
+    return { w: nw * k, h: nh * k, sw: sw, sh: sh };
+  }
+  function pvClamp() {
+    var f = pvFit();
+    var mx = Math.max(0, (f.w * pv.scale - f.sw) / 2);
+    var my = Math.max(0, (f.h * pv.scale - f.sh) / 2);
+    pv.tx = Math.min(mx, Math.max(-mx, pv.tx));
+    pv.ty = Math.min(my, Math.max(-my, pv.ty));
+  }
+  /* Zoom to `next` keeping the stage point (cx, cy) over the same
+   * spot of the photo. Transform origin is the stage centre, so all
+   * math runs centre-relative. */
+  function pvZoomAt(cx, cy, next) {
+    var r = $('pvStage').getBoundingClientRect();
+    var px = cx - (r.left + r.width / 2), py = cy - (r.top + r.height / 2);
+    var s0 = pv.scale, s1 = Math.min(PV_MAX, Math.max(1, next));
+    if (s1 !== s0) {
+      pv.tx = px - (px - pv.tx) * (s1 / s0);
+      pv.ty = py - (py - pv.ty) * (s1 / s0);
+      pv.scale = s1;
+      if (s1 === 1) { pv.tx = 0; pv.ty = 0; }
+    }
+    pvClamp(); pvApply();
+  }
+  function openPhotoView(src) {
+    if (!src) return;
+    pvReset();
+    $('pvImg').src = src;
+    $('photoViewOverlay').classList.remove('hidden');
+  }
+  function closePhotoView() {
+    $('photoViewOverlay').classList.add('hidden');
+    pvReset();
+    $('pvImg').removeAttribute('src');
+  }
+  function pvTap(e) {
+    var now = Date.now();
+    var isDbl = now - pv.lastTap < 320 && Math.hypot(e.clientX - pv.lastTapX, e.clientY - pv.lastTapY) < 48;
+    pv.lastTap = now; pv.lastTapX = e.clientX; pv.lastTapY = e.clientY;
+    if (isDbl) {
+      pv.lastTap = 0;
+      if (pv.scale > 1) pvReset(); else pvZoomAt(e.clientX, e.clientY, PV_DBL);
+      return;
+    }
+    if (pv.scale !== 1) return;
+    /* Single tap: closes only when it lands on the backdrop — outside
+     * the photo's own rect (at 1x the rect is the untransformed box).
+     * The close waits out the double-tap window so a double-tap that
+     * starts on the backdrop zooms instead of closing. */
+    var ir = $('pvImg').getBoundingClientRect();
+    if (e.clientX >= ir.left && e.clientX <= ir.right && e.clientY >= ir.top && e.clientY <= ir.bottom) return;
+    var stamp = now;
+    setTimeout(function () {
+      if (pv.lastTap === stamp && pv.scale === 1 && !$('photoViewOverlay').classList.contains('hidden')) closePhotoView();
+    }, 330);
+  }
+  $('pvStage').addEventListener('pointerdown', function (e) {
+    e.preventDefault();
+    try { $('pvStage').setPointerCapture(e.pointerId); } catch (err) { /* capture is a bonus; bubbling still reaches the stage */ }
+    pv.pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    if (pv.pointers.size >= 2) {
+      pv.moved = true;   // a two-finger contact is a pinch, never a tap
+      var pts = Array.from(pv.pointers.values());
+      pv.pinch = { d: Math.hypot(pts[0].x - pts[1].x, pts[0].y - pts[1].y), s: pv.scale, mx: (pts[0].x + pts[1].x) / 2, my: (pts[0].y + pts[1].y) / 2 };
+      pv.panAnchor = null;
+    } else {
+      pv.moved = false;
+      pv.panAnchor = { x: e.clientX, y: e.clientY, tx: pv.tx, ty: pv.ty };
+      pv.pinch = null;
+    }
+  });
+  $('pvStage').addEventListener('pointermove', function (e) {
+    if (!pv.pointers.has(e.pointerId)) return;
+    pv.pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    if (pv.pointers.size >= 2 && pv.pinch) {
+      var pts = Array.from(pv.pointers.values());
+      var d = Math.hypot(pts[0].x - pts[1].x, pts[0].y - pts[1].y);
+      var mx = (pts[0].x + pts[1].x) / 2, my = (pts[0].y + pts[1].y) / 2;
+      if (pv.pinch.d > 0) {
+        pv.tx += mx - pv.pinch.mx; pv.ty += my - pv.pinch.my;   // two-finger drag pans too
+        pvZoomAt(mx, my, pv.pinch.s * d / pv.pinch.d);
+        pv.pinch.mx = mx; pv.pinch.my = my;
+      }
+      pv.moved = true;
+    } else if (pv.pointers.size === 1 && pv.panAnchor && pv.scale > 1) {
+      var dx = e.clientX - pv.panAnchor.x, dy = e.clientY - pv.panAnchor.y;
+      if (Math.abs(dx) + Math.abs(dy) > 2) pv.moved = true;
+      pv.tx = pv.panAnchor.tx + dx; pv.ty = pv.panAnchor.ty + dy;
+      pvClamp(); pvApply();
+    }
+  });
+  function pvPointerEnd(e) {
+    var wasMulti = pv.pointers.size >= 2;
+    pv.pointers.delete(e.pointerId);
+    if (pv.pointers.size < 2) pv.pinch = null;
+    if (pv.pointers.size === 1) {
+      var p = Array.from(pv.pointers.values())[0];
+      pv.panAnchor = { x: p.x, y: p.y, tx: pv.tx, ty: pv.ty };   // re-anchor: the remaining finger must not jump the photo
+    } else if (pv.pointers.size === 0) {
+      pv.panAnchor = null;
+      if (!wasMulti && !pv.moved) pvTap(e);
+    }
+  }
+  $('pvStage').addEventListener('pointerup', pvPointerEnd);
+  $('pvStage').addEventListener('pointercancel', pvPointerEnd);
+  $('pvStage').addEventListener('wheel', function (e) {
+    e.preventDefault();
+    pvZoomAt(e.clientX, e.clientY, pv.scale * (e.deltaY < 0 ? 1.15 : 1 / 1.15));
+  }, { passive: false });
+  $('pvClose').addEventListener('click', closePhotoView);
+  /* The hero image itself is the tap target; the Edit photo pill
+   * inside the same hero keeps opening the editor. */
+  $('dHero').addEventListener('click', function (e) {
+    if (!e.target.classList || !e.target.classList.contains('plate-img')) return;
+    var item = currentItemId ? D.getItem(currentItemId) : null;
+    if (item && item.photo) openPhotoView(item.photo);
+  });
+  /* Test/debug surface (same idiom as ETUpload.debug): lets the
+   * harness drive and read the viewer without reaching into scope. */
+  window.ETPhotoView = {
+    open: openPhotoView, close: closePhotoView,
+    state: function () {
+      return { open: !$('photoViewOverlay').classList.contains('hidden'), scale: pv.scale, tx: pv.tx, ty: pv.ty, transform: $('pvImg').style.transform, src: $('pvImg').getAttribute('src') };
+    }
+  };
+
   /* ---------- Item photo upload (Uppy) ----------
    * The photo editor's "Upload a photo" — the gap the link-only
    * editor (above) left on purpose, because a photo taken on the
@@ -3101,7 +3258,7 @@
   }
   D.onQueueChange(function () { scheduleAutoFlush(); });
 
-  var EDIT_OVERLAYS = ['itemOverlay', 'binOverlay', 'countOverlay', 'shelfOverlay', 'orgOverlay', 'orgPickOverlay', 'nfcOverlay', 'qtyEditOverlay', 'autoSortOverlay', 'sortOverlay', 'folderSheetOverlay', 'folderRemoveOverlay', 'supClearOverlay', 'supRenameOverlay', 'supplierOverlay', 'orphanRemoveOverlay', 'photoEditOverlay'];
+  var EDIT_OVERLAYS = ['itemOverlay', 'binOverlay', 'countOverlay', 'shelfOverlay', 'orgOverlay', 'orgPickOverlay', 'nfcOverlay', 'qtyEditOverlay', 'autoSortOverlay', 'sortOverlay', 'folderSheetOverlay', 'folderRemoveOverlay', 'supClearOverlay', 'supRenameOverlay', 'supplierOverlay', 'orphanRemoveOverlay', 'photoEditOverlay', 'photoViewOverlay'];
   function editingOpen() {
     for (var i = 0; i < EDIT_OVERLAYS.length; i++) {
       var o = $(EDIT_OVERLAYS[i]);

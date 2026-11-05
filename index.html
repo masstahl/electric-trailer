@@ -292,7 +292,7 @@
 <div id="itemOverlay" class="overlay hidden" role="dialog" aria-modal="true">
   <div class="sheet">
     <button id="closeDetail" class="close-btn" aria-label="Close">✕</button>
-    <div class="sheet-hero"><span class="detail-icon" id="dIcon"></span><button type="button" id="dPhotoEditBtn" class="pill-btn photo-edit-btn">Edit photo</button></div>
+    <div class="sheet-hero" id="dHero"><span class="detail-icon" id="dIcon"></span><button type="button" id="dPhotoEditBtn" class="pill-btn photo-edit-btn">Edit photo</button></div>
     <h2 id="dName">Item</h2>
     <p class="muted" id="dMeta">SKU · Bin · Supplier</p>
     <div class="sheet-chips">
@@ -361,6 +361,14 @@
     <button type="button" id="peRemove" class="btn btn-big">Remove photo</button>
     <button type="button" id="peCancel" class="btn btn-big">Cancel</button>
   </div>
+</div>
+
+<!-- ============ PHOTO VIEWER · tap the item photo: pinch / double-tap zoom (v43) ============ -->
+<div id="photoViewOverlay" class="overlay photo-viewer hidden" role="dialog" aria-modal="true">
+  <div class="pv-stage" id="pvStage">
+    <img id="pvImg" class="pv-img" alt="" draggable="false">
+  </div>
+  <button type="button" id="pvClose" class="close-btn" aria-label="Close">✕</button>
 </div>
 
 <!-- ============ BIN SHEET · bin contents over the map ============ -->
