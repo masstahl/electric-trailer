@@ -1,6 +1,7 @@
 /* Electric Trailer — styles. System fonts for text: fast + works offline
- * (v44 adds ONE optional display serif for big figures, loaded as a
- * progressive enhancement with Georgia/serif fallback — see index.html).
+ * (ONE optional display serif for names and titles — never numerals —
+ * loaded as a progressive enhancement with Georgia/serif fallback,
+ * see index.html; v45).
  * All colors come from CSS custom properties. The active theme is set as
  * <html data-theme="..."> (see the THEME blocks below + app.js / index.html
  * head script, localStorage key 'et-theme'). Components must only use the
@@ -126,17 +127,18 @@
   --tabbar-bg:#161617; --tabbar-text:#a3a3a3; --tabbar-active:#ff3b47;
   --input-bg:#242426; --overlay:rgba(0,0,0,.72);
   --badge-bg:#242426; --badge-text:#fda4af; --badge-border:#db011c;
-  /* v44 Milwaukee Glass: the shared glass recipe pushed to the
-   * mock-up's softness — a deep red-charcoal tint at half opacity,
-   * a 40px frost, a milky rose sheen and a rose edge. The dock, the
-   * sticky search block, the shelf jump bar and the locate caption
-   * all read these tokens, so the whole chrome turns to red glass
-   * at once; the item sheet's glass panel uses the same recipe. */
-  --glass-fill:rgba(46,13,20,.50);
+  /* v45 Milwaukee Glass: the shared glass recipe at TEXT-BEARING
+   * thickness — a deep red-charcoal tint at .84 alpha (the research
+   * band for glass that carries text is .82–.86), a 40px frost at
+   * 1.75 saturation, a milky rose sheen and a rose edge. The dock,
+   * the grouped home header surface, the shelf jump bar and the
+   * locate caption all read these tokens; the item sheet's panel
+   * uses the same stack (see the v45 section at the end). */
+  --glass-fill:rgba(46,13,20,.84);
   --glass-sheen:linear-gradient(180deg,rgba(255,235,238,.34),rgba(255,255,255,.10) 55%,rgba(255,255,255,.04));
   --glass-filter:blur(40px) saturate(1.75);
   --glass-border:rgba(255,120,130,.38);
-  --glass-shadow:inset 0 1px 0 rgba(255,255,255,.5),inset 0 -1px 0 rgba(255,255,255,.10),0 12px 36px rgba(0,0,0,.45);
+  --glass-shadow:inset 0 1px 0 rgba(255,255,255,.5),inset 0 -1px 0 rgba(255,255,255,.10),0 16px 36px rgba(0,0,0,.45);
   --radius:24px;
   --font-display:'Cormorant Garamond',Georgia,'Times New Roman',serif;
   --card-shadow:0 1px 6px rgba(0,0,0,.5);
@@ -153,7 +155,10 @@ html,body{margin:0;padding:0}
 body{
   font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
   background:var(--bg); color:var(--text);
-  padding-bottom:120px; -webkit-tap-highlight-color:transparent;
+  /* Scroll clearance for the floating dock (v45): dock height 66px +
+     its 10px bottom offset + the safe-area inset + breathing room, so
+     the last row of any view rests clear of the dock. */
+  padding-bottom:calc(112px + env(safe-area-inset-bottom)); -webkit-tap-highlight-color:transparent;
   /* Nothing may widen the page past the viewport: a single overflowing
      element makes mobile browsers widen the layout viewport and paint
      full-width backgrounds (the header) at a fraction of the screen.
@@ -187,25 +192,28 @@ a{color:var(--accent)}
 main{max-width:960px;margin:0 auto;padding:1rem}
 .view{display:none}.view.active{display:block}
 
-/* Sticky header (v32): ONE sticky wrapper under the app header.
-   The frosted-glass panel (heavy-frost --glass-* recipe, shared with
-   the dock) holds ONLY search + stats; the folder tab strip sits
-   UNDERNEATH the panel as its own row on the plain app background. */
+/* Sticky header: ONE sticky wrapper under the app header holding ONE
+   grouped glass surface (v45 recomposition): search + stats + the
+   folder tab strip all live on the single thick-glass panel (the full
+   --glass-* stack, shared with the dock) — proximity groups them as
+   one control cluster, and Home carries exactly one blurred header
+   surface instead of a panel plus a separate strip row. */
 .sticky-head{
   position:sticky;top:calc(var(--header-h) + 6px);z-index:15;
   margin-bottom:.3rem;
 }
 .sticky-search{
-  padding:.4rem .45rem;
+  padding:.5rem .55rem .45rem;
   background:var(--glass-fill);
   background-image:var(--glass-sheen);
   -webkit-backdrop-filter:var(--glass-filter);backdrop-filter:var(--glass-filter);
-  border:var(--bw) solid var(--glass-border);border-radius:26px;
+  border:var(--bw) solid var(--glass-border);border-radius:28px;
   box-shadow:var(--glass-shadow);
 }
-/* The strip's own row below the glass panel — a small gap, no glass.
-   It anchors the folder jump-list panel (v33) that drops from it. */
-.folder-strip{margin-top:.45rem;position:relative}
+/* The strip's row INSIDE the glass panel (v45), an 8–12px step below
+   the stats. It anchors the folder jump-list panel (v33) that drops
+   from it over the grid. */
+.folder-strip{margin-top:.55rem;position:relative}
 .search-wrap input{
   width:100%;font-size:1rem;padding:.5rem .9rem;border-radius:999px;
   border:2px solid var(--border);background:var(--input-bg);color:var(--text);outline:none;
@@ -217,7 +225,7 @@ main{max-width:960px;margin:0 auto;padding:1rem}
   font:inherit;color:inherit;cursor:pointer;border-radius:18px;
 }
 .stat + .stat{border-left:1px solid color-mix(in srgb,var(--border) 60%,transparent)}
-.stat strong{display:block;font-size:.98rem;line-height:1.1}
+.stat strong{display:block;font-size:1.05rem;line-height:1.1;font-variant-numeric:tabular-nums lining-nums}
 .stat span{font-size:.6rem;color:var(--muted);text-transform:uppercase;letter-spacing:.05em}
 .stat.warn strong{color:var(--danger)}
 .stat.active{background:color-mix(in srgb,var(--danger) 18%,transparent);box-shadow:inset 0 0 0 2px var(--danger)}
@@ -281,7 +289,7 @@ main{max-width:960px;margin:0 auto;padding:1rem}
  * family. */
 .folder-jump{
   position:absolute;top:calc(100% + 6px);left:2px;right:2px;z-index:20;
-  padding:.35rem;border-radius:18px;
+  padding:.35rem;border-radius:24px;
   background:
     linear-gradient(180deg,rgba(255,255,255,.14),rgba(255,255,255,0) 42%),
     linear-gradient(158deg,rgba(219,1,28,.30),rgba(143,1,18,.20)),
@@ -328,10 +336,18 @@ main{max-width:960px;margin:0 auto;padding:1rem}
    part code in a nowrap line) could stretch its whole track and push
    the grid past the viewport. min-width:0 on the card lets the
    clamped/ellipsized text lines actually shrink. */
-.photo-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:.55rem}
+/* v45 recomposition: TWO columns (the research grid geometry — bigger
+   photos, glove-friendly cards) and SOLID cards. Glass is rationed to
+   the chrome; a card is content, so it never blurs. The photo sits on
+   a lit "stage": a soft pool of light graded from the card's top (the
+   Farm Service vehicle-stage move) with the white plate dropped onto
+   it on a soft shadow. */
+.photo-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:.7rem}
 .photo-card{
-  background:var(--surface);border:var(--bw) solid var(--border);border-radius:var(--radius);
-  padding:.45rem .4rem .4rem;text-align:center;cursor:pointer;position:relative;min-width:0;
+  background-color:var(--surface);
+  background-image:radial-gradient(115% 62% at 50% 0%,color-mix(in srgb,var(--accent) 13%,transparent),transparent 64%);
+  border:var(--bw) solid var(--border);border-radius:var(--radius);
+  padding:.55rem .5rem .5rem;text-align:center;cursor:pointer;position:relative;min-width:0;
   box-shadow:var(--card-shadow);transition:transform .08s ease;
 }
 .photo-card:active{transform:scale(.97)}
@@ -500,7 +516,7 @@ main{max-width:960px;margin:0 auto;padding:1rem}
    floating button it replaced. */
 .add-scrim{position:fixed;inset:0;z-index:29;background:rgba(0,0,0,.35)}
 .add-menu{
-  position:fixed;left:50%;transform:translateX(-50%);bottom:calc(96px + env(safe-area-inset-bottom));width:208px;z-index:31;padding:.35rem;border-radius:18px;
+  position:fixed;left:50%;transform:translateX(-50%);bottom:calc(96px + env(safe-area-inset-bottom));width:208px;z-index:31;padding:.35rem;border-radius:24px;
   background:
     linear-gradient(180deg,rgba(255,255,255,.16),rgba(255,255,255,0) 45%),
     linear-gradient(158deg,rgba(219,1,28,.38),rgba(143,1,18,.28)),
@@ -556,7 +572,7 @@ main{max-width:960px;margin:0 auto;padding:1rem}
 .btn:active{transform:scale(.97)}
 .btn-primary{background:var(--accent);border-color:var(--accent);color:var(--accent-text);box-shadow:var(--glow)}
 .btn-danger{background:var(--surface);border-color:var(--out-bg);color:var(--red)}
-.btn-big{width:100%;min-height:56px;font-size:1.05rem;border-radius:14px;margin-top:.4rem}
+.btn-big{width:100%;min-height:58px;font-size:1.05rem;border-radius:14px;margin-top:.4rem}
 .result{font-size:.9rem;margin-top:.6rem;min-height:1.2em}
 .result.ok{color:var(--green)} .result.err{color:var(--red)}
 .small-label{display:block;font-size:.78rem;font-weight:700;color:var(--muted);margin:.8rem 0 .3rem;text-transform:uppercase;letter-spacing:.04em}
@@ -581,7 +597,7 @@ main{max-width:960px;margin:0 auto;padding:1rem}
   background:var(--glass-fill);
   background-image:var(--glass-sheen);
   -webkit-backdrop-filter:var(--glass-filter);backdrop-filter:var(--glass-filter);
-  border:var(--bw) solid var(--glass-border);border-radius:18px;
+  border:var(--bw) solid var(--glass-border);border-radius:24px;
   box-shadow:var(--glass-shadow);
 }
 .shelf-jump span{font-weight:800;font-size:.75rem;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;padding-left:.3rem}
@@ -632,7 +648,7 @@ main{max-width:960px;margin:0 auto;padding:1rem}
   background:var(--glass-fill);
   background-image:var(--glass-sheen);
   -webkit-backdrop-filter:var(--glass-filter);backdrop-filter:var(--glass-filter);
-  border:var(--bw) solid var(--glass-border);border-radius:18px;
+  border:var(--bw) solid var(--glass-border);border-radius:24px;
   box-shadow:var(--glass-shadow);
 }
 .locate-caption-text{flex:1;font-size:.82rem;cursor:pointer}
@@ -701,9 +717,9 @@ main{max-width:960px;margin:0 auto;padding:1rem}
 #nfcOverlay{z-index:55}
 .sheet{
   background:var(--surface);color:var(--text);width:100%;max-width:560px;max-height:92vh;overflow:auto;
-  border-radius:26px 26px 0 0;padding:1.2rem 1.2rem 2rem;position:relative;text-align:left;
+  border-radius:30px 30px 0 0;padding:1.2rem 1.2rem 2rem;position:relative;text-align:left;
 }
-@media(min-width:640px){.overlay{align-items:center}.sheet{border-radius:26px}}
+@media(min-width:640px){.overlay{align-items:center}.sheet{border-radius:30px}}
 .close-btn{position:absolute;top:.7rem;right:.7rem;width:44px;height:44px;border-radius:50%;border:none;background:var(--surface2);color:var(--text);font-size:1.05rem;cursor:pointer;z-index:2}
 /* Photo hero: a big WHITE plate, never cropped (SPEC PLATE) */
 .sheet-hero{
@@ -738,7 +754,7 @@ main{max-width:960px;margin:0 auto;padding:1rem}
 .qty-controls{display:flex;gap:.8rem;justify-content:center;margin:.7rem 0 .4rem}
 /* Steppers are neutral charcoal in every theme — the numeral carries state */
 .qty-btn{
-  flex:1;max-width:170px;min-height:72px;font-size:2.4rem;font-weight:900;border:none;border-radius:18px;cursor:pointer;
+  flex:1;max-width:170px;min-height:68px;font-size:2.4rem;font-weight:900;border:none;border-radius:18px;cursor:pointer;
   background:var(--surface2);color:var(--text);
 }
 .qty-btn:active{transform:scale(.96)}
@@ -781,21 +797,23 @@ main{max-width:960px;margin:0 auto;padding:1rem}
 }
 .toast-undo:active{transform:scale(.95)}
 
-/* Floating dock (Apple-style): frosted glass, lifted off the bottom edge,
-   sized to its content like the concept mockups — a compact centered pill.
+/* Floating dock (v45, furrow-v2 geometry): a detached frosted-glass
+   capsule — 16px side margins, bottom = safe-area inset + 10px,
+   66px tall with a 33px radius, labels kept, content scrolling
+   full-bleed underneath it (body padding clears it at rest).
    Home, Map, Suppliers, Add, Settings */
 .tabbar{
-  position:fixed;left:50%;transform:translateX(-50%);bottom:calc(10px + env(safe-area-inset-bottom));z-index:30;
-  width:min(94vw,400px);
+  position:fixed;left:16px;right:16px;bottom:calc(10px + env(safe-area-inset-bottom));z-index:30;
+  width:auto;max-width:680px;margin:0 auto;
   background:var(--glass-fill);
   background-image:var(--glass-sheen);
   -webkit-backdrop-filter:var(--glass-filter);backdrop-filter:var(--glass-filter);
-  border:var(--bw) solid var(--glass-border);border-radius:26px;
+  border:var(--bw) solid var(--glass-border);border-radius:33px;
   box-shadow:var(--glass-shadow);
-  display:grid;grid-template-columns:repeat(5,1fr);padding:6px;
+  display:grid;grid-template-columns:repeat(5,1fr);padding:4px;
 }
 .tab{
-  appearance:none;border:none;background:none;min-height:52px;padding:.4rem 0 .43rem;cursor:pointer;border-radius:18px;
+  appearance:none;border:none;background:none;min-height:58px;padding:.4rem 0 .43rem;cursor:pointer;border-radius:28px;
   font-size:.75rem;font-weight:700;color:var(--tabbar-text);position:relative;font-family:inherit;
 }
 .tab span{display:block;font-size:1.3rem;line-height:1.25}
@@ -851,11 +869,15 @@ main{max-width:960px;margin:0 auto;padding:1rem}
 .tab .icon-svg{width:21px;height:21px;display:block;margin:0 auto}
 .tab-add .icon-svg{width:24px;height:24px}
 .photo-card .pc-icon{
-  display:flex;align-items:center;justify-content:center;width:100%;height:44px;margin:0 auto;position:relative;
+  display:flex;align-items:center;justify-content:center;width:100%;height:96px;margin:0 auto;position:relative;
   /* SPEC PLATE: the plate is WHITE in every theme (same as the item
      sheet's hero plate) — the fallback angular icon inks dark on it,
-     and a real photo is framed whole on it (object-fit:contain below). */
+     and a real photo is framed whole on it (object-fit:contain below).
+     v45: the plate is the card's stage piece — taller, and lifted off
+     the card on a soft drop shadow that follows its clipped shape
+     (drop-shadow, since clip-path clips a plain box-shadow). */
   color:#23262b;background:#ffffff;font-size:1rem;line-height:1;
+  filter:drop-shadow(0 7px 12px rgba(0,0,0,.20));
   clip-path:polygon(14% 0,100% 0,100% 86%,86% 100%,0 100%,0 14%);
 }
 /* Photo framed WHOLE on the plate — contain, never cropped (v43);
@@ -929,65 +951,120 @@ main{max-width:960px;margin:0 auto;padding:1rem}
 .pv-img{max-width:100%;max-height:100%;width:auto;height:auto;user-select:none;-webkit-user-select:none;-webkit-touch-callout:none}
 #dIcon .plate-img{cursor:zoom-in}
 
-/* ---------- Milwaukee Glass (v44) ----------
- * Presentation only: nothing here moves, renames or hides a control.
- * The reskin rides the shared glass tokens (above, Milwaukee block)
- * plus the item sheet's new overlap structure: the photo hero runs
- * full-bleed across the top and the content sits in a glass panel
- * pulled UP over the hero's bottom edge — the Leafora / Farm
- * Service signature. Other themes keep the opaque panel; only
- * Milwaukee turns it to red glass and puts the serif on the big
- * figures. */
+/* ---------- v45 · The redesign (Milwaukee Glass, reimagined) ----------
+ * v44 hung this look on token overrides under one theme and it read
+ * as a skin over the old app. v45 is a RECOMPOSITION, and it lives in
+ * the SHARED layout: the grouped glass header surface, the solid
+ * stage cards, the hero/sheet geometry, the Settings grouping and
+ * the capsule dock are the app's design in every theme — their rules
+ * sit with their components above. What remains in this section is
+ * the item sheet's structure, the type gate, the Settings grouping
+ * details, the Milwaukee theme's full glass treatment (the shared
+ * composition, carried furthest), and the glass fallbacks.
+ * Presentation only throughout: no control moves, renames or hides;
+ * every workflow is wired exactly as before. */
+
+/* Item sheet: the photo hero runs full-bleed across the top at 42%
+ * of the viewport height (the approved mock-up's measure: 312 of
+ * 740px), and the content sits in a near-solid panel overlapping the
+ * hero by 30px with a 30px top radius — a full radius of overlap, so
+ * sheet and photo read as one piece, never a film with a gap. */
+.item-sheet{padding:0}
+.item-sheet .sheet-hero{border-radius:30px 30px 0 0;margin-bottom:0;height:42vh}
+/* The close control floats over the hero as a glass circle in every
+ * theme — dimmed thick glass so it survives a bright photo area. */
+.item-sheet .close-btn{
+  z-index:4;background:rgba(16,10,12,.55);color:#fff;
+  border:1px solid rgba(255,255,255,.35);
+  -webkit-backdrop-filter:blur(12px) saturate(1.5);backdrop-filter:blur(12px) saturate(1.5);
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.35),0 8px 20px rgba(0,0,0,.35);
+}
+.sheet-glass{
+  position:relative;margin:-30px .65rem .65rem;padding:1rem 1rem 1.15rem;
+  border-radius:30px;background:var(--surface);
+  border:var(--bw) solid var(--border);box-shadow:0 18px 44px rgba(0,0,0,.28);
+}
+.item-sheet .sheet-footer{
+  bottom:-1.15rem;margin:.9rem -1rem -1.15rem;
+  padding:.7rem 1rem calc(.9rem + env(safe-area-inset-bottom));
+  border-radius:0 0 30px 30px;background:var(--surface);
+}
+
+/* Type — the research serif gate: the display serif carries NAMES
+ * and TITLES only. Every numeral in the app (the stepper readout,
+ * the stats, card quantities, last-sync) is the sans with tabular
+ * lining figures, so a value never changes width or baseline as it
+ * counts 9 → 10 → 100 and the stepper never jitters. */
+.sheet h2{font-family:var(--font-display)}
+.view>h2,.sup-head h2{font-family:var(--font-display)}
+#dName{font-size:1.9rem;font-weight:600;line-height:1.08}
+.qty-display span{font-variant-numeric:tabular-nums lining-nums}
+.sheet-last-sync span{font-variant-numeric:tabular-nums lining-nums}
+
+/* Settings recomposition: almost NO glass — grouping and rhythm do
+ * the work (furrow-v2 D-08): inset solid groups at a 26px radius,
+ * 56px rows, 24–32px group rhythm, 36px radius-12 icon tiles. */
+#view-sync .card{border-radius:26px;padding:1.1rem}
+#view-sync .kv{min-height:56px;align-items:center;padding:.35rem 0}
+#view-sync .theme-card{border-radius:20px}
+.list-item{border-radius:20px;min-height:56px}
+.set-tile{
+  width:36px;height:36px;border-radius:12px;flex:none;display:grid;place-items:center;
+  background:var(--accent-soft);color:var(--accent);
+}
+.set-tile .icon-svg{width:19px;height:19px}
+.set-autosort-main{display:flex;align-items:center;gap:.7rem}
+.set-autosort-text{flex:1;min-width:0}
+/* The Google Sheet connection card leads Settings (v45) and reads as
+ * the connection at a glance: accent ring, a head row carrying the
+ * LIVE badge (mirrored from the real sync state in app.js), Connect
+ * and Sync now side by side, the last-sync line under them. */
+.sheet-connect-card{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-soft),var(--card-shadow)}
+.sheet-connect-head{display:flex;align-items:center;gap:.7rem;margin-bottom:.55rem}
+.sheet-connect-head h3{flex:1;min-width:0}
+.sheet-connect-actions{display:flex;gap:.55rem;flex-wrap:wrap;margin-top:.2rem}
+.sheet-connect-actions .btn{flex:1;min-height:52px}
+.sheet-last-sync{margin:.65rem 0 0;font-weight:600}
+
+/* Milwaukee carries the full glass treatment: a faint red bloom in
+ * the page background, and the item sheet's panel in the same thick
+ * red glass stack as the chrome (tint .85, blur 40px, saturate 1.75,
+ * light edge, inset highlight, 0 16px 36px shadow). Cards, list rows
+ * and grid cards stay SOLID in every theme — glassing the content
+ * layer is the anti-pattern this build removes. */
 [data-theme="milwaukee"] body{
   background-image:
     radial-gradient(120% 55% at 50% -8%,rgba(219,1,28,.17),transparent 60%),
     radial-gradient(90% 45% at 50% 112%,rgba(219,1,28,.10),transparent 60%);
 }
-[data-theme="milwaukee"] .card,
-[data-theme="milwaukee"] .list-item,
-[data-theme="milwaukee"] .photo-card{
-  background-color:var(--glass-fill);background-image:var(--glass-sheen);
-  -webkit-backdrop-filter:var(--glass-filter);backdrop-filter:var(--glass-filter);
-  border-color:var(--glass-border);box-shadow:var(--glass-shadow);
-}
-/* Folder tabs keep their silhouette; the glass frosts behind them. */
-[data-theme="milwaukee"] .ftab{-webkit-backdrop-filter:blur(14px) saturate(1.6);backdrop-filter:blur(14px) saturate(1.6)}
-/* Big figures in the display face (serif under Milwaukee via
- * --font-display; the other themes keep the sans stack). */
-.qty-display span{font-family:var(--font-display)}
-.stat strong{font-family:var(--font-display)}
-[data-theme="milwaukee"] .qty-display span{font-size:3.5rem;font-weight:600}
-[data-theme="milwaukee"] .stat strong{font-size:1.3rem;font-weight:600}
-/* Item sheet: hero full-bleed, content in the overlapping panel. */
-.item-sheet{padding:0}
-.item-sheet .sheet-hero{border-radius:26px 26px 0 0;margin-bottom:0}
-.item-sheet .close-btn{z-index:4}
-.sheet-glass{
-  position:relative;margin:-30px .65rem .65rem;padding:1rem 1rem 1.15rem;
-  border-radius:24px;background:var(--surface);
-  border:var(--bw) solid var(--border);box-shadow:var(--card-shadow);
-}
-.item-sheet .sheet-footer{
-  bottom:-1.15rem;margin:.9rem -1rem -1.15rem;
-  padding:.7rem 1rem calc(.9rem + env(safe-area-inset-bottom));
-  border-radius:0 0 24px 24px;background:var(--surface);
-}
-[data-theme="milwaukee"] .item-sheet{background:linear-gradient(180deg,#1a1116,#100d0f)}
 [data-theme="milwaukee"] .sheet-glass{
-  background-color:rgba(46,13,20,.55);
-  background-image:linear-gradient(180deg,rgba(255,235,238,.16),rgba(255,255,255,.045) 45%,rgba(255,255,255,.02));
+  background-color:rgba(46,13,20,.85);
+  background-image:linear-gradient(180deg,rgba(255,235,238,.30),rgba(255,255,255,.09) 55%,rgba(255,255,255,.03));
   -webkit-backdrop-filter:blur(40px) saturate(1.75);backdrop-filter:blur(40px) saturate(1.75);
-  border-color:rgba(255,120,130,.35);
-  box-shadow:inset 0 1px 0 rgba(255,255,255,.35),0 18px 44px rgba(0,0,0,.55);
+  border-color:rgba(255,120,130,.38);
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.5),inset 0 -1px 0 rgba(255,255,255,.10),0 16px 36px rgba(0,0,0,.45);
 }
-[data-theme="milwaukee"] .item-sheet .sheet-footer{background:rgba(46,13,20,.94);border-top-color:rgba(255,120,130,.28)}
-[data-theme="milwaukee"] .item-sheet .close-btn{
-  background:rgba(18,7,10,.74);color:#fff;border:1px solid rgba(255,255,255,.28);
-  -webkit-backdrop-filter:blur(12px);backdrop-filter:blur(12px);
-}
+[data-theme="milwaukee"] .item-sheet .sheet-footer{background:rgba(46,13,20,.96);border-top-color:rgba(255,120,130,.28)}
+
 /* Item tags (v44): computed chips under the description line, in
  * the FOLDER row's caption style. Read-only — display only. */
 .d-tags{display:flex;gap:.55rem;align-items:flex-start;margin:.3rem 0 .15rem}
 .d-tags-label{font-size:.78rem;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;padding-top:.24rem;flex:none}
 .d-tags-chips{display:flex;flex-wrap:wrap;gap:.35rem;min-width:0}
 .tag-chip{font-size:.74rem;font-weight:700;line-height:1.5;padding:.1rem .55rem;border-radius:999px;background:var(--surface2);border:var(--bw) solid var(--border);color:var(--text);white-space:nowrap}
+
+/* Glass fallbacks (research §2): where backdrop-filter is missing,
+ * and for users who ask for reduced transparency, every glass surface
+ * renders solid — legibility never depends on the blur working. */
+@supports not ((backdrop-filter:blur(1px)) or (-webkit-backdrop-filter:blur(1px))){
+  .sticky-search,.shelf-jump,.locate-caption,.tabbar,.item-sheet .close-btn,
+  [data-theme="milwaukee"] .sheet-glass{-webkit-backdrop-filter:none;backdrop-filter:none;background:var(--surface)}
+  .item-sheet .close-btn{color:var(--text)}
+  .folder-jump,.add-menu{-webkit-backdrop-filter:none;backdrop-filter:none;background:#1c1114}
+}
+@media (prefers-reduced-transparency: reduce){
+  .sticky-search,.shelf-jump,.locate-caption,.tabbar,.item-sheet .close-btn,
+  [data-theme="milwaukee"] .sheet-glass{-webkit-backdrop-filter:none;backdrop-filter:none;background:var(--surface)}
+  .item-sheet .close-btn{color:var(--text)}
+  .folder-jump,.add-menu{-webkit-backdrop-filter:none;backdrop-filter:none;background:#1c1114}
+}

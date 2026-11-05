@@ -25,9 +25,10 @@
 </script>
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="stylesheet" href="styles.css">
-<!-- v44 display serif for big figures: progressive enhancement only —
-     the stylesheet falls back to Georgia/serif (then the sans stack)
-     whenever this has not loaded or the device is offline. -->
+<!-- v45 display serif for names and titles only (never numerals —
+     every number in the app is tabular sans): progressive enhancement
+     only; the stylesheet falls back to Georgia/serif (then the sans
+     stack) whenever this has not loaded or the device is offline. -->
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@500;600;700&display=swap" rel="stylesheet" media="print" onload="this.media='all'">
@@ -61,12 +62,16 @@
           <button type="button" class="stat" id="statSegUnits"><strong id="statUnits">–</strong><span>units</span></button>
           <button type="button" class="stat warn" id="statSegLow" aria-pressed="false"><strong id="statLow">–</strong><span>low / out</span></button>
         </div>
-      </div>
-      <div class="folder-strip">
-        <div id="folderTabs" class="folder-tabs" role="tablist" aria-label="Folders"></div>
-        <div class="folder-edge" aria-hidden="true"></div>
-        <div id="folderJump" class="folder-jump hidden">
-          <div id="folderJumpList" class="folder-jump-list" role="listbox" aria-label="All folders"></div>
+        <!-- v45: the folder tab strip lives INSIDE the one grouped glass
+             header surface (search + stats + tabs on a single thick
+             surface), not on its own row under the panel. The jump-list
+             panel still anchors to the strip and drops over the grid. -->
+        <div class="folder-strip">
+          <div id="folderTabs" class="folder-tabs" role="tablist" aria-label="Folders"></div>
+          <div class="folder-edge" aria-hidden="true"></div>
+          <div id="folderJump" class="folder-jump hidden">
+            <div id="folderJumpList" class="folder-jump-list" role="listbox" aria-label="All folders"></div>
+          </div>
         </div>
       </div>
     </div>
@@ -183,6 +188,29 @@
   <section id="view-sync" class="view">
     <h2>Settings</h2>
 
+    <!-- v45: the Google Sheet connection is the FIRST card in Settings —
+         prominent, badged from the real sync state, with the last-sync
+         line and a Sync now button beside Connect. Same controls and
+         wiring as always (setSheetUrl / setSheetToken / connectSheetBtn);
+         the badge, last-sync line and Sync button mirror the existing
+         chrome/queue state (see refreshChrome / renderQueue in app.js). -->
+    <div id="sheetBlock" class="card form sheet-connect-card">
+      <div class="sheet-connect-head">
+        <span class="set-tile"><svg class="icon-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="miter" stroke-linecap="square" aria-hidden="true" focusable="false"><path d="M4 4 H20 V20 H4 Z"/><path d="M4 9.3 H20 M4 14.6 H20 M9.3 4 V20 M14.6 4 V20"/></svg></span>
+        <h3 style="margin:0">Google Sheet</h3>
+        <span id="sheetLiveBadge" class="badge badge-demo">Not connected</span>
+      </div>
+      <label>Sheet link<input id="setSheetUrl" placeholder="https://script.google.com/macros/s/…/exec" autocomplete="off"></label>
+      <label>Token<input id="setSheetToken" type="password" placeholder="Only if the script has a TOKEN set" autocomplete="off"></label>
+      <p class="muted small">Paste the Web app link from Deploy (ends in /exec). If the script has a <strong>TOKEN</strong> set at the top, type the same token here — it must match exactly. If the script's TOKEN is blank, leave this blank. Both are stored <strong>only in this device's browser</strong>. Anyone who has the link (and token, if set) can read and write this inventory, so keep them among the people using it. Setup steps: <a href="https://github.com/masstahl/electric-trailer/blob/main/SETUP.md" target="_blank" rel="noopener">SETUP.md</a>.</p>
+      <div class="sheet-connect-actions">
+        <button type="button" id="connectSheetBtn" class="btn btn-primary">Connect</button>
+        <button type="button" id="sheetSyncBtn" class="btn">Sync now</button>
+      </div>
+      <p class="sheet-last-sync">Last sync: <span id="sheetLastSync">never</span></p>
+      <p id="sheetTestResult" class="result"></p>
+    </div>
+
     <!-- Sync Queue (moved here from its own tab) -->
     <div class="card">
       <h3 style="margin-top:0">Sync Queue</h3>
@@ -197,8 +225,11 @@
     <div class="card set-autosort-card" id="setAutoSortCard">
       <div class="set-autosort-row">
         <div class="set-autosort-main">
-          <h3 style="margin:0">Auto-sort</h3>
-          <p class="muted small" id="setAutoSortLine" style="margin:.15rem 0 0">0 items need a folder</p>
+          <span class="set-tile"><svg class="icon-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="miter" stroke-linecap="square" aria-hidden="true" focusable="false"><path d="M2.5 6.5 H9 L11 9.5 H21.5 V19 H2.5 Z"/><path d="M2.5 6.5 V19"/></svg></span>
+          <div class="set-autosort-text">
+            <h3 style="margin:0">Auto-sort</h3>
+            <p class="muted small" id="setAutoSortLine" style="margin:.15rem 0 0">0 items need a folder</p>
+          </div>
         </div>
         <button type="button" id="setAutoSortBtn" class="btn btn-primary">Review</button>
       </div>
@@ -206,8 +237,11 @@
     <div class="card set-autosort-card" id="setSortModeCard">
       <div class="set-autosort-row">
         <div class="set-autosort-main">
-          <h3 style="margin:0">Sort mode</h3>
-          <p class="muted small" id="setSortModeLine" style="margin:.15rem 0 0">0 items need a folder</p>
+          <span class="set-tile"><svg class="icon-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="miter" stroke-linecap="square" aria-hidden="true" focusable="false"><path d="M7 3.5 V20.5 M7 20.5 L3.5 17 M7 20.5 L10.5 17"/><path d="M17 20.5 V3.5 M17 3.5 L13.5 7 M17 3.5 L20.5 7"/></svg></span>
+          <div class="set-autosort-text">
+            <h3 style="margin:0">Sort mode</h3>
+            <p class="muted small" id="setSortModeLine" style="margin:.15rem 0 0">0 items need a folder</p>
+          </div>
         </div>
         <button type="button" id="setSortModeBtn" class="btn btn-primary">Start</button>
       </div>
@@ -270,7 +304,7 @@
       <div class="kv"><span>Pending queue</span><strong id="healthQueue">–</strong></div>
       <div class="kv"><span>Last sync</span><strong id="healthLastSync">never</strong></div>
       <div class="kv"><span>Last error</span><strong id="healthError" class="error-text">none</strong></div>
-      <div class="kv"><span>App version</span><strong id="appVersionVal">v44</strong></div>
+      <div class="kv"><span>App version</span><strong id="appVersionVal">v45</strong></div>
       <button type="button" id="checkUpdateBtn" class="btn">Check for update</button>
     </div>
     <!-- Not in the sheet: shown only while flagged items exist (renderOrphans) -->
@@ -283,14 +317,6 @@
       <p class="muted small">These items are on this device but have no row in the Google Sheet, so their changes can't sync. <strong>Add to sheet</strong> creates the row with the item's current details — it keeps its place everywhere. <strong>Remove</strong> deletes the item from this device only; the sheet is not changed.</p>
       <div id="orphanList" class="list"></div>
       <p id="orphanResult" class="result"></p>
-    </div>
-    <div id="sheetBlock" class="card form">
-      <h3 style="margin-top:0">Google Sheet</h3>
-      <label>Sheet link<input id="setSheetUrl" placeholder="https://script.google.com/macros/s/…/exec" autocomplete="off"></label>
-      <label>Token<input id="setSheetToken" type="password" placeholder="Only if the script has a TOKEN set" autocomplete="off"></label>
-      <p class="muted small">Paste the Web app link from Deploy (ends in /exec). If the script has a <strong>TOKEN</strong> set at the top, type the same token here — it must match exactly. If the script's TOKEN is blank, leave this blank. Both are stored <strong>only in this device's browser</strong>. Anyone who has the link (and token, if set) can read and write this inventory, so keep them among the people using it. Setup steps: <a href="https://github.com/masstahl/electric-trailer/blob/main/SETUP.md" target="_blank" rel="noopener">SETUP.md</a>.</p>
-      <button type="button" id="connectSheetBtn" class="btn btn-primary">Connect</button>
-      <p id="sheetTestResult" class="result"></p>
     </div>
   </section>
 </main>

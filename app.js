@@ -13,7 +13,7 @@
   var $ = function (id) { return document.getElementById(id); };
   /* The build this code IS (v42): version.json on the server carries
    * the newest build's number; the checker below compares the two. */
-  var APP_VERSION = 44;
+  var APP_VERSION = 45;
   var AISLES = ['A', 'B', 'C', 'D'];
   var BINS = [];
   AISLES.forEach(function (a) { for (var i = 1; i <= 6; i++) BINS.push(a + i); });
@@ -243,6 +243,13 @@
     var mb = $('modeBadge');
     mb.textContent = live ? 'Live · Google Sheet' : 'Local only';
     mb.className = 'badge ' + (live ? 'badge-live' : 'badge-demo');
+    /* v45: the Settings sheet card carries the same live state as a
+       LIVE badge — same source (D.isLive()), never a separate flag. */
+    var sb = $('sheetLiveBadge');
+    if (sb) {
+      sb.textContent = live ? 'LIVE' : 'Not connected';
+      sb.className = 'badge ' + (live ? 'badge-live' : 'badge-demo');
+    }
     var nb = $('netBadge');
     nb.textContent = navigator.onLine ? '● Online' : '● Offline';
     nb.className = 'badge ' + (navigator.onLine ? 'badge-online' : 'badge-offline');
@@ -3452,6 +3459,8 @@
     var pending = q.filter(function (c) { return !c.synced; });
     $('queuePendingCount').textContent = pending.length;
     $('queueLastSync').textContent = fmtTime(D.getMeta().lastSync);
+    var sls = $('sheetLastSync');   // v45: the sheet card's last-sync line mirrors the same meta
+    if (sls) sls.textContent = fmtTime(D.getMeta().lastSync);
     var sorted = q.slice().reverse();
     var listEl = $('queueList');
     var keepScroll = queueExpanded ? listEl.scrollTop : 0;
@@ -3480,6 +3489,10 @@
       renderQueue(); renderSync();
     });
   });
+  /* v45: the sheet card's own Sync now button is the same action —
+     it proxies the one existing handler above, nothing forked. */
+  var sheetSyncBtnEl = $('sheetSyncBtn');
+  if (sheetSyncBtnEl) sheetSyncBtnEl.addEventListener('click', function () { $('syncNowBtn').click(); });
   /* ---------- Live sync engine ----------
    * Changes used to sit in the queue until someone opened Settings
    * and pressed Sync (the only other flushes were the online and
@@ -3686,6 +3699,8 @@
     $('healthRows').textContent = D.getItems().length;
     $('healthQueue').textContent = D.getQueue().filter(function (c) { return !c.synced; }).length + ' pending';
     $('healthLastSync').textContent = fmtTime(D.getMeta().lastSync);
+    var sls2 = $('sheetLastSync');
+    if (sls2) sls2.textContent = fmtTime(D.getMeta().lastSync);
     $('healthError').textContent = D.getMeta().lastError || 'none';
     renderOrphans();
     renderSortCounts();
