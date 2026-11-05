@@ -11,6 +11,9 @@
   'use strict';
   var D = window.ETData;
   var $ = function (id) { return document.getElementById(id); };
+  /* The build this code IS (v42): version.json on the server carries
+   * the newest build's number; the checker below compares the two. */
+  var APP_VERSION = 42;
   var AISLES = ['A', 'B', 'C', 'D'];
   var BINS = [];
   AISLES.forEach(function (a) { for (var i = 1; i <= 6; i++) BINS.push(a + i); });
@@ -811,10 +814,12 @@
    * folder sheet opens on it straight away for the rename. Runs from
    * the dock + create menu; folders live on Home, so land there
    * first if the menu was opened from another view. */
+  var pendingCreateName = null;   // placeholder name of a just-created folder (v42 sweep)
   function newFolderFlow() {
     closeAddMenu();
     if (!$('view-home').classList.contains('active')) showView('home');
     var cat = D.addCategory();
+    pendingCreateName = cat.name;
     categoryFilter = null;
     lowFilter = false;
     $('searchInput').value = '';
@@ -860,12 +865,65 @@
       $('fsError').classList.remove('hidden');
       return;
     }
+    /* v42: a just-created folder receiving its real name sweeps the
+     * homeless items that match the name into it. Ordinary renames
+     * of existing folders never sweep — the flag only matches the
+     * placeholder this create flow opened the sheet on. */
+    var wasCreate = !!pendingCreateName && oldName === pendingCreateName;
+    if (wasCreate) pendingCreateName = null;
     if (categoryFilter === oldName) categoryFilter = newName;   // the selected tab follows its folder
     closeFolderSheet();
     renderHome();
     centerActiveTab(false);
     toast('Folder renamed' + (r.count ? ' — ' + r.count + ' item(s) updated' : ''));
+    if (wasCreate) sweepIntoFolder(newName);
   });
+  /* ---------- Folder-first sweep (v42) ----------
+   * The operator's filing idea: name a NEW folder for what belongs
+   * in it ("Resistors, Capacitors & Diodes") and the homeless items
+   * whose name/SKU matches the folder's words just move in. Terms
+   * come from the folder name itself — split on non-alphanumerics,
+   * stopwords and short words dropped, plurals singularized — and
+   * longer terms also contribute a 5-char stem, so a folder spelled
+   * "Resisters" still files items spelled "Resistor" (they share
+   * the stem 'resis'). Only Uncategorized items are candidates:
+   * nothing is ever pulled out of a folder it already lives in.
+   * Moves ride D.setCategory — the same funnel Auto-sort applies
+   * through, so each move queues its edit op for the sheet — and
+   * the batch carries Auto-sort's UNDO toast. Zero matches: the
+   * folder is simply created, no toast, no ops. */
+  var SWEEP_STOPWORDS = { and: 1, the: 1, for: 1, a: 1, an: 1, of: 1 };
+  function sweepTerms(folderName) {
+    var terms = [], seen = {};
+    function add(t) { if (t && !seen[t]) { seen[t] = 1; terms.push(t); } }
+    String(folderName || '').toLowerCase().split(/[^a-z0-9]+/).forEach(function (raw) {
+      if (!raw || raw.length < 3 || SWEEP_STOPWORDS[raw]) return;
+      var t = raw;
+      if (/sses$/.test(t)) t = t.replace(/sses$/, 'ss');
+      else if (t.length > 4 && /es$/.test(t)) t = t.slice(0, -2);
+      else if (t.length > 3 && /s$/.test(t) && !/ss$/.test(t)) t = t.slice(0, -1);
+      add(t);
+      if (t.length >= 7) add(t.slice(0, 5));
+    });
+    return terms;
+  }
+  function sweepIntoFolder(folderName) {
+    var terms = sweepTerms(folderName);
+    if (!terms.length) return;
+    var hits = uncatItems().filter(function (it) {
+      var hay = (' ' + (it.name || '') + ' ' + (it.sku || '') + ' ').toLowerCase().replace(/[^a-z0-9]+/g, ' ');
+      return terms.some(function (t) { return hay.indexOf(t) !== -1; });
+    });
+    if (!hits.length) return;
+    var prev = {};
+    hits.forEach(function (it) { prev[it.id] = itemCategory(it); });
+    hits.forEach(function (it) { D.setCategory(it.id, folderName); });
+    renderHome(); refreshChrome();
+    showUndoToast('Moved ' + hits.length + ' item' + (hits.length === 1 ? '' : 's') + ' into ' + folderName, function () {
+      hits.forEach(function (it) { D.setCategory(it.id, prev[it.id]); });
+      renderHome(); refreshChrome();
+    });
+  }
   $('fsRemoveBtn').addEventListener('click', function () {
     if (!folderSheetName) return;
     var name = folderSheetName;
@@ -3064,6 +3122,99 @@
       return editingOpen() || countSession !== null || addMenuOpen;
     }
   };
+  /* ---------- App version check (v42) ----------
+   * v35's flow is sound but depends on the browser fetching a new
+   * service worker — iOS often never does for a home-screen app, so
+   * a new build sat on the server while the phone kept the old one
+   * (and the operator reinstalled by hand). This layer asks the
+   * server directly: version.json (never cached, never intercepted
+   * by the worker — see sw.js) carries the newest build number and
+   * APP_VERSION is what is running. On a mismatch, first ask the
+   * worker to update — the clean path; if it swaps, v35's guarded
+   * reload applies it. If the SAME newer build is still on offer at
+   * a check 30s+ later, the worker plainly isn't coming, so the
+   * page heals itself: clear Cache Storage (the stale shell lives
+   * there) and reload once, landing on the fresh files from the
+   * network. The heal fires at most once per target version and
+   * only while the app is idle — the v35 gate's busy semantics —
+   * and retries on a timer / foreground return until it can. */
+  var verLastAutoCheck = 0;
+  var verHealPendingFor = 0;
+  function verRead(key) {
+    try { return JSON.parse(window.localStorage.getItem(key) || 'null'); } catch (e) { return null; }
+  }
+  function verWrite(key, val) {
+    try { window.localStorage.setItem(key, JSON.stringify(val)); } catch (e) { /* storage blocked */ }
+  }
+  function verIdle() {
+    return !editingOpen() && countSession === null && !addMenuOpen;
+  }
+  function verHeal(serverVersion) {
+    if (!serverVersion) { verHealPendingFor = 0; return; }
+    if (verRead('et-ver-purged') === serverVersion) { verHealPendingFor = 0; return; }   // one purge per target, ever
+    if (!verIdle()) { verHealPendingFor = serverVersion; return; }                       // mid-task: stay pending, retried below
+    verHealPendingFor = 0;
+    verWrite('et-ver-purged', serverVersion);
+    var done = function () { window.location.reload(); };
+    if (!window.caches || !window.caches.keys) { done(); return; }
+    window.caches.keys().then(function (keys) {
+      return Promise.all(keys.map(function (k) { return window.caches.delete(k); }));
+    }).then(done, done);
+  }
+  function verNoteMismatch(serverVersion) {
+    var seen = verRead('et-ver-mismatch');
+    if (seen && seen.version === serverVersion) {
+      if (Date.now() - seen.at >= 30000) verHeal(serverVersion);
+      // Same build re-seen inside the 30s window: keep waiting —
+      // a later check at/after 30s from the first sighting heals.
+    } else {
+      verWrite('et-ver-mismatch', { version: serverVersion, at: Date.now() });
+    }
+  }
+  function checkAppVersion(manual) {
+    var now = Date.now();
+    if (!manual) {
+      if (now - verLastAutoCheck < 30000) return Promise.resolve();   // auto checks: at most one fetch per 30s
+      verLastAutoCheck = now;
+    }
+    return window.fetch('version.json', { cache: 'no-store' }).then(function (res) {
+      if (!res || !res.ok) throw new Error('version check failed');
+      return res.json();
+    }).then(function (data) {
+      var server = data ? +data.version : NaN;
+      if (!server || isNaN(server)) throw new Error('version check failed');
+      if (server <= APP_VERSION) {
+        if (manual) toast("You're up to date — v" + APP_VERSION);
+        return;
+      }
+      /* A newer build exists. Clean path first: nudge the worker —
+       * if it swaps, v35's controllerchange reload applies the new
+       * build and the self-heal never comes due. */
+      if (navigator.serviceWorker && navigator.serviceWorker.getRegistration) {
+        navigator.serviceWorker.getRegistration().then(function (reg) {
+          if (reg && reg.update) {
+            try { var p = reg.update(); if (p && p.catch) p.catch(function () { /* best-effort */ }); } catch (e) { /* best-effort */ }
+          }
+        }).catch(function () { /* best-effort */ });
+      }
+      if (manual) toast(verIdle() ? 'Update found — applying it now' : 'Update ready — it will apply when you finish here');
+      verNoteMismatch(server);
+    }).catch(function () {
+      if (manual) toast("Couldn't check for an update");
+    });
+  }
+  setInterval(function () { checkAppVersion(false); }, 60000);
+  setInterval(function () { if (verHealPendingFor) verHeal(verHealPendingFor); }, 5000);
+  document.addEventListener('visibilitychange', function () {
+    if (document.hidden) return;
+    checkAppVersion(false);
+    if (verHealPendingFor) verHeal(verHealPendingFor);
+  });
+  window.addEventListener('focus', function () {
+    if (verHealPendingFor) verHeal(verHealPendingFor);
+  });
+  var checkUpdateBtnEl = $('checkUpdateBtn');
+  if (checkUpdateBtnEl) checkUpdateBtnEl.addEventListener('click', function () { checkAppVersion(true); });
   function maybeAutoRefresh(force) {
     if (!D.isLive() || document.hidden) return;
     if (syncRunning || syncRefreshRunning) return;
@@ -3101,6 +3252,7 @@
       if (document.activeElement !== $('setSheetToken')) $('setSheetToken').value = sc.token;
     }
     $('healthMode').textContent = active === 'sheet' ? 'Live · Google Sheet' : 'Demo (local data)';
+    var avEl = $('appVersionVal'); if (avEl) avEl.textContent = 'v' + APP_VERSION;
     $('healthSheetRows').textContent = D.getMeta().sheetRows == null ? '–' : D.getMeta().sheetRows;
     $('healthRows').textContent = D.getItems().length;
     $('healthQueue').textContent = D.getQueue().filter(function (c) { return !c.synced; }).length + ' pending';
@@ -3293,6 +3445,7 @@
   /* Flush anything left queued from a previous session shortly after
    * load — the manual Sync button is the fallback, not the routine. */
   scheduleAutoFlush(1500);
+  checkAppVersion(false);   // v42: one version check on open (throttled, silent)
   fitSticky();
   openFromUrl();
 })();

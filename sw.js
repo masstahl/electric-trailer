@@ -4,7 +4,7 @@
  * they always go to the network, and edits made offline are queued
  * by the app instead.
  */
-var CACHE = 'electric-trailer-v41';
+var CACHE = 'electric-trailer-v42';
 var SHELL = [
   './',
   'index.html',
@@ -34,6 +34,11 @@ self.addEventListener('activate', function (event) {
 
 self.addEventListener('fetch', function (event) {
   var url = new URL(event.request.url);
+  // version.json is the app's update probe (v42): it must always come
+  // from the network and never be cached — the whole point is that a
+  // page running an old build can see the new build's number even
+  // when this worker itself is the stale one.
+  if (url.origin === self.location.origin && url.pathname.split('/').pop() === 'version.json') return;
   // Never intercept backend API traffic (AppSheet API, Sheet bridge).
   if (url.hostname.indexOf('appsheet.com') !== -1) return;
   if (url.hostname.indexOf('script.google.com') !== -1) return;
