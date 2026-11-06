@@ -1046,19 +1046,27 @@ main{max-width:960px;margin:0 auto;padding:1rem}
 }
 [data-theme="milwaukee"] .item-sheet .sheet-footer{background:rgba(46,13,20,.96);border-top-color:rgba(255,120,130,.28)}
 
-/* Item tags (v44 computed, v46 editable): computed families are
- * plain chips; the user's own tags are filled accent chips with a
- * × each. The × hit area is a full 44px square (negative margins
- * keep the chip itself slim) — glove-sized removal, per the
- * research checklist. The add row mirrors the form input + .btn. */
+/* Item tags (v44 computed, v46 editable, v47 long-press removal
+ * + collapsed add box): computed families are plain chips; the
+ * user's own tags are filled accent chips with a × each. The ×
+ * hit area is a full 44px square (negative margins keep the chip
+ * itself slim) — glove-sized removal, per the research
+ * checklist. Chips opt out of text selection / the iOS callout
+ * so a 450ms long-press reads as a press, not a selection. The
+ * add row (form input + .btn + a quiet ×) stays hidden behind
+ * the dashed accent "+ Add" chip at the end of the chip row —
+ * a full 44px-tall button that fills with the accent pressed. */
 .d-tags{display:flex;gap:.55rem;align-items:flex-start;margin:.3rem 0 .15rem}
 .d-tags-label{font-size:.78rem;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;padding-top:.24rem;flex:none}
-.d-tags-chips{display:flex;flex-wrap:wrap;gap:.35rem;min-width:0}
-.tag-chip{font-size:.74rem;font-weight:700;line-height:1.5;padding:.1rem .55rem;border-radius:999px;background:var(--surface2);border:var(--bw) solid var(--border);color:var(--text);white-space:nowrap}
+.d-tags-chips{display:flex;flex-wrap:wrap;gap:.35rem;min-width:0;align-items:center}
+.tag-chip{font-size:.74rem;font-weight:700;line-height:1.5;padding:.1rem .55rem;border-radius:999px;background:var(--surface2);border:var(--bw) solid var(--border);color:var(--text);white-space:nowrap;-webkit-user-select:none;user-select:none;-webkit-touch-callout:none}
 .tag-chip.custom{background:var(--accent);border-color:var(--accent);color:var(--accent-text);display:inline-flex;align-items:center;padding-right:.15rem}
 .tag-x{appearance:none;background:none;border:0;color:inherit;font-family:inherit;font-size:.95rem;font-weight:700;line-height:1;width:44px;height:44px;margin:-11px -14px -11px -4px;padding:0;cursor:pointer;flex:none}
+.tag-add-chip{appearance:none;font-family:inherit;background:transparent;border:1.5px dashed var(--accent);color:var(--accent);min-height:44px;display:inline-flex;align-items:center;padding:.1rem .75rem;cursor:pointer}
+.tag-add-chip:active{background:var(--accent);color:var(--accent-text)}
 .tag-add-row{display:flex;gap:.5rem;align-items:center;margin:.45rem 0 .2rem}
 .tag-add-row input{flex:1;min-width:0;margin-top:0;padding:.65rem .7rem;font-size:1rem;border:1.5px solid var(--border);border-radius:10px;background:var(--input-bg);color:var(--text)}
+.tag-add-cancel{appearance:none;background:none;border:0;color:var(--muted);font-family:inherit;font-size:1.15rem;font-weight:700;line-height:1;width:44px;height:44px;padding:0;cursor:pointer;flex:none}
 .qa-tag-field{margin-bottom:.7rem}
 .qa-tag-field .form-caption{display:block;font-weight:600;font-size:.88rem;margin-bottom:.3rem}
 .qa-tag-field .d-tags-chips{margin-bottom:.35rem}

@@ -13,7 +13,7 @@
   var $ = function (id) { return document.getElementById(id); };
   /* The build this code IS (v42): version.json on the server carries
    * the newest build's number; the checker below compares the two. */
-  var APP_VERSION = 46;
+  var APP_VERSION = 47;
   var AISLES = ['A', 'B', 'C', 'D'];
   var BINS = [];
   AISLES.forEach(function (a) { for (var i = 1; i <= 6; i++) BINS.push(a + i); });
@@ -1074,15 +1074,25 @@
    * (its own tokens, so a tag "garage" can claim a folder named
    * "Garage" even though no dictionary family covers it). The
    * folder side mirrors the literal half: a folder's claim set is
-   * folderTags PLUS its own name tokens. For items WITHOUT custom
-   * tags, effectiveTags is computeTags exactly, and the added
+   * folderTags PLUS its own name tokens. Blocked tags (v47)
+   * subtract from the computed half before any of this merges.
+   * For items WITHOUT custom tags or blocks, effectiveTags is
+   * computeTags exactly, and the added
    * folder tokens can never match a computed family that
    * folderTags didn't already claim (every family name that shows
    * up as a folder token was already claimed by name there) — so
    * untagged items behave exactly as in v44/v45. */
   function customTagsOf(item) { return (item && Array.isArray(item.tags)) ? item.tags : []; }
+  /* Blocked tags (v47): computed tag ids the user removed by
+   * long-press (item.tagBlocks, lowercase). They subtract from
+   * the COMPUTED set only — each chip controls its own entry, so
+   * a custom tag that feeds a blocked family (custom "T8" feeding
+   * 'lighting') still counts until that chip itself is removed. */
+  function blockedTagsOf(item) { return (item && Array.isArray(item.tagBlocks)) ? item.tagBlocks : []; }
   function effectiveTags(item) {
-    var out = computeTags(item);
+    var blocked = {};
+    blockedTagsOf(item).forEach(function (t) { blocked[t] = 1; });
+    var out = computeTags(item).filter(function (t) { return !blocked[t]; });
     var ct = customTagsOf(item);
     if (!ct.length) return out;
     var seen = {};
@@ -1184,6 +1194,7 @@
     computeTags: computeTags,
     folderTags: folderTags,
     customTagsOf: customTagsOf,
+    blockedTagsOf: blockedTagsOf,
     effectiveTags: effectiveTags,
     folderClaimTags: folderClaimTags,
     uncatItems: uncatItems,
@@ -1500,6 +1511,7 @@
     $('addForm').classList.remove('hidden');
     qaTags = [];
     renderQaTags();
+    setQaTagBox(false);
     $('addName').focus();
   }
   /* Quick Add's Folder picker: the saved folder list + Uncategorized.
@@ -1520,38 +1532,70 @@
 
   /* Quick Add tags (v46): the same chip editor as the item sheet,
    * collected locally and ridden into D.addItem as data.tags —
-   * the add op's full field set carries them to the sheet. */
+   * the add op's full field set carries them to the sheet. All
+   * Quick Add tags are custom (nothing is computed before the
+   * item exists), so the chips carry the same × and the same
+   * long-press removal as the item sheet (v47) — pre-creation
+   * there is nothing persisted, so removal here is silent. The
+   * add box collapses behind the same "+ Add" chip. */
   var qaTags = [];
+  var qaTagBoxOpen = false;
+  function setQaTagBox(open) {
+    qaTagBoxOpen = open;
+    var row = $('qaTagAddRow');
+    if (row) row.classList.toggle('hidden', !open);
+    var chip = $('qaTagAddChip');
+    if (chip) chip.classList.toggle('hidden', open);
+    if (open) { try { $('qaTagInput').focus(); } catch (e) { /* focus is a bonus */ } }
+  }
   function renderQaTags() {
     var box = $('qaTags');
     if (!box) return;
     box.innerHTML = qaTags.map(function (t, idx) {
       return '<span class="tag-chip custom">' + esc(t) +
         '<button type="button" class="tag-x" data-qa-tag-x="' + idx + '" aria-label="Remove tag ' + esc(t) + '">×</button></span>';
-    }).join('');
+    }).join('') +
+      '<button type="button" class="tag-chip tag-add-chip' + (qaTagBoxOpen ? ' hidden' : '') + '" id="qaTagAddChip">+ Add</button>';
     box.querySelectorAll('[data-qa-tag-x]').forEach(function (b) {
+      var tagVal = qaTags[parseInt(b.getAttribute('data-qa-tag-x'), 10)];
       b.addEventListener('click', function () {
-        qaTags.splice(parseInt(b.getAttribute('data-qa-tag-x'), 10), 1);
+        if (tagLpJustFired('q:' + tagVal)) return;   // the long-press already removed this tag
+        var at = qaTags.indexOf(tagVal);
+        if (at === -1) return;
+        qaTags.splice(at, 1);
         renderQaTags();
       });
     });
+    box.querySelectorAll('.tag-chip.custom').forEach(function (chip, idx) {
+      var tag = qaTags[idx];
+      attachTagLongPress(chip, 'q:' + tag, function () {
+        var at = qaTags.indexOf(tag);
+        if (at === -1) return;
+        qaTags.splice(at, 1);
+        renderQaTags();
+      });
+    });
+    var addChip = $('qaTagAddChip');
+    if (addChip) addChip.addEventListener('click', function () { setQaTagBox(true); });
   }
   function addQaTagFromInput() {
     var inp = $('qaTagInput');
     var val = String(inp.value || '').replace(/\s+/g, ' ').trim();
     if (!val) return;
-    inp.value = '';
     if (qaTags.some(function (t) { return t.toLowerCase() === val.toLowerCase(); })) {
       toast('Tag already added');
       return;
     }
+    inp.value = '';
     qaTags.push(val);
     renderQaTags();
-    try { inp.focus(); } catch (e) { /* focus is a bonus */ }
+    setQaTagBox(false);   // a commit collapses the box back to the chip
   }
   $('qaTagAddBtn').addEventListener('click', addQaTagFromInput);
+  $('qaTagCancelBtn').addEventListener('click', function () { $('qaTagInput').value = ''; setQaTagBox(false); });
   $('qaTagInput').addEventListener('keydown', function (e) {
     if (e.key === 'Enter') { e.preventDefault(); addQaTagFromInput(); }   // Enter must not submit the form
+    else if (e.key === 'Escape') { e.preventDefault(); $('qaTagInput').value = ''; setQaTagBox(false); }
   });
 
   $('searchInput').addEventListener('input', function () {
@@ -1577,6 +1621,8 @@
     $('dBinChip').textContent = locShort(item);
     $('dBinChip').setAttribute('aria-label', locLong(item) + ' — see everything at this location');
     renderPartLookup(item);
+    setDTagBox(false);   // the tag add box starts collapsed for every item
+    $('dTagInput').value = '';
     renderItemTags(item);
     renderFolderRail(item);
     renderOrphanNotice();
@@ -1600,43 +1646,131 @@
     $('dCost').textContent = money(item.cost) + ' each';
     $('dUpdated').textContent = 'Last updated ' + fmtTime(item.updated) + (navigator.onLine ? '' : ' · queued (offline)');
   }
-  /* Item tags (v44 computed, v46 editable): computed families are
-   * plain read-only chips; the user's own tags are filled chips
-   * with a × each. Add/remove fires D.setTags on the spot — the
-   * same save-on-action pattern as the folder rail and the photo
-   * editor — and the auto-file pass runs when the sheet closes
-   * (closeItem) or Home is re-entered, since the pass never runs
-   * under an open sheet: a tag that homes a homeless item files
-   * it then, with the usual undo toast. */
+  /* Item tags (v44 computed, v46 editable, v47 removable):
+   * computed families are plain chips; the user's own tags are
+   * filled chips with a × each. A 450ms long-press on ANY chip
+   * removes that tag — a custom chip deletes the tag, a computed
+   * chip BLOCKS it for this item (it stays gone; adding a tag
+   * with the same name clears the block). Removal shows the 6s
+   * UNDO toast; undo restores the exact prior adds+blocks in one
+   * fresh setTags write. Add/remove fires D.setTags on the spot —
+   * the same save-on-action pattern as the folder rail and the
+   * photo editor — and the auto-file pass runs when the sheet
+   * closes (closeItem) or Home is re-entered, since the pass
+   * never runs under an open sheet: a tag that homes a homeless
+   * item files it then, with the usual undo toast.
+   * The add box stays collapsed behind the "+ Add" chip at the
+   * end of the chip row (v47): tapping it opens the box in
+   * place; a commit or a cancel collapses it back to the chip. */
+  var tagLpTimer = null, tagLpFiredAt = 0, tagLpFiredKey = null;
+  /* Mirror of the folder-tab long-press: 450ms hold, a >10px
+   * move cancels (the press turned into a scroll), one shared
+   * timer (only one press can be in flight). The fired key +
+   * timestamp let a trailing click aimed at the chip that just
+   * vanished be swallowed — removal re-renders the row
+   * mid-gesture. */
+  function attachTagLongPress(el, key, fn) {
+    var startX = 0, startY = 0;
+    el.addEventListener('pointerdown', function (e) {
+      startX = e.clientX || 0; startY = e.clientY || 0;
+      clearTimeout(tagLpTimer);
+      tagLpTimer = setTimeout(function () {
+        tagLpFiredAt = Date.now();
+        tagLpFiredKey = key;
+        if (navigator.vibrate) { try { navigator.vibrate(30); } catch (err) { /* unsupported */ } }
+        fn();
+      }, 450);
+    });
+    el.addEventListener('pointermove', function (e) {
+      if (Math.abs((e.clientX || 0) - startX) > 10 || Math.abs((e.clientY || 0) - startY) > 10) clearTimeout(tagLpTimer);
+    });
+    ['pointerup', 'pointerleave', 'pointercancel'].forEach(function (ev) {
+      el.addEventListener(ev, function () { clearTimeout(tagLpTimer); });
+    });
+  }
+  function tagLpJustFired(key) { return key === tagLpFiredKey && Date.now() - tagLpFiredAt < 700; }
+
+  var dTagBoxOpen = false;
+  function setDTagBox(open) {
+    dTagBoxOpen = open;
+    var row = $('dTagAddRow');
+    if (row) row.classList.toggle('hidden', !open);
+    var chip = $('dTagAddChip');
+    if (chip) chip.classList.toggle('hidden', open);
+    if (open) { try { $('dTagInput').focus(); } catch (e) { /* focus is a bonus */ } }
+  }
   function renderItemTags(item) {
     var block = $('dTagsBlock');
     if (!block) return;
     block.classList.remove('hidden');
-    var computed = computeTags(item);
+    var blocked = {};
+    blockedTagsOf(item).forEach(function (t) { blocked[t] = 1; });
+    var computed = computeTags(item).filter(function (t) { return !blocked[t]; });
     var custom = customTagsOf(item);
-    var html = computed.map(function (t) { return '<span class="tag-chip">' + esc(t) + '</span>'; }).join('');
+    var html = computed.map(function (t) {
+      return '<span class="tag-chip" data-tag-computed="' + esc(t) + '">' + esc(t) + '</span>';
+    }).join('');
     html += custom.map(function (t, idx) {
       return '<span class="tag-chip custom">' + esc(t) +
         '<button type="button" class="tag-x" data-tag-x="' + idx + '" aria-label="Remove tag ' + esc(t) + '">×</button></span>';
     }).join('');
+    html += '<button type="button" class="tag-chip tag-add-chip' + (dTagBoxOpen ? ' hidden' : '') + '" id="dTagAddChip">+ Add</button>';
     $('dTags').innerHTML = html;
     $('dTags').querySelectorAll('[data-tag-x]').forEach(function (b) {
+      var tagVal = custom[parseInt(b.getAttribute('data-tag-x'), 10)];
       b.addEventListener('click', function () {
         if (!currentItemId) return;
         var it = D.getItem(currentItemId);
         if (!it) return;
+        if (tagLpJustFired('u:' + it.id + ':' + tagVal)) return;   // the long-press already removed this tag
         var next = customTagsOf(it).slice();
-        next.splice(parseInt(b.getAttribute('data-tag-x'), 10), 1);
-        applyItemTags(next);
+        var at = next.indexOf(tagVal);
+        if (at === -1) return;
+        next.splice(at, 1);
+        applyItemTagState(next, blockedTagsOf(it).slice());
       });
     });
+    $('dTags').querySelectorAll('[data-tag-computed]').forEach(function (chip) {
+      var tag = chip.getAttribute('data-tag-computed');
+      attachTagLongPress(chip, 'c:' + item.id + ':' + tag, function () { removeItemTag('computed', tag); });
+    });
+    $('dTags').querySelectorAll('.tag-chip.custom').forEach(function (chip, idx) {
+      var tag = custom[idx];
+      attachTagLongPress(chip, 'u:' + item.id + ':' + tag, function () { removeItemTag('custom', tag); });
+    });
+    var addChip = $('dTagAddChip');
+    if (addChip) addChip.addEventListener('click', function () { setDTagBox(true); });
   }
-  function applyItemTags(next) {
+  function applyItemTagState(nextAdds, nextBlocks) {
     if (!currentItemId) return;
-    D.setTags(currentItemId, next);
+    D.setTags(currentItemId, nextAdds, nextBlocks);
     var it = D.getItem(currentItemId);
     if (it) renderItemTags(it);
     refreshChrome();
+  }
+  /* Long-press removal: a custom tag is deleted; a computed tag
+   * is blocked for this item. The item keeps its folder either
+   * way (removal never un-files, never touches the primary). */
+  function removeItemTag(kind, value) {
+    if (!currentItemId) return;
+    var id = currentItemId;
+    var it = D.getItem(id);
+    if (!it) return;
+    var priorAdds = customTagsOf(it).slice();
+    var priorBlocks = blockedTagsOf(it).slice();
+    var nextAdds = priorAdds.slice(), nextBlocks = priorBlocks.slice();
+    if (kind === 'custom') nextAdds = nextAdds.filter(function (t) { return t !== value; });
+    else if (nextBlocks.indexOf(value) === -1) nextBlocks.push(value);
+    D.setTags(id, nextAdds, nextBlocks);
+    var it2 = D.getItem(id);
+    if (it2 && currentItemId === id) renderItemTags(it2);
+    refreshChrome();
+    showUndoToast('Tag removed: ' + value, function () {
+      D.setTags(id, priorAdds, priorBlocks);
+      var it3 = D.getItem(id);
+      if (it3 && currentItemId === id) renderItemTags(it3);
+      refreshChrome();
+    });
   }
   function addItemTagFromInput() {
     if (!currentItemId) return;
@@ -1645,19 +1779,22 @@
     if (!val) return;
     var it = D.getItem(currentItemId);
     if (!it) return;
-    inp.value = '';
     if (customTagsOf(it).some(function (t) { return t.toLowerCase() === val.toLowerCase(); })) {
       toast('Tag already added');
       return;
     }
-    applyItemTags(customTagsOf(it).concat([val]));
-    try { inp.focus(); } catch (e) { /* focus is a bonus */ }
+    inp.value = '';
+    applyItemTagState(customTagsOf(it).concat([val]), blockedTagsOf(it).slice());
+    setDTagBox(false);   // a commit collapses the box back to the chip
   }
   $('dTagAddBtn').addEventListener('click', addItemTagFromInput);
+  $('dTagCancelBtn').addEventListener('click', function () { $('dTagInput').value = ''; setDTagBox(false); });
   $('dTagInput').addEventListener('keydown', function (e) {
     if (e.key === 'Enter') { e.preventDefault(); addItemTagFromInput(); }
+    else if (e.key === 'Escape') { e.preventDefault(); $('dTagInput').value = ''; setDTagBox(false); }
   });
   function closeItem() {
+    setDTagBox(false);
     $('itemOverlay').classList.add('hidden');
     currentItemId = null;
     renderHome({ preserveOrder: true });
@@ -3493,6 +3630,7 @@
     var item = D.addItem(data);
     qaTags = [];   // the tags rode the add — the next item starts clean
     renderQaTags();
+    setQaTagBox(false);
     pendingAdd = null;
     $('addDupWarn').classList.add('hidden');
     $('addForm').classList.add('hidden');
@@ -3552,6 +3690,7 @@
     $('addForm').reset(); $('addQty').value = 1;
     qaTags = [];
     renderQaTags();
+    setQaTagBox(false);
     updateSkuLookup();
     iconTouched = false; pendingAdd = null;
     $('addDupWarn').classList.add('hidden');

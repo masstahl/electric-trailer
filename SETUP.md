@@ -190,7 +190,9 @@ skipping any column the sheet doesn't have.
 
 The `Tags` column is optional: without it the app works exactly
 the same, but custom tags stay on the device that added them
-instead of syncing to the sheet.
+instead of syncing to the sheet. An entry prefixed with `!`
+(e.g. `!lighting`) records a tag removed in the app — it stays
+removed.
 
 If your columns are named differently again, either rename the
 headers in the sheet to match, or adjust the mapping in code: row

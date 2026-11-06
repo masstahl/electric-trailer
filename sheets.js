@@ -53,19 +53,29 @@
     return isFinite(n) ? n : dflt;
   }
   function str(v) { return v == null ? '' : String(v).trim(); }
-  /* A Tags cell → the user's custom tag list: split on commas,
+  /* A Tags cell → the user's tag state: { add, block }. Plain
+   * entries are custom tags added in the app: split on commas,
    * whitespace normalized, empties dropped, duplicates folded
    * case-insensitively (the first spelling wins — tags display
-   * exactly as they were written). */
+   * exactly as they were written). Entries prefixed "!" are
+   * BLOCKED tag ids (v47): computed tags the user removed by
+   * long-press — stored lowercase, they stay removed. */
   function parseTagsCell(v) {
-    if (v == null) return [];
-    var out = [], seen = {};
+    var out = { add: [], block: [] };
+    if (v == null) return out;
+    var seenA = {}, seenB = {};
     String(v).split(',').forEach(function (p) {
       var s = p.replace(/\s+/g, ' ').trim();
       if (!s) return;
-      var k = s.toLowerCase();
-      if (seen[k]) return;
-      seen[k] = 1; out.push(s);
+      if (s.charAt(0) === '!') {
+        var b = s.slice(1).replace(/\s+/g, ' ').trim().toLowerCase();
+        if (!b || seenB[b]) return;
+        seenB[b] = 1; out.block.push(b);
+      } else {
+        var k = s.toLowerCase();
+        if (seenA[k]) return;
+        seenA[k] = 1; out.add.push(s);
+      }
     });
     return out;
   }
@@ -113,16 +123,18 @@
       photo: str(pick(row, ['image', 'photo', 'photo url', 'image url'])),
       updated: str(pick(row, ['updated', 'last updated']))
     };
-    /* Custom tags (v46), from the optional Tags column. The parsed
-     * list lands on the item ONLY when non-empty, so untagged items
-     * keep their exact pre-v46 shape. hasTagsKey is transient (the
-     * import merge in ETData reads it, then drops it): it records
-     * whether the row carried a Tags value AT ALL — i.e. whether the
-     * sheet has the column — which is what decides whether the
-     * sheet or the on-device overlay is the tags source of truth. */
+    /* Custom tags (v46) + blocked tags (v47), from the optional
+     * Tags column. The parsed lists land on the item ONLY when
+     * non-empty, so untagged items keep their exact pre-v46 shape.
+     * hasTagsKey is transient (the import merge in ETData reads it,
+     * then drops it): it records whether the row carried a Tags
+     * value AT ALL — i.e. whether the sheet has the column — which
+     * is what decides whether the sheet or the on-device overlay
+     * is the tags source of truth. */
     var rawTags = pick(row, ['tags']);
-    var tagList = parseTagsCell(rawTags);
-    if (tagList.length) item.tags = tagList;
+    var parsedTags = parseTagsCell(rawTags);
+    if (parsedTags.add.length) item.tags = parsedTags.add;
+    if (parsedTags.block.length) item.tagBlocks = parsedTags.block;
     item.hasTagsKey = rawTags !== undefined;
     return item;
   }

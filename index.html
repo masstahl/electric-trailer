@@ -162,9 +162,10 @@
       <div class="qa-tag-field">
         <span class="form-caption">Tags</span>
         <span class="d-tags-chips" id="qaTags"></span>
-        <div class="tag-add-row">
+        <div class="tag-add-row hidden" id="qaTagAddRow">
           <input id="qaTagInput" type="text" placeholder="Add a tag" autocomplete="off" aria-label="Add a tag">
           <button type="button" id="qaTagAddBtn" class="btn">Add</button>
+          <button type="button" id="qaTagCancelBtn" class="tag-add-cancel" aria-label="Cancel adding a tag">×</button>
         </div>
       </div>
       <label>Item icon</label>
@@ -312,7 +313,7 @@
       <div class="kv"><span>Pending queue</span><strong id="healthQueue">–</strong></div>
       <div class="kv"><span>Last sync</span><strong id="healthLastSync">never</strong></div>
       <div class="kv"><span>Last error</span><strong id="healthError" class="error-text">none</strong></div>
-      <div class="kv"><span>App version</span><strong id="appVersionVal">v46</strong></div>
+      <div class="kv"><span>App version</span><strong id="appVersionVal">v47</strong></div>
       <button type="button" id="checkUpdateBtn" class="btn">Check for update</button>
     </div>
     <!-- Not in the sheet: shown only while flagged items exist (renderOrphans) -->
@@ -338,9 +339,10 @@
     <h2 id="dName">Item</h2>
     <p class="muted" id="dMeta">SKU · Bin · Supplier</p>
     <div class="d-tags" id="dTagsBlock"><span class="d-tags-label">Tags</span><span class="d-tags-chips" id="dTags"></span></div>
-    <div class="tag-add-row">
+    <div class="tag-add-row hidden" id="dTagAddRow">
       <input id="dTagInput" type="text" placeholder="Add a tag" autocomplete="off" aria-label="Add a tag">
       <button type="button" id="dTagAddBtn" class="btn">Add</button>
+      <button type="button" id="dTagCancelBtn" class="tag-add-cancel" aria-label="Cancel adding a tag">×</button>
     </div>
     <div class="sheet-chips">
       <button type="button" class="bin-chip" id="dBinChip" title="See everything at this location">A · L2 · P1</button>
