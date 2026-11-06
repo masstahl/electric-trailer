@@ -13,7 +13,7 @@
   var $ = function (id) { return document.getElementById(id); };
   /* The build this code IS (v42): version.json on the server carries
    * the newest build's number; the checker below compares the two. */
-  var APP_VERSION = 47;
+  var APP_VERSION = 48;
   var AISLES = ['A', 'B', 'C', 'D'];
   var BINS = [];
   AISLES.forEach(function (a) { for (var i = 1; i <= 6; i++) BINS.push(a + i); });
@@ -884,6 +884,7 @@
     var wasCreate = !!pendingCreateName && oldName === pendingCreateName;
     if (wasCreate) pendingCreateName = null;
     if (categoryFilter === oldName) categoryFilter = newName;   // the selected tab follows its folder
+    tagProvenanceRename(oldName, newName);   // v48: tag filings follow their folder's new name
     closeFolderSheet();
     renderHome();
     centerActiveTab(false);
@@ -904,10 +905,11 @@
    * "Resisters" still files items spelled "Resistor" (they share
    * the stem 'resis'). Only Uncategorized items are candidates:
    * nothing is ever pulled out of a folder it already lives in.
-   * Moves ride D.setCategory — the same funnel Auto-sort applies
+   * Moves ride fileItemManual — the same funnel Auto-sort applies
    * through, so each move queues its edit op for the sheet — and
    * the batch carries Auto-sort's UNDO toast. Zero matches: the
-   * folder is simply created, no toast, no ops. */
+   * folder is simply created, no toast, no ops. Sweep filings
+   * carry NO tag provenance (v48): they stand like hand filings. */
   var SWEEP_STOPWORDS = { and: 1, the: 1, for: 1, a: 1, an: 1, of: 1 };
   /* One plural rule for the whole app (sweep, tags, suggestions):
    * glasses → glass, boxes → box, switches → switch (only s/x/z/
@@ -943,11 +945,11 @@
     if (!hits.length) return;
     var prev = {};
     hits.forEach(function (it) { prev[it.id] = itemCategory(it); });
-    hits.forEach(function (it) { D.setCategory(it.id, folderName); });
+    hits.forEach(function (it) { fileItemManual(it.id, folderName); });
     renderHome(); refreshChrome();
     showUndoToast('Moved ' + hits.length + ' item' + (hits.length === 1 ? '' : 's') + ' into ' + folderName, function () {
       hits.forEach(function (it) {
-        D.setCategory(it.id, prev[it.id]);
+        fileItemManual(it.id, prev[it.id]);
         if (prev[it.id] === D.UNCAT) noteManualUnfile(it.id);   // an undo is a decision — tags must not re-file it
       });
       renderHome(); refreshChrome();
@@ -1140,7 +1142,7 @@
       };
     }).filter(function (s) { return !s.system || s.count > 0; });
   }
-  /* ---------- Auto-file by tags (v44) ----------
+  /* ---------- Auto-file by tags (v44) + un-file (v48) ----------
    * After data loads (and after a folder is created or renamed),
    * an unfiled item whose tags are claimed by EXACTLY ONE folder is
    * filed there through D.setCategory — the ordinary funnel, so
@@ -1149,8 +1151,19 @@
    * auto-filed at most once EVER: ids persist in localStorage
    * 'et-tag-autofiled', and a manual un-filing (folder rail, an
    * undo) burns the id too, so the app never fights the user for
-   * an item. Two-or-more folder claims stay display-only. */
+   * an item. Two-or-more folder claims stay display-only.
+   * v48: every tag filing also records PROVENANCE —
+   * 'et-tag-autofiled-from' maps the item id to the folder its
+   * tags filed it into. When a later tag removal leaves NONE of
+   * the item's remaining tags matching that folder, this same
+   * settle pass un-files it (Matthew's ruling: the removal is the
+   * point) and lifts its burn, so re-adding the tag can file it
+   * again. A filing a PERSON made — by hand, by sort, by the
+   * create-folder sweep — carries no provenance and always
+   * stands: every non-pass setCategory in this file routes
+   * through fileItemManual, which clears any stale provenance. */
   var TAG_AUTOFILE_KEY = 'et-tag-autofiled';
+  var TAG_AUTOFILE_FROM_KEY = 'et-tag-autofiled-from';
   function tagAutofiledIds() {
     try { var v = JSON.parse(window.localStorage.getItem(TAG_AUTOFILE_KEY) || '[]'); return Array.isArray(v) ? v : []; }
     catch (e) { return []; }
@@ -1162,29 +1175,125 @@
     ids.forEach(function (id) { if (!seen[id]) { cur.push(id); seen[id] = 1; } });
     try { window.localStorage.setItem(TAG_AUTOFILE_KEY, JSON.stringify(cur)); } catch (e) { /* storage blocked */ }
   }
+  function tagAutofileUnmark(ids) {
+    if (!ids.length) return;
+    var drop = {};
+    ids.forEach(function (id) { drop[id] = 1; });
+    var cur = tagAutofiledIds().filter(function (id) { return !drop[id]; });
+    try { window.localStorage.setItem(TAG_AUTOFILE_KEY, JSON.stringify(cur)); } catch (e) { /* storage blocked */ }
+  }
   function noteManualUnfile(id) { if (id) tagAutofileMark([id]); }
+  /* Provenance reads normalize in memory only — a missing or
+   * malformed stored value reads as {} and nothing is written
+   * back until a filing, an un-filing or a tidy actually changes
+   * the map (the same lazy rule as the v47 tag overlay). An
+   * emptied map removes the key, so "no provenance" and "key
+   * absent" stay the same state. */
+  function tagProvenance() {
+    try {
+      var v = JSON.parse(window.localStorage.getItem(TAG_AUTOFILE_FROM_KEY) || '{}');
+      return (v && typeof v === 'object' && !Array.isArray(v)) ? v : {};
+    } catch (e) { return {}; }
+  }
+  function tagProvenanceWrite(map) {
+    try {
+      if (Object.keys(map).length) window.localStorage.setItem(TAG_AUTOFILE_FROM_KEY, JSON.stringify(map));
+      else window.localStorage.removeItem(TAG_AUTOFILE_FROM_KEY);
+    } catch (e) { /* storage blocked */ }
+  }
+  function tagProvenanceSet(id, folder) {
+    if (!id || !folder) return;
+    var m = tagProvenance();
+    if (m[id] === folder) return;
+    m[id] = folder;
+    tagProvenanceWrite(m);
+  }
+  function tagProvenanceClear(id) {
+    if (!id) return;
+    var m = tagProvenance();
+    if (!Object.prototype.hasOwnProperty.call(m, id)) return;
+    delete m[id];
+    tagProvenanceWrite(m);
+  }
+  function tagProvenanceRename(oldName, newName) {
+    var m = tagProvenance(), hit = false, out = {};
+    Object.keys(m).forEach(function (id) {
+      if (m[id] === oldName) { out[id] = newName; hit = true; } else out[id] = m[id];
+    });
+    if (hit) tagProvenanceWrite(out);
+  }
+  /* Every filing decision that does NOT come from the tag pass —
+   * folder rail, sort mode, auto-sort review, the create-folder
+   * sweep and their undos — supersedes tag provenance: route
+   * through here so the record clears alongside the move. */
+  function fileItemManual(id, folder) {
+    tagProvenanceClear(id);
+    return D.setCategory(id, folder);
+  }
   function autoFileByTags() {
     if (editingOpen()) return 0;   // never under an open sheet — the refresh gate's rule
     var folders = existingFolderNames();
     if (!folders.length) return 0;
-    var burned = {};
-    tagAutofiledIds().forEach(function (id) { burned[id] = 1; });
     var claim = {};
     folders.forEach(function (f) { claim[f] = folderClaimTags(f); });
+    var changed = false;
+    /* v48 UN-FILE half, evaluated first so the filing half below
+     * sees settled primaries: an item the tags filed loses that
+     * folder when none of its remaining tags match it anymore.
+     * Provenance pointing at a gone item, a gone folder, or a
+     * folder the item no longer sits in is stale bookkeeping (a
+     * person moved it, the folder was renamed or removed) — it
+     * is cleared silently and the person's state is untouched. */
+    var justUnfiled = {};
+    var prov = tagProvenance();
+    var provIds = Object.keys(prov);
+    if (provIds.length) {
+      var nextProv = null;
+      var unplan = [];
+      provIds.forEach(function (id) {
+        var F = prov[id];
+        var it = D.getItem(id);
+        if (!it || folders.indexOf(F) === -1 || itemCategory(it) !== F) {
+          if (!nextProv) nextProv = Object.assign({}, prov);
+          delete nextProv[id];
+          return;
+        }
+        if (!tagsIntersect(effectiveTags(it), claim[F])) unplan.push({ id: id, folder: F });
+      });
+      unplan.forEach(function (p) {
+        D.setCategory(p.id, D.UNCAT);
+        if (!nextProv) nextProv = Object.assign({}, prov);
+        delete nextProv[p.id];
+        justUnfiled[p.id] = 1;
+      });
+      if (unplan.length) {
+        tagAutofileUnmark(unplan.map(function (p) { return p.id; }));
+        changed = true;
+      }
+      if (nextProv) tagProvenanceWrite(nextProv);
+    }
+    /* FILE half (v44): homeless, unburned, exactly one claimant.
+     * Items un-filed above sit this pass out — nothing is ever
+     * un-filed and re-filed inside one pass. */
+    var burned = {};
+    tagAutofiledIds().forEach(function (id) { burned[id] = 1; });
     var plan = [];
     D.getItems().forEach(function (it) {
-      if (itemCategory(it) !== D.UNCAT || burned[it.id]) return;
+      if (itemCategory(it) !== D.UNCAT || burned[it.id] || justUnfiled[it.id]) return;
       var tags = effectiveTags(it);
       if (!tags.length) return;
       var matches = folders.filter(function (f) { return tagsIntersect(tags, claim[f]); });
       if (matches.length === 1) plan.push({ id: it.id, folder: matches[0] });
     });
+    if (plan.length) {
+      tagAutofileMark(plan.map(function (p) { return p.id; }));
+      plan.forEach(function (p) { D.setCategory(p.id, p.folder); tagProvenanceSet(p.id, p.folder); });
+      changed = true;
+    }
+    if (changed) { renderHome(); refreshChrome(); }
     if (!plan.length) return 0;
-    tagAutofileMark(plan.map(function (p) { return p.id; }));
-    plan.forEach(function (p) { D.setCategory(p.id, p.folder); });
-    renderHome(); refreshChrome();
     showUndoToast('Filed ' + plan.length + ' item' + (plan.length === 1 ? '' : 's') + ' by their tags', function () {
-      plan.forEach(function (p) { D.setCategory(p.id, D.UNCAT); });
+      plan.forEach(function (p) { D.setCategory(p.id, D.UNCAT); tagProvenanceClear(p.id); });
       renderHome(); refreshChrome();
     });
     return plan.length;
@@ -1202,7 +1311,8 @@
     folderDisplayItems: folderDisplayItems,
     folderDisplayStats: folderDisplayStats,
     autoFileByTags: autoFileByTags,
-    autofiledIds: tagAutofiledIds
+    autofiledIds: tagAutofiledIds,
+    autofiledFrom: tagProvenance
   };
 
   $('fsRemoveBtn').addEventListener('click', function () {
@@ -1396,7 +1506,7 @@
     if (!picks.length) { closeAutoSort(); return; }
     var prev = {};
     picks.forEach(function (p) { var it = D.getItem(p.id); prev[p.id] = it ? itemCategory(it) : D.UNCAT; });
-    picks.forEach(function (p) { D.setCategory(p.id, p.folder); });
+    picks.forEach(function (p) { fileItemManual(p.id, p.folder); });
     closeAutoSort();
     renderHome(); refreshChrome();
     /* Batch undo: file everything back where it was. The reverse
@@ -1404,7 +1514,7 @@
      * backend as the items' original Category values. */
     showUndoToast('Filed ' + picks.length + ' item' + (picks.length === 1 ? '' : 's'), function () {
       picks.forEach(function (p) {
-        D.setCategory(p.id, prev[p.id]);
+        fileItemManual(p.id, prev[p.id]);
         if (prev[p.id] === D.UNCAT) noteManualUnfile(p.id);   // an undo is a decision — tags must not re-file it
       });
       renderHome(); refreshChrome();
@@ -1443,7 +1553,7 @@
       b.addEventListener('click', function () {
         var en2 = sortSession && sortSession.entries[sortSession.idx];
         if (!en2) return;
-        D.setCategory(en2.id, b.getAttribute('data-sort-folder'));
+        fileItemManual(en2.id, b.getAttribute('data-sort-folder'));
         en2.filedTo = b.getAttribute('data-sort-folder');
         advanceSort();
       });
@@ -1652,8 +1762,10 @@
    * removes that tag — a custom chip deletes the tag, a computed
    * chip BLOCKS it for this item (it stays gone; adding a tag
    * with the same name clears the block). Removal shows the 6s
-   * UNDO toast; undo restores the exact prior adds+blocks in one
-   * fresh setTags write. Add/remove fires D.setTags on the spot —
+   * UNDO toast; undo restores the complete prior state (v48:
+   * adds+blocks, plus the primary category, provenance and burn
+   * state if the settle pass un-filed the item over the removed
+   * tag). Add/remove fires D.setTags on the spot —
    * the same save-on-action pattern as the folder rail and the
    * photo editor — and the auto-file pass runs when the sheet
    * closes (closeItem) or Home is re-entered, since the pass
@@ -1749,8 +1861,13 @@
     refreshChrome();
   }
   /* Long-press removal: a custom tag is deleted; a computed tag
-   * is blocked for this item. The item keeps its folder either
-   * way (removal never un-files, never touches the primary). */
+   * is blocked for this item. If the removed tag was the one that
+   * auto-filed the item, the settle pass on sheet close un-files
+   * it (v48 — the removal is the point); a folder a person filed
+   * it into always stands. The UNDO restores the COMPLETE prior
+   * state in one tap — adds, blocks, primary category, tag
+   * provenance and burn state — reversing the settle pass's
+   * un-file along with the tag write itself. */
   function removeItemTag(kind, value) {
     if (!currentItemId) return;
     var id = currentItemId;
@@ -1758,6 +1875,10 @@
     if (!it) return;
     var priorAdds = customTagsOf(it).slice();
     var priorBlocks = blockedTagsOf(it).slice();
+    var priorPrimary = itemCategory(it);
+    var provNow = tagProvenance();
+    var priorProv = Object.prototype.hasOwnProperty.call(provNow, id) ? provNow[id] : null;
+    var priorBurned = tagAutofiledIds().indexOf(id) !== -1;
     var nextAdds = priorAdds.slice(), nextBlocks = priorBlocks.slice();
     if (kind === 'custom') nextAdds = nextAdds.filter(function (t) { return t !== value; });
     else if (nextBlocks.indexOf(value) === -1) nextBlocks.push(value);
@@ -1767,9 +1888,19 @@
     refreshChrome();
     showUndoToast('Tag removed: ' + value, function () {
       D.setTags(id, priorAdds, priorBlocks);
+      if (priorProv) tagProvenanceSet(id, priorProv); else tagProvenanceClear(id);
+      if (priorBurned) tagAutofileMark([id]); else tagAutofileUnmark([id]);
+      /* Reverse the settle pass's un-file — and only that: the
+       * item currently sits unfiled and its prior primary WAS
+       * its provenance folder. A folder a person picked in the
+       * meantime is never overridden by this undo. */
+      var itNow = D.getItem(id);
+      if (itNow && priorProv && priorPrimary === priorProv && itemCategory(itNow) === D.UNCAT) {
+        D.setCategory(id, priorPrimary);
+      }
       var it3 = D.getItem(id);
       if (it3 && currentItemId === id) renderItemTags(it3);
-      refreshChrome();
+      renderHome(); refreshChrome();
     });
   }
   function addItemTagFromInput() {
@@ -1903,7 +2034,7 @@
         folderRailOpen = false;   // choosing (even the current folder) collapses the picker
         if (!it) { syncFolderRailChrome(); return; }
         if (itemCategory(it) === name) { renderFolderRail(it); return; }
-        D.setCategory(currentItemId, name);
+        fileItemManual(currentItemId, name);
         if (name === D.UNCAT) noteManualUnfile(currentItemId);   // a hand un-filing stands — tags never re-file it
         renderFolderRail(D.getItem(currentItemId));
         refreshChrome();
