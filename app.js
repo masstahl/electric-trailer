@@ -13,7 +13,7 @@
   var $ = function (id) { return document.getElementById(id); };
   /* The build this code IS (v42): version.json on the server carries
    * the newest build's number; the checker below compares the two. */
-  var APP_VERSION = 45;
+  var APP_VERSION = 46;
   var AISLES = ['A', 'B', 'C', 'D'];
   var BINS = [];
   AISLES.forEach(function (a) { for (var i = 1; i <= 6; i++) BINS.push(a + i); });
@@ -395,7 +395,7 @@
       if (on) t.setAttribute('aria-current', 'page'); else t.removeAttribute('aria-current');
     });
     if (name !== 'map' && locateTarget) { locateTarget = null; $('locateCaption').classList.add('hidden'); }
-    if (name === 'home') renderHome();
+    if (name === 'home') { renderHome(); autoFileByTags(); }   // v46: arriving Home settles pending tag filings (Quick Add path)
     if (name === 'add') prepAddForm();
     if (name === 'map') { renderMap(); if (locateTarget) setTimeout(activateLocate, 40); }
     if (name === 'suppliers') renderSuppliers();
@@ -482,7 +482,7 @@
     var filtered = items.filter(function (i) {
       if (lowFilter && i.qty > 5) return false;
       if (!q) return true;
-      var hay = (i.name + ' ' + i.sku + ' ' + i.bin + ' ' + i.supplier + ' ' + locShort(i) + ' ' + locLong(i)).toLowerCase();
+      var hay = (i.name + ' ' + i.sku + ' ' + i.bin + ' ' + i.supplier + ' ' + locShort(i) + ' ' + locLong(i) + ' ' + customTagsOf(i).join(' ') + ' ' + effectiveTags(i).join(' ')).toLowerCase();
       if (hay.indexOf(q) !== -1) return true;
       var compact = q.replace(/[\s·\-]/g, '');
       return compact.length > 1 && locShort(i).toLowerCase().replace(/[\s·]/g, '').indexOf(compact) !== -1;
@@ -1064,6 +1064,41 @@
     return out;
   }
   function tagsIntersect(a, b) { return a.some(function (t) { return b.indexOf(t) !== -1; }); }
+  /* ---------- Custom tags (v46) ----------
+   * The user's own tags (item.tags, stored verbatim) join the
+   * computed set as EFFECTIVE tags — the set display membership,
+   * counts, search, suggestions and auto-file all read. A custom
+   * tag contributes TWO ways: through the same dictionary
+   * machinery as a name (a tag "T8" also yields the 'lighting'
+   * family — the synthetic computeTags call below), and literally
+   * (its own tokens, so a tag "garage" can claim a folder named
+   * "Garage" even though no dictionary family covers it). The
+   * folder side mirrors the literal half: a folder's claim set is
+   * folderTags PLUS its own name tokens. For items WITHOUT custom
+   * tags, effectiveTags is computeTags exactly, and the added
+   * folder tokens can never match a computed family that
+   * folderTags didn't already claim (every family name that shows
+   * up as a folder token was already claimed by name there) — so
+   * untagged items behave exactly as in v44/v45. */
+  function customTagsOf(item) { return (item && Array.isArray(item.tags)) ? item.tags : []; }
+  function effectiveTags(item) {
+    var out = computeTags(item);
+    var ct = customTagsOf(item);
+    if (!ct.length) return out;
+    var seen = {};
+    out.forEach(function (t) { seen[t] = 1; });
+    function push(t) { if (t && !seen[t]) { seen[t] = 1; out.push(t); } }
+    computeTags({ id: (item.id || '') + '#tags', name: ct.join(' '), sku: '' }).forEach(push);
+    ct.forEach(function (t) { tagTokens(t).forEach(push); });
+    return out;
+  }
+  function folderClaimTags(folderName) {
+    var out = folderTags(folderName).slice();
+    var seen = {};
+    out.forEach(function (t) { seen[t] = 1; });
+    tagTokens(folderName).forEach(function (t) { if (!seen[t]) { seen[t] = 1; out.push(t); } });
+    return out;
+  }
   /* Folders that exist for tag purposes: the saved list plus any
    * name a backend row introduced (folderStats' set), never the
    * system folder. */
@@ -1076,10 +1111,10 @@
    * The Uncategorized grid is the true residue (uncatItems). */
   function folderDisplayItems(folderName) {
     if (folderName === D.UNCAT) return uncatItems();
-    var ft = folderTags(folderName);
+    var ft = folderClaimTags(folderName);
     return D.getItems().filter(function (i) {
       if (itemCategory(i) === folderName) return true;
-      return !!ft.length && tagsIntersect(computeTags(i), ft);
+      return !!ft.length && tagsIntersect(effectiveTags(i), ft);
     });
   }
   /* folderStats with DISPLAY counts (same names/order/shape), so
@@ -1125,11 +1160,11 @@
     var burned = {};
     tagAutofiledIds().forEach(function (id) { burned[id] = 1; });
     var claim = {};
-    folders.forEach(function (f) { claim[f] = folderTags(f); });
+    folders.forEach(function (f) { claim[f] = folderClaimTags(f); });
     var plan = [];
     D.getItems().forEach(function (it) {
       if (itemCategory(it) !== D.UNCAT || burned[it.id]) return;
-      var tags = computeTags(it);
+      var tags = effectiveTags(it);
       if (!tags.length) return;
       var matches = folders.filter(function (f) { return tagsIntersect(tags, claim[f]); });
       if (matches.length === 1) plan.push({ id: it.id, folder: matches[0] });
@@ -1148,6 +1183,9 @@
   window.ETTags = {
     computeTags: computeTags,
     folderTags: folderTags,
+    customTagsOf: customTagsOf,
+    effectiveTags: effectiveTags,
+    folderClaimTags: folderClaimTags,
     uncatItems: uncatItems,
     suggestCategory: suggestCategory,
     folderDisplayItems: folderDisplayItems,
@@ -1265,10 +1303,10 @@
      * claims the item's tags by name, that IS the suggestion
      * (this is what files a resistor into a folder the user named
      * "Resistors/ diodes/ capacitors"). */
-    var tags = computeTags(item);
+    var tags = effectiveTags(item);
     if (tags.length) {
       var claim = D.getCategories().filter(function (c) {
-        return tagsIntersect(tags, folderTags(c.name));
+        return tagsIntersect(tags, folderClaimTags(c.name));
       });
       if (claim.length === 1) return claim[0].name;
     }
@@ -1294,10 +1332,10 @@
   function uncatItems() {
     var folders = existingFolderNames();
     var claim = {};
-    folders.forEach(function (f) { claim[f] = folderTags(f); });
+    folders.forEach(function (f) { claim[f] = folderClaimTags(f); });
     return D.getItems().filter(function (i) {
       if (itemCategory(i) !== D.UNCAT) return false;
-      var tags = computeTags(i);
+      var tags = effectiveTags(i);
       if (!tags.length) return true;
       return !folders.some(function (f) { return tagsIntersect(tags, claim[f]); });
     });
@@ -1460,6 +1498,8 @@
     showView('add');
     $('addSuccess').classList.add('hidden');
     $('addForm').classList.remove('hidden');
+    qaTags = [];
+    renderQaTags();
     $('addName').focus();
   }
   /* Quick Add's Folder picker: the saved folder list + Uncategorized.
@@ -1477,6 +1517,42 @@
     else if (names.indexOf(prev) !== -1) sel.value = prev;
     else sel.value = names[0];
   }
+
+  /* Quick Add tags (v46): the same chip editor as the item sheet,
+   * collected locally and ridden into D.addItem as data.tags —
+   * the add op's full field set carries them to the sheet. */
+  var qaTags = [];
+  function renderQaTags() {
+    var box = $('qaTags');
+    if (!box) return;
+    box.innerHTML = qaTags.map(function (t, idx) {
+      return '<span class="tag-chip custom">' + esc(t) +
+        '<button type="button" class="tag-x" data-qa-tag-x="' + idx + '" aria-label="Remove tag ' + esc(t) + '">×</button></span>';
+    }).join('');
+    box.querySelectorAll('[data-qa-tag-x]').forEach(function (b) {
+      b.addEventListener('click', function () {
+        qaTags.splice(parseInt(b.getAttribute('data-qa-tag-x'), 10), 1);
+        renderQaTags();
+      });
+    });
+  }
+  function addQaTagFromInput() {
+    var inp = $('qaTagInput');
+    var val = String(inp.value || '').replace(/\s+/g, ' ').trim();
+    if (!val) return;
+    inp.value = '';
+    if (qaTags.some(function (t) { return t.toLowerCase() === val.toLowerCase(); })) {
+      toast('Tag already added');
+      return;
+    }
+    qaTags.push(val);
+    renderQaTags();
+    try { inp.focus(); } catch (e) { /* focus is a bonus */ }
+  }
+  $('qaTagAddBtn').addEventListener('click', addQaTagFromInput);
+  $('qaTagInput').addEventListener('keydown', function (e) {
+    if (e.key === 'Enter') { e.preventDefault(); addQaTagFromInput(); }   // Enter must not submit the form
+  });
 
   $('searchInput').addEventListener('input', function () {
     if (this.value.trim()) closeFolderJump();   // starting a search closes the jump list
@@ -1524,17 +1600,69 @@
     $('dCost').textContent = money(item.cost) + ' each';
     $('dUpdated').textContent = 'Last updated ' + fmtTime(item.updated) + (navigator.onLine ? '' : ' · queued (offline)');
   }
-  /* Computed tags on the item sheet (v44): read-only chips under
-   * the description line — they explain themselves by matching the
-   * folders the item shows up in. */
+  /* Item tags (v44 computed, v46 editable): computed families are
+   * plain read-only chips; the user's own tags are filled chips
+   * with a × each. Add/remove fires D.setTags on the spot — the
+   * same save-on-action pattern as the folder rail and the photo
+   * editor — and the auto-file pass runs when the sheet closes
+   * (closeItem) or Home is re-entered, since the pass never runs
+   * under an open sheet: a tag that homes a homeless item files
+   * it then, with the usual undo toast. */
   function renderItemTags(item) {
     var block = $('dTagsBlock');
     if (!block) return;
-    var tags = computeTags(item);
-    block.classList.toggle('hidden', !tags.length);
-    $('dTags').innerHTML = tags.map(function (t) { return '<span class="tag-chip">' + esc(t) + '</span>'; }).join('');
+    block.classList.remove('hidden');
+    var computed = computeTags(item);
+    var custom = customTagsOf(item);
+    var html = computed.map(function (t) { return '<span class="tag-chip">' + esc(t) + '</span>'; }).join('');
+    html += custom.map(function (t, idx) {
+      return '<span class="tag-chip custom">' + esc(t) +
+        '<button type="button" class="tag-x" data-tag-x="' + idx + '" aria-label="Remove tag ' + esc(t) + '">×</button></span>';
+    }).join('');
+    $('dTags').innerHTML = html;
+    $('dTags').querySelectorAll('[data-tag-x]').forEach(function (b) {
+      b.addEventListener('click', function () {
+        if (!currentItemId) return;
+        var it = D.getItem(currentItemId);
+        if (!it) return;
+        var next = customTagsOf(it).slice();
+        next.splice(parseInt(b.getAttribute('data-tag-x'), 10), 1);
+        applyItemTags(next);
+      });
+    });
   }
-  function closeItem() { $('itemOverlay').classList.add('hidden'); currentItemId = null; renderHome({ preserveOrder: true }); }
+  function applyItemTags(next) {
+    if (!currentItemId) return;
+    D.setTags(currentItemId, next);
+    var it = D.getItem(currentItemId);
+    if (it) renderItemTags(it);
+    refreshChrome();
+  }
+  function addItemTagFromInput() {
+    if (!currentItemId) return;
+    var inp = $('dTagInput');
+    var val = String(inp.value || '').replace(/\s+/g, ' ').trim();
+    if (!val) return;
+    var it = D.getItem(currentItemId);
+    if (!it) return;
+    inp.value = '';
+    if (customTagsOf(it).some(function (t) { return t.toLowerCase() === val.toLowerCase(); })) {
+      toast('Tag already added');
+      return;
+    }
+    applyItemTags(customTagsOf(it).concat([val]));
+    try { inp.focus(); } catch (e) { /* focus is a bonus */ }
+  }
+  $('dTagAddBtn').addEventListener('click', addItemTagFromInput);
+  $('dTagInput').addEventListener('keydown', function (e) {
+    if (e.key === 'Enter') { e.preventDefault(); addItemTagFromInput(); }
+  });
+  function closeItem() {
+    $('itemOverlay').classList.add('hidden');
+    currentItemId = null;
+    renderHome({ preserveOrder: true });
+    autoFileByTags();   // v46: a tag edit made in the sheet settles here
+  }
   $('closeDetail').addEventListener('click', closeItem);
   $('doneDetail').addEventListener('click', closeItem);
   $('itemOverlay').addEventListener('click', function (e) { if (e.target === $('itemOverlay')) closeItem(); });
@@ -3363,6 +3491,8 @@
   function normName(s) { return String(s || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim(); }
   function doAdd(data) {
     var item = D.addItem(data);
+    qaTags = [];   // the tags rode the add — the next item starts clean
+    renderQaTags();
     pendingAdd = null;
     $('addDupWarn').classList.add('hidden');
     $('addForm').classList.add('hidden');
@@ -3380,7 +3510,8 @@
       sku: $('addSku').value.trim(),
       qty: $('addQty').value, cost: $('addCost').value,
       bin: $('addBin').value, level: $('addLevel').value, supplier: $('addSupplier').value, icon: selectedIcon,
-      category: $('addFolder').value || D.UNCAT
+      category: $('addFolder').value || D.UNCAT,
+      tags: qaTags.slice()
     };
     if (!data.name) return;
     /* Duplicate-name check: offer "Receive this instead" rather than
@@ -3419,6 +3550,8 @@
     $('addSuccess').classList.add('hidden');
     $('addForm').classList.remove('hidden');
     $('addForm').reset(); $('addQty').value = 1;
+    qaTags = [];
+    renderQaTags();
     updateSkuLookup();
     iconTouched = false; pendingAdd = null;
     $('addDupWarn').classList.add('hidden');

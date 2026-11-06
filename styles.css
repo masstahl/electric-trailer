@@ -1046,12 +1046,24 @@ main{max-width:960px;margin:0 auto;padding:1rem}
 }
 [data-theme="milwaukee"] .item-sheet .sheet-footer{background:rgba(46,13,20,.96);border-top-color:rgba(255,120,130,.28)}
 
-/* Item tags (v44): computed chips under the description line, in
- * the FOLDER row's caption style. Read-only — display only. */
+/* Item tags (v44 computed, v46 editable): computed families are
+ * plain chips; the user's own tags are filled accent chips with a
+ * × each. The × hit area is a full 44px square (negative margins
+ * keep the chip itself slim) — glove-sized removal, per the
+ * research checklist. The add row mirrors the form input + .btn. */
 .d-tags{display:flex;gap:.55rem;align-items:flex-start;margin:.3rem 0 .15rem}
 .d-tags-label{font-size:.78rem;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;padding-top:.24rem;flex:none}
 .d-tags-chips{display:flex;flex-wrap:wrap;gap:.35rem;min-width:0}
 .tag-chip{font-size:.74rem;font-weight:700;line-height:1.5;padding:.1rem .55rem;border-radius:999px;background:var(--surface2);border:var(--bw) solid var(--border);color:var(--text);white-space:nowrap}
+.tag-chip.custom{background:var(--accent);border-color:var(--accent);color:var(--accent-text);display:inline-flex;align-items:center;padding-right:.15rem}
+.tag-x{appearance:none;background:none;border:0;color:inherit;font-family:inherit;font-size:.95rem;font-weight:700;line-height:1;width:44px;height:44px;margin:-11px -14px -11px -4px;padding:0;cursor:pointer;flex:none}
+.tag-add-row{display:flex;gap:.5rem;align-items:center;margin:.45rem 0 .2rem}
+.tag-add-row input{flex:1;min-width:0;margin-top:0;padding:.65rem .7rem;font-size:1rem;border:1.5px solid var(--border);border-radius:10px;background:var(--input-bg);color:var(--text)}
+.qa-tag-field{margin-bottom:.7rem}
+.qa-tag-field .form-caption{display:block;font-weight:600;font-size:.88rem;margin-bottom:.3rem}
+.qa-tag-field .d-tags-chips{margin-bottom:.35rem}
+.qa-tag-field .d-tags-chips:empty{margin-bottom:0}
+.qa-tag-field .tag-add-row{margin:0}
 
 /* Glass fallbacks (research §2): where backdrop-filter is missing,
  * and for users who ask for reduced transparency, every glass surface

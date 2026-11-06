@@ -172,6 +172,7 @@ is built around:
 | `Vendor` | Supplier name (free text, shown on the item) | `Amazon` |
 | `Quantity` | Quantity on hand (numeric; blank reads as 0) | `14` |
 | `Category` | Folder name (optional — blank rows land in Uncategorized, see below) | `Breakers & Panels` |
+| `Tags` | Custom sorting tags added in the app, comma-separated (optional — see below) | `T8, garage shelf` |
 
 **Aliases:** older/generic headers are still understood, so a sheet
 set up for an earlier version keeps working — `Id` (for `Item ID`),
@@ -184,8 +185,12 @@ A row with no `Description` uses its `Name` as the display name.
 Edits made in the app write back to the same columns: quantity
 changes post just `Quantity`; item edits post `Description`,
 `Name`, `Quantity`, `Location`, `Vendor`, `Image`, `Category`,
-`Icon` and `NFC ID` — and the bridge applies each by header name,
+`Icon`, `NFC ID` and `Tags` — and the bridge applies each by header name,
 skipping any column the sheet doesn't have.
+
+The `Tags` column is optional: without it the app works exactly
+the same, but custom tags stay on the device that added them
+instead of syncing to the sheet.
 
 If your columns are named differently again, either rename the
 headers in the sheet to match, or adjust the mapping in code: row

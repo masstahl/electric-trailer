@@ -255,6 +255,65 @@
     queueChange('edit', id, (url ? 'Photo updated: ' : 'Photo removed: ') + item.name);
     return item;
   }
+  /* ---------- Custom tags (v46) + the on-device overlay ----------
+   * The sheet's Tags column is OPTIONAL, and the deployed bridge
+   * skips any field the sheet has no column for — apps-script.gs
+   * setField_() returns silently when the header is absent, so a
+   * pre-column tag write reports { ok:true } and lands nowhere.
+   * This overlay is the on-device record that bridges the gap:
+   * every tag edit writes through here with the same value its op
+   * carries, and the import merge (refreshFromBackend) lets it
+   * supply an item's tags whenever the sheet has no Tags column.
+   * Once the column exists, the sheet is the truth and the merge
+   * refreshes the overlay from it. Entry removed when tags clear. */
+  var CUSTOM_TAGS_KEY = 'et-custom-tags';
+  function normalizeTagList(list) {
+    var out = [], seen = {};
+    (Array.isArray(list) ? list : []).forEach(function (t) {
+      var s = String(t == null ? '' : t).replace(/\s+/g, ' ').trim();
+      if (!s) return;
+      var k = s.toLowerCase();
+      if (seen[k]) return;
+      seen[k] = 1; out.push(s);
+    });
+    return out;
+  }
+  function sameTagList(a, b) {
+    if (a.length !== b.length) return false;
+    for (var i = 0; i < a.length; i++) if (a[i] !== b[i]) return false;
+    return true;
+  }
+  function readTagOverlay() {
+    var o = read(CUSTOM_TAGS_KEY, null);
+    return (o && typeof o === 'object' && !Array.isArray(o)) ? o : {};
+  }
+  function writeTagOverlay(o) { write(CUSTOM_TAGS_KEY, o); }
+  function overlaySet(id, tags) {
+    var o = readTagOverlay();
+    if (tags.length) o[id] = tags.slice(); else delete o[id];
+    writeTagOverlay(o);
+  }
+  /* Set ONE item's custom tags — mirrors setPhoto: mutate, save,
+   * one queued 'edit' op; a flush sends the item's full row, Tags
+   * included (see sheetFields — carried even when empty, so
+   * removing the last tag clears the sheet cell once the column
+   * exists). An empty list REMOVES the tags property entirely, so
+   * an item with no custom tags keeps its exact pre-v46 shape. */
+  function setTags(id, tagsArray) {
+    var tags = normalizeTagList(tagsArray);
+    var items = getItems();
+    var item = null;
+    items.forEach(function (it) { if (it.id === id) item = it; });
+    if (!item) return null;
+    overlaySet(id, tags);   // write-through on every tag edit, changed or not
+    var cur = Array.isArray(item.tags) ? item.tags : [];
+    if (sameTagList(cur, tags)) return item;   // unchanged — nothing to queue
+    if (tags.length) item.tags = tags; else delete item.tags;
+    item.updated = nowISO();
+    saveItems(items);
+    queueChange('edit', id, 'Tags updated: ' + item.name);
+    return item;
+  }
   /* SPEC PLATE status tiers, mirrored for folder summaries:
    * 0 = OUT, 1–2 = CRITICAL, 3–5 = LOW, 6+ = OK. */
   function statusTier(q) { return q <= 0 ? 'out' : (q <= 2 ? 'crit' : (q <= 5 ? 'low' : 'ok')); }
@@ -876,9 +935,16 @@
       category: (data.category && String(data.category).trim()) || UNCAT,
       icon: data.icon || 'box', nfcId: '', updated: nowISO()
     };
+    /* Custom tags chosen in Quick Add ride the add: they land on
+     * the item (and the add op's full field set — see sheetFields),
+     * and write through to the overlay so a sheet without the Tags
+     * column keeps them across imports once the add has landed. */
+    var addTags = normalizeTagList(data.tags);
+    if (addTags.length) item.tags = addTags;
     items.push(item);
     saveItems(items);
     queueChange('add', id, 'New item: ' + item.name);
+    if (addTags.length) overlaySet(id, addTags);
     return item;
   }
 
@@ -928,10 +994,39 @@
       var localById = {};
       getItems().forEach(function (i) { localById[i.id] = i; });
       var seen = {};
+      var tagOverlay = readTagOverlay();
+      var tagOverlayDirty = false;
       var merged = res.items.map(function (fi) {
         seen[fi.id] = true;
         fi.category = categoryForItem(fi);   // row value, else icon fallback
         var li = localById[fi.id];
+        /* Custom tags (v46): when the sheet HAS a Tags column its
+         * value wins and the overlay is refreshed to match — unless
+         * a local edit is still queued, which wins until it flushes
+         * (the category rule below; the overlay already holds the
+         * queued value by write-through). When the sheet has NO
+         * Tags column, the overlay supplies the item's tags, so
+         * pre-column tag edits survive imports. hasTagsKey is
+         * transient — dropped here, never stored. */
+        if (fi.hasTagsKey) {
+          var sheetTags = Array.isArray(fi.tags) ? fi.tags : [];
+          if (li && pendingEdit[fi.id]) {
+            var localTags = Array.isArray(li.tags) ? li.tags : [];
+            if (localTags.length) fi.tags = localTags.slice(); else delete fi.tags;
+          } else {
+            if (sheetTags.length) fi.tags = sheetTags; else delete fi.tags;
+            var ov = tagOverlay[fi.id];
+            if (!sameTagList(Array.isArray(ov) ? ov : [], sheetTags)) {
+              if (sheetTags.length) tagOverlay[fi.id] = sheetTags.slice();
+              else delete tagOverlay[fi.id];
+              tagOverlayDirty = true;
+            }
+          }
+        } else {
+          var ot = tagOverlay[fi.id];
+          if (Array.isArray(ot) && ot.length) fi.tags = ot.slice(); else delete fi.tags;
+        }
+        delete fi.hasTagsKey;
         // A category edit (e.g. a folder rename) still queued wins over
         // the sheet's older value until it flushes.
         if (li && pendingEdit[fi.id] && li.category) fi.category = li.category;
@@ -972,6 +1067,7 @@
       merged = merged.filter(function (it) {
         return !(seedIds[it.id] && !seen[it.id] && !pendingAny[it.id] && !isOrphan(it.id));
       });
+      if (tagOverlayDirty) writeTagOverlay(tagOverlay);
       write(LS.items, merged);
       setMeta({ lastSync: nowISO(), lastError: '', sheetRows: res.rows });
       return { ok: true, mode: 'sheet', rows: res.rows, message: res.message };
@@ -1012,6 +1108,11 @@
      * must write the empty value (sheets.js maps it to the Image
      * column unconditionally), or the removal would never land. */
     f.photo = item.photo || '';
+    /* Tags follow the photo rule: carried on every full write,
+     * comma-joined, even when empty — clearing the last tag must
+     * clear the sheet cell (once the column exists), and an add
+     * must carry the tags chosen in Quick Add. */
+    f.tags = (Array.isArray(item.tags) ? item.tags : []).join(', ');
     return f;
   }
   function flushViaSheet(q, pending) {
@@ -1109,7 +1210,7 @@
   }
 
   function resetDemo() {
-    [LS.items, LS.suppliers, LS.explicitSuppliers, LS.queue, LS.meta, LS.categories, LS.folderMigration, LS.orphans].forEach(function (k) { localStorage.removeItem(k); });
+    [LS.items, LS.suppliers, LS.explicitSuppliers, LS.queue, LS.meta, LS.categories, LS.folderMigration, LS.orphans, CUSTOM_TAGS_KEY].forEach(function (k) { localStorage.removeItem(k); });
     seedIfNeeded();
     migrateFoldersElec1();
   }
@@ -1127,7 +1228,7 @@
     getQueue: getQueue, getMeta: getMeta,
     onQueueChange: function (fn) { if (typeof fn === 'function') queueListeners.push(fn); },
     getCategories: getCategories, addCategory: addCategory,
-    renameCategory: renameCategory, removeCategory: removeCategory, setCategory: setCategory, setPhoto: setPhoto,
+    renameCategory: renameCategory, removeCategory: removeCategory, setCategory: setCategory, setPhoto: setPhoto, setTags: setTags,
     folderStats: folderStats, categoryFor: categoryForItem, UNCAT: UNCAT,
     updateQty: updateQty, setQty: setQty, addItem: addItem,
     testConnection: testConnection, flushQueue: flushQueue, resetDemo: resetDemo,

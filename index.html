@@ -159,6 +159,14 @@
       <label>Folder<select id="addFolder"></select></label>
       <label>Supplier<input id="addSupplier" list="supplierNames" placeholder="e.g. Graybar" autocomplete="off"></label>
       <datalist id="supplierNames"></datalist>
+      <div class="qa-tag-field">
+        <span class="form-caption">Tags</span>
+        <span class="d-tags-chips" id="qaTags"></span>
+        <div class="tag-add-row">
+          <input id="qaTagInput" type="text" placeholder="Add a tag" autocomplete="off" aria-label="Add a tag">
+          <button type="button" id="qaTagAddBtn" class="btn">Add</button>
+        </div>
+      </div>
       <label>Item icon</label>
       <div id="iconPicker" class="icon-picker"></div>
       <div id="addDupWarn" class="dup-warn hidden">
@@ -304,7 +312,7 @@
       <div class="kv"><span>Pending queue</span><strong id="healthQueue">–</strong></div>
       <div class="kv"><span>Last sync</span><strong id="healthLastSync">never</strong></div>
       <div class="kv"><span>Last error</span><strong id="healthError" class="error-text">none</strong></div>
-      <div class="kv"><span>App version</span><strong id="appVersionVal">v45</strong></div>
+      <div class="kv"><span>App version</span><strong id="appVersionVal">v46</strong></div>
       <button type="button" id="checkUpdateBtn" class="btn">Check for update</button>
     </div>
     <!-- Not in the sheet: shown only while flagged items exist (renderOrphans) -->
@@ -329,7 +337,11 @@
     <div class="sheet-glass">
     <h2 id="dName">Item</h2>
     <p class="muted" id="dMeta">SKU · Bin · Supplier</p>
-    <div class="d-tags hidden" id="dTagsBlock"><span class="d-tags-label">Tags</span><span class="d-tags-chips" id="dTags"></span></div>
+    <div class="d-tags" id="dTagsBlock"><span class="d-tags-label">Tags</span><span class="d-tags-chips" id="dTags"></span></div>
+    <div class="tag-add-row">
+      <input id="dTagInput" type="text" placeholder="Add a tag" autocomplete="off" aria-label="Add a tag">
+      <button type="button" id="dTagAddBtn" class="btn">Add</button>
+    </div>
     <div class="sheet-chips">
       <button type="button" class="bin-chip" id="dBinChip" title="See everything at this location">A · L2 · P1</button>
       <span class="qty-pill qty-ok" id="dStatus">0 in stock</span>

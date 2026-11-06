@@ -53,6 +53,22 @@
     return isFinite(n) ? n : dflt;
   }
   function str(v) { return v == null ? '' : String(v).trim(); }
+  /* A Tags cell → the user's custom tag list: split on commas,
+   * whitespace normalized, empties dropped, duplicates folded
+   * case-insensitively (the first spelling wins — tags display
+   * exactly as they were written). */
+  function parseTagsCell(v) {
+    if (v == null) return [];
+    var out = [], seen = {};
+    String(v).split(',').forEach(function (p) {
+      var s = p.replace(/\s+/g, ' ').trim();
+      if (!s) return;
+      var k = s.toLowerCase();
+      if (seen[k]) return;
+      seen[k] = 1; out.push(s);
+    });
+    return out;
+  }
 
   /* Bridge row (keyed by the sheet's header names) → the same item
    * shape the rest of the app uses. Headers are matched by NAME,
@@ -82,7 +98,7 @@
     usedIds[id] = true;
     var level = num(pick(row, ['level']), 2);
     level = Math.min(4, Math.max(1, Math.floor(level) || 2));
-    return {
+    var item = {
       id: id,
       name: name || id,
       sku: sku,
@@ -97,10 +113,22 @@
       photo: str(pick(row, ['image', 'photo', 'photo url', 'image url'])),
       updated: str(pick(row, ['updated', 'last updated']))
     };
+    /* Custom tags (v46), from the optional Tags column. The parsed
+     * list lands on the item ONLY when non-empty, so untagged items
+     * keep their exact pre-v46 shape. hasTagsKey is transient (the
+     * import merge in ETData reads it, then drops it): it records
+     * whether the row carried a Tags value AT ALL — i.e. whether the
+     * sheet has the column — which is what decides whether the
+     * sheet or the on-device overlay is the tags source of truth. */
+    var rawTags = pick(row, ['tags']);
+    var tagList = parseTagsCell(rawTags);
+    if (tagList.length) item.tags = tagList;
+    item.hasTagsKey = rawTags !== undefined;
+    return item;
   }
 
   /* Canonical op fields (from ETData — item-shaped: name, sku, qty,
-   * bin, supplier, category, icon, nfcId, photo) → this sheet's
+   * bin, supplier, category, icon, nfcId, photo, tags) → this sheet's
    * header names, applied at the bridge boundary so the rest of the
    * app never has to know the sheet's column titles. A qty op posts
    * ONLY { Quantity } (the bridge stamps Updated if that column
@@ -121,6 +149,7 @@
     out.Location = f.bin;
     out.Vendor = f.supplier;
     if (f.photo != null) out.Image = f.photo;   // '' is a real value: it clears the cell (photo removed)
+    if (f.tags != null) out.Tags = f.tags;      // same rule: '' clears the cell (last tag removed)
     out.Category = f.category;
     out.Icon = f.icon;
     out['NFC ID'] = f.nfcId;
