@@ -1,6 +1,7 @@
 /* appsheet.js — data layer for Electric Trailer inventory PWA.
- * (File name kept from the app's first backend; the AppSheet API
- * provider below is dormant — no Settings UI reaches it anymore.)
+ * (File name kept from the app's first backend, AppSheet; that API
+ * provider was removed in v49 — the Google Sheet bridge is the only
+ * live route, and local mode is the fallback.)
  *
  * Backends (resolved automatically — there is no chooser in Settings):
  *  - Local mode (default): items live in localStorage only. A fresh
@@ -24,21 +25,43 @@
     categories: 'et-categories',
     folderMigration: 'et-folder-migration',
     mapVersion: 'et-map-v',
-    orphans: 'et-orphans'
+    orphans: 'et-orphans',
+    tags: 'et-custom-tags'
   };
 
-  var DEFAULT_SETTINGS = {
-    appId: 'bd77482b-d437-4804-a3ef-fc2815feff2e',
-    table: 'Inventory',
-    accessKey: ''
+  /* The app's public address — the ONE place it is written in this
+   * file. Sticker/shelf links are minted from it (apps-script.gs
+   * carries its own copy for photo URLs; the two must agree). */
+  var SITE_BASE = 'https://masstahl.github.io/electric-trailer/';
+  /* Sticker-link parameter names: minted here (stickerUrl/shelfUrl),
+   * parsed in app.js (openFromUrl + the NFC readers). Printed NFC
+   * stickers carry these names — renaming one orphans every sticker
+   * in the trailer, so they live in exactly one place. */
+  var LINK_PARAMS = { item: 'item', shelf: 'shelf' };
+
+  /* The warehouse geometry model — the ONE home for it. app.js
+   * derives its AISLES / BINS / BIN_PATTERN / LEVELS from this via
+   * ETData.WAREHOUSE; sheets.js clamps imported levels to the same
+   * range. Change the trailer layout here and the app follows. */
+  var WAREHOUSE = {
+    aisles: ['A', 'B', 'C', 'D'], positions: 6,
+    levelMin: 1, levelMax: 4, defaultBin: 'A1', defaultLevel: 2
   };
+
+  /* Sync-queue history cap: every queue write goes through
+   * saveQueue(), which keeps the newest QUEUE_CAP entries. */
+  var QUEUE_CAP = 200;
+  function saveQueue(q) { write(LS.queue, q.slice(-QUEUE_CAP)); }
+  /* A queue op's kind: ops written since v49 always carry `kind`;
+   * older queued ops may carry only `type` — this is the one place
+   * that reads either spelling. */
+  function opKind(c) { return c.kind || c.type; }
 
   /* No demo inventory anymore: a fresh install starts with zero items
    * and fills from the connected Google Sheet (or manual adds). The
    * old demo seed ids are kept ONLY so a successful sheet import can
    * retire leftover demo stock from devices that ran the old seed
    * (see the purge in refreshFromBackend). */
-  var DEMO_ITEMS = [];
   var DEMO_SEED_IDS = [
     'brake-controller', 'wiring-harness-7pin', 'led-tail-light', 'trailer-tire',
     'axle-3500', 'coupler-2in', 'safety-chains', 'tongue-jack', 'battery-12v',
@@ -69,12 +92,13 @@
   /* Fallback folder from an item's icon, for rows that arrive without
    * a Category value. Conservative on purpose: only unambiguous icons
    * map ('box' excluded — it is the default icon for everything);
-   * anything else lands in Uncategorized for a human to file. */
-  var CATEGORY_BY_ICON = {
-    link: 'Wire & Cable', hex: 'Conduit & Fittings', controller: 'Breakers & Panels',
-    plug: 'Devices & Plates', light: 'Lighting',
-    bolt: 'Fasteners & Hardware', kit: 'Tools & Supplies'
-  };
+   * anything else lands in Uncategorized for a human to file.
+   * Derived from DEFAULT_CATEGORIES so a folder rename in the seed
+   * list can never strand the fallback on the old string. */
+  var CATEGORY_BY_ICON = {};
+  DEFAULT_CATEGORIES.forEach(function (c) {
+    if (c.icon !== 'box') CATEGORY_BY_ICON[c.icon] = c.name;
+  });
 
   /* Resolve an item's folder: its stored category name, else the icon
    * map, else Uncategorized. */
@@ -276,7 +300,7 @@
    * bare array reads as { add: array, block: [] } (normalized in
    * memory on read — the stored value migrates on the next write,
    * never on a bare read). */
-  var CUSTOM_TAGS_KEY = 'et-custom-tags';
+  var CUSTOM_TAGS_KEY = LS.tags;
   function normalizeTagList(list) {
     var out = [], seen = {};
     (Array.isArray(list) ? list : []).forEach(function (t) {
@@ -357,7 +381,9 @@
     queueChange('edit', id, 'Tags updated: ' + item.name);
     return item;
   }
-  /* SPEC PLATE status tiers, mirrored for folder summaries:
+  /* SPEC PLATE status tiers — the ONE definition, exported as
+   * ETData.statusOf / ETData.STATUS_RANK; app.js uses these instead
+   * of keeping its own copies:
    * 0 = OUT, 1–2 = CRITICAL, 3–5 = LOW, 6+ = OK. */
   function statusTier(q) { return q <= 0 ? 'out' : (q <= 2 ? 'crit' : (q <= 5 ? 'low' : 'ok')); }
   var TIER_RANK = { out: 0, crit: 1, low: 2, ok: 3 };
@@ -409,7 +435,7 @@
     if (!existing) {
       // Fresh install: zero items. Stock arrives via the Google Sheet
       // import or manual adds — there is no demo inventory to seed.
-      write(LS.items, DEMO_ITEMS.slice());
+      write(LS.items, []);
     } else {
       // Backfill items saved before `category` existed — icon map,
       // else the system folder.
@@ -448,43 +474,28 @@
   seedIfNeeded();
   migrateFoldersElec1();
 
-  function getSettings() {
-    var s = read(LS.settings, null) || {};
-    return {
-      appId: s.appId || DEFAULT_SETTINGS.appId,
-      table: s.table || DEFAULT_SETTINGS.table,
-      accessKey: s.accessKey || ''
-    };
-  }
-  function saveSettings(s) {
-    write(LS.settings, {
-      appId: (s.appId || '').trim(),
-      table: (s.table || '').trim() || DEFAULT_SETTINGS.table,
-      accessKey: (s.accessKey || '').trim()
-    });
-  }
-  function appSheetConfigured() {
-    var s = getSettings();
-    return !!(s.accessKey && s.table && s.appId);
-  }
-
   /* ---------- Backend resolution (no chooser UI anymore) ----------
    * Effective backend: 'sheet' when a Google Sheet link is saved on
    * this device, else 'demo' (local only). A stored 'et-backend' from
-   * the old chooser — including 'appsheet' — is ignored for routing:
-   * it can never strand a device on a backend with no UI. The
-   * AppSheet API provider below stays in the file but is unreachable. */
+   * the old chooser is ignored for routing: it can never strand a
+   * device on a backend with no UI. */
   function sheetConfigured() {
     return !!(window.ETSheets && window.ETSheets.isConfigured());
   }
   function getBackend() {
     return sheetConfigured() ? 'sheet' : 'demo';
   }
-  function setBackend(mode) {   // legacy API compat — routing is automatic now
-    return getBackend();
-  }
   function activeBackend() { return getBackend(); }
   function isLive() { return activeBackend() !== 'demo'; }
+  /* The Sheet provider's config, reached through the data layer so
+   * the UI never touches provider internals (app.js used to call
+   * ETSheets.getConfig/saveConfig directly). */
+  function sheetConfig() {
+    return window.ETSheets ? window.ETSheets.getConfig() : { url: '', token: '' };
+  }
+  function saveSheetConfig(cfg) {
+    if (window.ETSheets) window.ETSheets.saveConfig(cfg);
+  }
 
   function getItems() { return read(LS.items, []); }
   /* ---------- Suppliers hub ----------
@@ -501,10 +512,15 @@
     return Array.isArray(list) ? list : [];
   }
   function saveExplicitSuppliers(list) { write(LS.explicitSuppliers, list); }
-  function getSuppliers() {
+  /* One walk for both supplier views: explicit entries first, then
+   * item-carried names, each accumulating live counts. keyOf decides
+   * identity (the hub folds case variants; Organize keeps raw
+   * spellings separate) and sortFn the final order — the two views
+   * differ ONLY in those two functions. */
+  function collectSuppliers(keyOf, sortFn) {
     var byKey = {}, order = [];
     function ensure(name) {
-      var key = name.toLowerCase();
+      var key = keyOf(name);
       if (!byKey[key]) {
         byKey[key] = { name: name, blurb: '', explicit: false, items: 0, units: 0 };
         order.push(byKey[key]);
@@ -523,10 +539,15 @@
       var s = ensure(n);
       s.items++; s.units += Number(i.qty) || 0;
     });
-    return order.sort(function (a, b) {
-      var x = a.name.toLowerCase(), y = b.name.toLowerCase();
-      return x < y ? -1 : (x > y ? 1 : 0);
-    });
+    return order.sort(sortFn);
+  }
+  function getSuppliers() {
+    return collectSuppliers(
+      function (name) { return name.toLowerCase(); },
+      function (a, b) {
+        var x = a.name.toLowerCase(), y = b.name.toLowerCase();
+        return x < y ? -1 : (x > y ? 1 : 0);
+      });
   }
   function addSupplier(name, blurb) {
     name = String(name || '').trim();
@@ -595,31 +616,13 @@
    * each with live counts. The hub (getSuppliers) collapses case
    * variants into one row; Organize deliberately does not. */
   function getSupplierNames() {
-    var byName = {}, order = [];
-    function ensure(name) {
-      if (!byName[name]) {
-        byName[name] = { name: name, blurb: '', explicit: false, items: 0, units: 0 };
-        order.push(byName[name]);
-      }
-      return byName[name];
-    }
-    getExplicitSuppliers().forEach(function (e) {
-      var n = String((e && e.name) || '').trim();
-      if (!n) return;
-      var s = ensure(n);
-      s.blurb = String(e.blurb || ''); s.explicit = true;
-    });
-    getItems().forEach(function (i) {
-      var n = String(i.supplier || '').trim();
-      if (!n) return;
-      var s = ensure(n);
-      s.items++; s.units += Number(i.qty) || 0;
-    });
-    return order.sort(function (a, b) {
-      var x = supplierKey(a.name), y = supplierKey(b.name);
-      if (x !== y) return x < y ? -1 : 1;
-      return a.name < b.name ? -1 : (a.name > b.name ? 1 : 0);
-    });
+    return collectSuppliers(
+      function (name) { return name; },
+      function (a, b) {
+        var x = supplierKey(a.name), y = supplierKey(b.name);
+        if (x !== y) return x < y ? -1 : 1;
+        return a.name < b.name ? -1 : (a.name > b.name ? 1 : 0);
+      });
   }
   function pickSupplierCanonical(variants, rootStr) {
     var cands = variants.map(function (v) { return { name: v.name, items: v.items }; });
@@ -834,6 +837,10 @@
    * state), or remove it from this device. A flag clears when any op
    * for the id succeeds, and an import drops flags for ids the sheet
    * now contains. Other per-op errors never set the flag. */
+  /* Must match the bridge's ORPHAN_ERROR_TEXT (apps-script.gs)
+   * EXACTLY — the two runtimes share no code, so the string itself
+   * is the contract. Rewording either side silently stops orphan
+   * flagging. */
   var ORPHAN_ERROR = 'Id not found in sheet';
   function getOrphans() {
     var list = read(LS.orphans, []);
@@ -897,7 +904,10 @@
 
   function queueChange(type, itemId, detail) {
     var q = getQueue();
-    q.push({ id: 'q' + Date.now() + Math.random().toString(36).slice(2, 7), type: type, itemId: itemId, detail: detail, at: nowISO(), synced: false });
+    /* One dialect since v49: every op carries `kind` alongside the
+     * legacy `type` (renderQueue displays `type`; older queued ops
+     * may lack `kind` — opKind() reads either). */
+    q.push({ id: 'q' + Date.now() + Math.random().toString(36).slice(2, 7), type: type, kind: type, itemId: itemId, detail: detail, at: nowISO(), synced: false });
     write(LS.queue, q);
     notifyQueue();
     return q.length;
@@ -965,15 +975,25 @@
     return item;
   }
 
+  /* The slug rule — a name becomes an id base: lowercase, runs of
+   * non-alphanumerics become one dash, edge dashes trimmed. Each
+   * runtime that needs it carries its own copy (sheets.js for
+   * synthesized row ids, apps-script.gs photoSlug_ for photo file
+   * names, with that copy's own empty-fallback 'photo'); THIS copy's
+   * fallback is 'item'. Keep the three in step. */
+  function slugify_(name, fallback) {
+    return String(name == null ? '' : name).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') || fallback;
+  }
+
   function addItem(data) {
     var items = getItems();
-    var base = (data.name || 'item').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') || 'item';
+    var base = slugify_(data.name, 'item');
     var id = base, n = 2;
     while (items.some(function (i) { return i.id === id; })) id = base + '-' + (n++);
     var item = {
       id: id,
       name: data.name, sku: data.sku || ('ET-' + Math.floor(100 + Math.random() * 900)),
-      qty: Number(data.qty) || 0, bin: data.bin || 'A1', level: Math.min(4, Math.max(1, Number(data.level) || 2)),
+      qty: Number(data.qty) || 0, bin: data.bin || WAREHOUSE.defaultBin, level: Math.min(WAREHOUSE.levelMax, Math.max(WAREHOUSE.levelMin, Number(data.level) || WAREHOUSE.defaultLevel)),
       supplier: data.supplier || '', cost: Number(data.cost) || 0,
       category: (data.category && String(data.category).trim()) || UNCAT,
       icon: data.icon || 'box', nfcId: '', updated: nowISO()
@@ -991,31 +1011,6 @@
     return item;
   }
 
-  function apiUrl() {
-    var s = getSettings();
-    return 'https://api.appsheet.com/api/v2/apps/' + encodeURIComponent(s.appId) +
-           '/tables/' + encodeURIComponent(s.table) + '/Action';
-  }
-
-  function apiAction(action, rows) {
-    var s = getSettings();
-    return fetch(apiUrl(), {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'ApplicationAccessKey': s.accessKey },
-      body: JSON.stringify({ Action: action, Properties: { Locale: 'en-US' }, Rows: rows || [] })
-    }).then(function (res) {
-      return res.text().then(function (text) {
-        var body = null;
-        try { body = JSON.parse(text); } catch (e) { /* non-JSON body */ }
-        if (!res.ok) {
-          var msg = (body && (body.error || body.Message)) || text || ('HTTP ' + res.status);
-          throw new Error('AppSheet API ' + res.status + ': ' + String(msg).slice(0, 300));
-        }
-        return body;
-      });
-    });
-  }
-
   /* Sheet mode: pull the inventory rows from the Google Sheet and make
    * them the local items — the sheet is the source of truth. Two local
    * protections: an item with a qty change still queued keeps its local
@@ -1031,7 +1026,7 @@
       getQueue().forEach(function (c) {
         if (c.synced) return;
         if (c.type === 'add') pendingAdd[c.itemId] = true;
-        else if (c.kind === 'qty' || c.type === 'qty') pendingQty[c.itemId] = true;
+        else if (opKind(c) === 'qty') pendingQty[c.itemId] = true;
         else if (c.type === 'edit') pendingEdit[c.itemId] = true;
       });
       var localById = {};
@@ -1128,7 +1123,11 @@
 
   function testConnection() {
     if (activeBackend() === 'sheet') {
-      return window.ETSheets.testConnection().then(function (r) {
+      /* The provider's testConnection was a pure forward of
+       * fetchRows with the mode field re-stamped — call fetchRows
+       * directly and stamp it here. */
+      return window.ETSheets.fetchRows().then(function (fr) {
+        var r = { ok: fr.ok, mode: 'sheet', rows: fr.rows, message: fr.message };
         if (!r.ok) { setMeta({ lastError: r.message }); return r; }
         setMeta({ lastError: '' });
         // A good test also imports the rows, so the app shows real data.
@@ -1145,6 +1144,15 @@
    * just the qty; adds/edits carry the full field set.
    * An op is marked synced only when the bridge's per-op result says
    * ok — partial progress is kept, failures stay queued. */
+  /* THE ITEM SHAPE — the canonical field list every participant
+   * must agree on. An item is: id, name, sku, qty, bin, level,
+   * supplier, cost, category, icon, nfcId, photo, updated, plus
+   * (only when non-empty) tags + tagBlocks. The five places that
+   * enumerate it — sheets.js normalizeRow (read) and toSheetFields
+   * (write), sheetFields below (op fields), addItem above (create),
+   * and apps-script.gs applyOp_/setField_ (apply by header name) —
+   * each carry their runtime's half; adding a field means touching
+   * all five. */
   function sheetFields(item, full) {
     if (!full) return { qty: item.qty };
     var f = {
@@ -1171,11 +1179,11 @@
     pending.forEach(function (c) {
       var item = itemsById[c.itemId];
       if (!item) { c.synced = true; c.syncedAt = nowISO(); return; }
-      var kind = c.type === 'add' ? 'add' : ((c.kind === 'qty' || c.type === 'qty') ? 'qty' : 'edit');
+      var kind = c.type === 'add' ? 'add' : (opKind(c) === 'qty' ? 'qty' : 'edit');
       jobs.push({ entry: c, op: { id: item.id, kind: kind, fields: sheetFields(item, kind !== 'qty') } });
     });
     if (!jobs.length) {
-      write(LS.queue, q.slice(-200));
+      saveQueue(q);
       setMeta({ lastSync: nowISO(), lastError: '' });
       return Promise.resolve({ ok: true, flushed: pending.length, message: 'Synced ' + pending.length + ' change(s) to the Google Sheet.' });
     }
@@ -1206,20 +1214,20 @@
           failed.push(j.op.id + (r && r.error ? ' (' + r.error + ')' : ' (no result)'));
         }
       });
-      write(LS.queue, q.slice(-200));
+      saveQueue(q);
       if (failed.length) throw new Error(failed.length + ' change(s) rejected by the sheet: ' + failed.join(', '));
       setMeta({ lastSync: nowISO(), lastError: '' });
       return { ok: true, flushed: pending.length, message: 'Synced ' + pending.length + ' change(s) to the Google Sheet.' };
     }).catch(function (err) {
-      write(LS.queue, q.slice(-200));
+      saveQueue(q);
       setMeta({ lastError: String((err && err.message) || err) });
       return { ok: false, flushed: 0, message: 'Sheet sync failed: ' + String((err && err.message) || err) };
     });
   }
 
   /* Flush the pending queue. Demo mode: mark synced locally.
-     Live mode: send an Edit for qty changes / Add for new items; if any call
-     fails, keep the queue and record the error honestly. */
+     Sheet mode: bridge ops via flushViaSheet; if any op fails, the
+     failures stay queued and the error is recorded honestly. */
   function flushQueue() {
     var q = getQueue();
     var pending = q.filter(function (c) { return !c.synced; });
@@ -1227,46 +1235,18 @@
     if (!navigator.onLine) return Promise.resolve({ ok: false, flushed: 0, message: 'Still offline — changes stay queued.' });
     if (!isLive()) {
       // Keep full history with synced flags, capped at the newest 200:
-      write(LS.queue, q.map(function (c) { return c.synced ? c : Object.assign({}, c, { synced: true, syncedAt: nowISO() }); }).slice(-200));
+      saveQueue(q.map(function (c) { return c.synced ? c : Object.assign({}, c, { synced: true, syncedAt: nowISO() }); }));
       setMeta({ lastSync: nowISO(), lastError: '' });
       return Promise.resolve({ ok: true, flushed: pending.length, message: 'Demo sync complete — ' + pending.length + ' change(s) marked synced locally.' });
     }
-    if (activeBackend() === 'sheet') return flushViaSheet(q, pending);
-    var itemsById = {};
-    getItems().forEach(function (i) { itemsById[i.id] = i; });
-    var chain = Promise.resolve();
-    pending.forEach(function (c) {
-      chain = chain.then(function () {
-        var item = itemsById[c.itemId];
-        if (!item) { c.synced = true; c.syncedAt = nowISO(); return; }
-        var row = { Id: item.id, Name: item.name, SKU: item.sku, Qty: item.qty, Bin: item.bin, Level: item.level || 2, Supplier: item.supplier, Cost: item.cost, Category: categoryForItem(item) };
-        return apiAction(c.type === 'add' ? 'Add' : 'Edit', [row]).then(function () {
-          c.synced = true; c.syncedAt = nowISO();
-        });
-      });
-    });
-    return chain.then(function () {
-      write(LS.queue, q.slice(-200));
-      var stillPending = q.filter(function (c) { return !c.synced; }).length;
-      if (stillPending) throw new Error(stillPending + ' change(s) could not be sent.');
-      setMeta({ lastSync: nowISO(), lastError: '' });
-      return { ok: true, flushed: pending.length, message: 'Synced ' + pending.length + ' change(s) to AppSheet.' };
-    }).catch(function (err) {
-      write(LS.queue, q.slice(-200));
-      setMeta({ lastError: String(err.message || err) });
-      return { ok: false, flushed: 0, message: 'Live sync failed: ' + String(err.message || err) };
-    });
-  }
-
-  function resetDemo() {
-    [LS.items, LS.suppliers, LS.explicitSuppliers, LS.queue, LS.meta, LS.categories, LS.folderMigration, LS.orphans, CUSTOM_TAGS_KEY].forEach(function (k) { localStorage.removeItem(k); });
-    seedIfNeeded();
-    migrateFoldersElec1();
+    return flushViaSheet(q, pending);
   }
 
   window.ETData = {
-    getSettings: getSettings, saveSettings: saveSettings, isLive: isLive,
-    getBackend: getBackend, setBackend: setBackend, activeBackend: activeBackend,
+    isLive: isLive, activeBackend: activeBackend,
+    sheetConfig: sheetConfig, saveSheetConfig: saveSheetConfig,
+    statusOf: statusTier, STATUS_RANK: TIER_RANK,
+    WAREHOUSE: WAREHOUSE, LINK_PARAMS: LINK_PARAMS,
     getItems: getItems, getSuppliers: getSuppliers, addSupplier: addSupplier, removeSupplier: removeSupplier,
     supplierKey: supplierKey, supplierRoot: supplierRoot, getSupplierNames: getSupplierNames,
     suggestSupplierMerges: suggestSupplierMerges, mergeSuppliers: mergeSuppliers,
@@ -1280,9 +1260,9 @@
     renameCategory: renameCategory, removeCategory: removeCategory, setCategory: setCategory, setPhoto: setPhoto, setTags: setTags,
     folderStats: folderStats, categoryFor: categoryForItem, UNCAT: UNCAT,
     updateQty: updateQty, setQty: setQty, addItem: addItem,
-    testConnection: testConnection, flushQueue: flushQueue, resetDemo: resetDemo,
+    testConnection: testConnection, flushQueue: flushQueue,
     refreshFromBackend: refreshFromBackend,
-    stickerUrl: function (id) { return 'https://masstahl.github.io/electric-trailer/?item=' + encodeURIComponent(id); },
-    shelfUrl: function (loc) { return 'https://masstahl.github.io/electric-trailer/?shelf=' + encodeURIComponent(loc); }
+    stickerUrl: function (id) { return SITE_BASE + '?' + LINK_PARAMS.item + '=' + encodeURIComponent(id); },
+    shelfUrl: function (loc) { return SITE_BASE + '?' + LINK_PARAMS.shelf + '=' + encodeURIComponent(loc); }
   };
 })();

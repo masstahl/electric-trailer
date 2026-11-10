@@ -53,6 +53,13 @@
     return isFinite(n) ? n : dflt;
   }
   function str(v) { return v == null ? '' : String(v).trim(); }
+  /* The slug rule (same as appsheet.js slugify_ and apps-script.gs
+   * photoSlug_ — one copy per runtime, kept in step): lowercase,
+   * non-alphanumeric runs become one dash, edge dashes trimmed.
+   * Here the result gets a '-r<row>' suffix instead of a fallback. */
+  function slugify_(name) {
+    return String(name == null ? '' : name).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
+  }
   /* A Tags cell → the user's tag state: { add, block }. Plain
    * entries are custom tags added in the app: split on commas,
    * whitespace normalized, empties dropped, duplicates folded
@@ -101,11 +108,13 @@
     else { name = code; sku = legacySku; }
     var id = str(pick(row, ['item id', 'id']));
     if (!id) {
-      id = (name || 'item').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') || 'item';
+      id = slugify_(name) || 'item';
       id = id + '-r' + (idx + 2);   // no id in the sheet — synthesize one from the row
     }
     if (usedIds[id]) { var base = id, n = 2; while (usedIds[base + '-' + n]) n++; id = base + '-' + n; }
     usedIds[id] = true;
+    /* Level clamps to the warehouse model (ETData.WAREHOUSE in
+     * appsheet.js: levels 1–4, default 2). */
     var level = num(pick(row, ['level']), 2);
     level = Math.min(4, Math.max(1, Math.floor(level) || 2));
     var item = {
@@ -151,20 +160,32 @@
    * untouched, instead of blanking the code column. The bridge
    * applies each field by header name and skips any column the sheet
    * doesn't have (Icon / NFC ID on sheets without those columns). */
+  /* THE FIELD MAPPING — one table for the canonical→header half.
+   * The read half (normalizeRow above) picks by the same header
+   * names (real header first, legacy aliases after); the two halves
+   * must mirror: name ⇄ Description and sku ⇄ Name (with the
+   * no-part-code guard below), qty ⇄ Quantity, bin ⇄ Location,
+   * supplier ⇄ Vendor, category ⇄ Category, icon ⇄ Icon,
+   * nfcId ⇄ NFC ID, photo ⇄ Image, tags ⇄ Tags. */
+  var FIELD_HEADERS = {
+    qty: 'Quantity', bin: 'Location', supplier: 'Vendor',
+    category: 'Category', icon: 'Icon', nfcId: 'NFC ID',
+    photo: 'Image', tags: 'Tags'
+  };
   function toSheetFields(op) {
     var f = (op && op.fields) || {};
-    if (op && op.kind === 'qty') return { Quantity: f.qty };
+    if (op && op.kind === 'qty') { var q = {}; q[FIELD_HEADERS.qty] = f.qty; return q; }
     var out = {};
     if (f.sku) { out.Description = f.name; out.Name = f.sku; }
     else if (f.name != null) out.Name = f.name;
-    out.Quantity = f.qty;
-    out.Location = f.bin;
-    out.Vendor = f.supplier;
-    if (f.photo != null) out.Image = f.photo;   // '' is a real value: it clears the cell (photo removed)
-    if (f.tags != null) out.Tags = f.tags;      // same rule: '' clears the cell (last tag removed)
-    out.Category = f.category;
-    out.Icon = f.icon;
-    out['NFC ID'] = f.nfcId;
+    out[FIELD_HEADERS.qty] = f.qty;
+    out[FIELD_HEADERS.bin] = f.bin;
+    out[FIELD_HEADERS.supplier] = f.supplier;
+    if (f.photo != null) out[FIELD_HEADERS.photo] = f.photo;   // '' is a real value: it clears the cell (photo removed)
+    if (f.tags != null) out[FIELD_HEADERS.tags] = f.tags;      // same rule: '' clears the cell (last tag removed)
+    out[FIELD_HEADERS.category] = f.category;
+    out[FIELD_HEADERS.icon] = f.icon;
+    out[FIELD_HEADERS.nfcId] = f.nfcId;
     return out;
   }
 
@@ -229,12 +250,6 @@
     });
   }
 
-  function testConnection() {
-    return fetchRows().then(function (r) {
-      return { ok: r.ok, mode: 'sheet', rows: r.rows, message: r.message };
-    });
-  }
-
   /* Photo upload (v40): POST { action:'uploadPhoto', name,
    * dataBase64 } to the bridge, which commits the image into the
    * app repo's photos/ folder and answers { ok:true, url }. Sent as
@@ -268,7 +283,7 @@
 
   window.ETSheets = {
     getConfig: getConfig, saveConfig: saveConfig, isConfigured: isConfigured,
-    fetchRows: fetchRows, flushOps: flushOps, testConnection: testConnection,
+    fetchRows: fetchRows, flushOps: flushOps,
     uploadPhoto: uploadPhoto,
     toSheetFields: toSheetFields
   };

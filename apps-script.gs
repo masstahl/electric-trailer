@@ -16,6 +16,10 @@
  *   POST { action:'uploadPhoto', name, dataBase64 }
  *                                 → { ok:true, url } | { ok:false, error }
  * Each op: { id, kind: 'qty' | 'edit' | 'add', fields: { Quantity: 12, … } }.
+ * (The op protocol's three participants: appsheet.js computes the
+ * kind, sheets.js serialises {id, kind, fields} after translating
+ * field names, and applyOp_ below parses — a missing kind defaults
+ * to 'edit'. Change the vocabulary in all three or none.)
  * 'qty'/'edit' find the row whose id column matches op.id — the id
  * column may be headed 'Id' or 'Item ID' — and apply the given fields
  * (by header name); 'add' appends a full row. If an 'Updated' column
@@ -48,6 +52,18 @@ const SHEET_NAME = '';       // ← blank = first sheet tab; or the exact tab na
 const PHOTO_REPO = 'masstahl/electric-trailer';
 const PHOTO_DIR = 'photos';
 const UPLOAD_MAX_BYTES = 2 * 1024 * 1024;
+
+/* The app's public address — photo URLs are built on it. The app
+ * carries its own copy (SITE_BASE in appsheet.js); the two must
+ * agree or photo URLs point at a site that doesn't serve them. */
+const SITE_BASE = 'https://masstahl.github.io/electric-trailer/';
+
+/* The orphan signal: applyOp_ answers a qty/edit op for an id with
+ * no sheet row with this EXACT text, and the app flags the item as
+ * an orphan by matching it (ORPHAN_ERROR in appsheet.js). Rewording
+ * either side silently stops orphan flagging — change both or
+ * neither. */
+const ORPHAN_ERROR_TEXT = 'Id not found in sheet';
 
 /* ---------------- helpers ---------------- */
 
@@ -217,7 +233,7 @@ function uploadPhoto_(body) {
     if (code !== 200 && code !== 201) {
       return jsonOut_({ ok: false, error: 'The photo host rejected the upload (HTTP ' + code + ').' });
     }
-    return jsonOut_({ ok: true, url: 'https://masstahl.github.io/electric-trailer/' + PHOTO_DIR + '/' + name });
+    return jsonOut_({ ok: true, url: SITE_BASE + PHOTO_DIR + '/' + name });
   } finally {
     lock.releaseLock();
   }
@@ -298,7 +314,7 @@ function applyOp_(sh, headers, hmap, rowById, op) {
     return { id: id, ok: true };
   }
 
-  if (!rowNum) return { id: id, ok: false, error: 'Id not found in sheet' };
+  if (!rowNum) return { id: id, ok: false, error: ORPHAN_ERROR_TEXT };
 
   var range = sh.getRange(rowNum, 1, 1, headers.length);
   var values = range.getValues()[0];

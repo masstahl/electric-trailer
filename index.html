@@ -8,15 +8,15 @@
 <title>Electric Trailer — Inventory</title>
 <script>
 /* Apply the saved theme before first paint (no flash). Key: 'et-theme'.
-   One-time switch (2026-10-19): devices that saved an older theme are moved
-   to Milwaukee Red once — flag 'et-theme-force' = 'mk1'. */
+   The theme roster lives in four places that must move together:
+   this valid-name list, THEMES in app.js, the [data-theme] token
+   blocks in styles.css, and the theme cards further down this file.
+   (The one-time 'et-theme-force' mk1 migration that used to run
+   here was removed in v49 — every live device passed it in 2025;
+   app.js savedTheme() reads the same key the same way.) */
 (function () {
   var t = 'milwaukee';
   try {
-    if (localStorage.getItem('et-theme-force') !== 'mk1') {
-      localStorage.setItem('et-theme', 'milwaukee');
-      localStorage.setItem('et-theme-force', 'mk1');
-    }
     t = localStorage.getItem('et-theme') || 'milwaukee';
   } catch (e) { /* storage blocked */ }
   if (['midnight', 'warehouse', 'electric', 'hivis', 'paper', 'workshop', 'milwaukee'].indexOf(t) === -1) t = 'milwaukee';
@@ -261,7 +261,10 @@
     </div>
     <div id="queueList" class="list"></div>
 
-    <!-- Appearance: 7 switchable looks, saved on this device -->
+    <!-- Appearance: 7 switchable looks, saved on this device.
+         Theme roster (see the head script): these cards, THEMES in
+         app.js, the valid-name list up top, and the [data-theme]
+         blocks in styles.css move together. -->
     <div class="card">
       <h3 style="margin-top:0">Appearance</h3>
       <p class="muted small">Pick a look — it applies instantly and is saved on this device.</p>
@@ -664,6 +667,9 @@
   <button class="tab" data-view="sync"><span><svg class="icon-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="miter" stroke-linecap="square" aria-hidden="true" focusable="false"><path d="M12 2.8 L20 7.4 V16.6 L12 21.2 L4 16.6 V7.4 Z"/><path d="M12 15.8 L8.3 9.4 H15.7 Z"/></svg></span>Settings<em id="tabQueueCount" class="tab-count hidden">0</em></button>
 </nav>
 
+<!-- LOAD ORDER IS LOAD-BEARING: appsheet.js defines window.ETData,
+     sheets.js defines window.ETSheets (read lazily by ETData), and
+     app.js captures ETData the moment it runs. Do not reorder. -->
 <script src="appsheet.js"></script>
 <script src="sheets.js"></script>
 <script src="app.js"></script>
@@ -683,11 +689,22 @@ if ('serviceWorker' in navigator) {
   var etBornAt = Date.now();
   var etReg = null, etLastCheck = 0;
   var etPendingReload = false, etReloaded = false;
+  /* The update-swap timings, named (v49): how often the worker is
+   * asked for a new build, the settle window before a swap reload
+   * may land, the loop guard that keeps two builds from chasing
+   * each other, and the pending-reload retry cadence. The other
+   * half of this handshake is window.ETUpdateGate in app.js —
+   * its isBusy() answer (and its protocol number) is the contract;
+   * a missing or mismatched gate reads as "not busy". */
+  var SW_CHECK_THROTTLE_MS = 60000;
+  var SW_SETTLE_MS = 2000;
+  var SW_LOOP_GUARD_MS = 15000;
+  var SW_RETRY_MS = 5000;
 
   function etCheckForUpdate() {
     if (!etReg || !etReg.update) return;
     var now = Date.now();
-    if (now - etLastCheck < 60000) return;   // at most one check a minute
+    if (now - etLastCheck < SW_CHECK_THROTTLE_MS) return;   // at most one check a minute
     etLastCheck = now;
     try {
       var p = etReg.update();
@@ -695,16 +712,19 @@ if ('serviceWorker' in navigator) {
     } catch (e) { /* update checks are best-effort, never fatal */ }
   }
   function etBusy() {
-    try { return !!(window.ETUpdateGate && window.ETUpdateGate.isBusy()); }
+    try {
+      var g = window.ETUpdateGate;
+      return !!(g && g.protocol === 1 && g.isBusy());
+    }
     catch (e) { return false; }
   }
   function etTryReload() {
     if (!etPendingReload || etReloaded) return;
-    if (Date.now() - etBornAt < 2000) return;   // let the page settle first
+    if (Date.now() - etBornAt < SW_SETTLE_MS) return;   // let the page settle first
     if (etBusy()) return;                        // mid-task: stay pending
     var last = 0;
     try { last = +window.sessionStorage.getItem('et-sw-reload-at') || 0; } catch (e) { /* storage blocked */ }
-    if (Date.now() - last < 15000) { etPendingReload = false; return; }   // loop guard
+    if (Date.now() - last < SW_LOOP_GUARD_MS) { etPendingReload = false; return; }   // loop guard
     etReloaded = true;
     try { window.sessionStorage.setItem('et-sw-reload-at', String(Date.now())); } catch (e) { /* storage blocked */ }
     window.location.reload();
@@ -720,7 +740,7 @@ if ('serviceWorker' in navigator) {
     etTryReload();
   });
   window.addEventListener('focus', function () { etTryReload(); });
-  setInterval(etTryReload, 5000);
+  setInterval(etTryReload, SW_RETRY_MS);
   window.addEventListener('load', function () {
     navigator.serviceWorker.register('sw.js').then(function (reg) {
       etReg = reg;

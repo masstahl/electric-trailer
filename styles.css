@@ -5,7 +5,10 @@
  * All colors come from CSS custom properties. The active theme is set as
  * <html data-theme="..."> (see the THEME blocks below + app.js / index.html
  * head script, localStorage key 'et-theme'). Components must only use the
- * variables so every theme restyles the whole app. */
+ * variables so every theme restyles the whole app.
+ * THEME ROSTER: the [data-theme] blocks below, THEMES in app.js, the
+ * valid-name list in index.html's head script, and the picker cards
+ * in index.html move together — add or rename a theme in all four. */
 
 :root{
   --radius:20px;

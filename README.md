@@ -111,7 +111,7 @@ persists per device.
 | `index.html` | The whole UI: all tab views + overlays (item sheet, bin sheet, count mode, qty editor), theme bootstrap |
 | `styles.css` | Themes (CSS variables) + all layout: stat glass bar, floating glass dock, photo grid, shelf elevation map, sheets |
 | `app.js` | Screen logic: folders home, search, map + blink-on-search, item/bin sheets, count mode, sync queue UI, NFC Live, Quick Add, settings |
-| `appsheet.js` | Data layer (`window.ETData`): localStorage, sync queue + coalescing, folder model, backend dispatch. (Name kept from the app's first backend; the AppSheet API provider inside is dormant — the Sheet bridge is the live route.) |
+| `appsheet.js` | Data layer (`window.ETData`): localStorage, sync queue + coalescing, folder model, backend dispatch. (Name kept from the app's first backend; the AppSheet API provider was removed in v49 — the Sheet bridge is the live route.) |
 | `sheets.js` | Google Sheet provider (`window.ETSheets`): bridge fetch/flush, row normalization |
 | `apps-script.gs` | The Apps Script bridge to paste into the inventory Google Sheet (see SETUP.md) |
 | `sw.js` | Service worker: caches the app shell for offline use (bump the cache name on every release) |

@@ -10,8 +10,17 @@ const { execFileSync } = require('child_process');
 
 const ROOT = path.resolve(__dirname, '..');
 const LIVE = 'https://masstahl.github.io/electric-trailer/';
-const CORE_FILES = ['index.html', 'styles.css', 'app.js', 'appsheet.js',
-  'sheets.js', 'sw.js', 'manifest.webmanifest', 'apps-script.gs'];
+/* The core-file list is DERIVED from sw.js's SHELL array (the app's
+ * own offline manifest) plus the files the worker doesn't carry:
+ * version.json (the update probe) and apps-script.gs (the bridge
+ * source). Add a shell file in sw.js and drift sees it here too. */
+function coreFiles() {
+  const sw = fs.readFileSync(path.join(ROOT, 'sw.js'), 'utf8');
+  const m = /var SHELL = \[([\s\S]*?)\];/.exec(sw);
+  const shell = m ? [...m[1].matchAll(/'([^']+)'/g)].map(x => x[1]).filter(f => f !== './') : [];
+  return [...new Set([...shell, 'version.json', 'apps-script.gs'])];
+}
+const CORE_FILES = coreFiles();
 
 const argv = process.argv.slice(2);
 const JSON_OUT = argv.includes('--json');

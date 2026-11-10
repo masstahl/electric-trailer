@@ -9,14 +9,22 @@
  */
 (function () {
   'use strict';
+  /* Load order is load-bearing (see index.html): appsheet.js must
+   * have defined window.ETData before this file runs. Fail loud at
+   * boot rather than dying later inside some render. */
+  if (!window.ETData) throw new Error('ETData missing — appsheet.js must load before app.js');
   var D = window.ETData;
   var $ = function (id) { return document.getElementById(id); };
   /* The build this code IS (v42): version.json on the server carries
    * the newest build's number; the checker below compares the two. */
-  var APP_VERSION = 48;
-  var AISLES = ['A', 'B', 'C', 'D'];
+  var APP_VERSION = 49;
+  /* Warehouse geometry derives from the ONE model definition
+   * (ETData.WAREHOUSE in appsheet.js): shelves A–D, positions 1–6,
+   * levels 1–4. Change the trailer layout there, not here. */
+  var WH = D.WAREHOUSE;
+  var AISLES = WH.aisles.slice();
   var BINS = [];
-  AISLES.forEach(function (a) { for (var i = 1; i <= 6; i++) BINS.push(a + i); });
+  AISLES.forEach(function (a) { for (var i = 1; i <= WH.positions; i++) BINS.push(a + i); });
   /* Location model, two realities: an item added in the app (or a
    * sheet row whose Location matches the bin pattern) carries a coded
    * bin "B5" — shelf letter A–D + position 1–6 — plus item.level
@@ -25,23 +33,24 @@
    * Location in free text ('Shelf 59', 'EC42', 'Shelf 58 Kit_5') is
    * NOT parsed or re-homed: cards and sheets show it verbatim, and
    * the shelf map simply has no A–D cell for it. */
-  var LEVELS_TOP_DOWN = [4, 3, 2, 1];
-  var BIN_PATTERN = /^[A-Da-d][1-6]$/;
-  function levelOf(item) { var l = parseInt(item && item.level, 10); return (l >= 1 && l <= 4) ? l : 2; }
-  function shelfOf(bin) { return String(bin || 'A1').charAt(0).toUpperCase(); }
-  function posOf(bin) { return parseInt(String(bin || 'A1').slice(1), 10) || 1; }
-  function locShort(item) {
-    var bin = String((item && item.bin) || '');
-    if (BIN_PATTERN.test(bin)) return shelfOf(bin) + ' · L' + levelOf(item) + ' · P' + posOf(bin);
-    return bin;   // free-text location, shown exactly as the sheet has it
+  var LEVELS_TOP_DOWN = [WH.levelMax, 3, 2, WH.levelMin].filter(function (l, i, a) { return a.indexOf(l) === i; });
+  var BIN_PATTERN = new RegExp('^[' + WH.aisles.join('') + 'a-' + WH.aisles[WH.aisles.length - 1].toLowerCase() + '][1-' + WH.positions + ']$');
+  function levelOf(item) { var l = parseInt(item && item.level, 10); return (l >= WH.levelMin && l <= WH.levelMax) ? l : WH.defaultLevel; }
+  function shelfOf(bin) { return String(bin || WH.defaultBin).charAt(0).toUpperCase(); }
+  function posOf(bin) { return parseInt(String(bin || WH.defaultBin).slice(1), 10) || 1; }
+  /* One formatter, two lengths; the item forms and the parts forms
+   * (bin + level held separately) both come through here. */
+  function locText(bin, level, long) {
+    bin = String(bin || '');
+    if (!BIN_PATTERN.test(bin)) return bin;   // free-text location, shown exactly as the sheet has it
+    return long
+      ? 'Shelf ' + shelfOf(bin) + ' · Level ' + level + ' · Position ' + posOf(bin)
+      : shelfOf(bin) + ' · L' + level + ' · P' + posOf(bin);
   }
-  function locLong(item) {
-    var bin = String((item && item.bin) || '');
-    if (BIN_PATTERN.test(bin)) return 'Shelf ' + shelfOf(bin) + ' · Level ' + levelOf(item) + ' · Position ' + posOf(bin);
-    return bin;
-  }
-  function locShortParts(bin, level) { return shelfOf(bin) + ' · L' + level + ' · P' + posOf(bin); }
-  function locLongParts(bin, level) { return 'Shelf ' + shelfOf(bin) + ' · Level ' + level + ' · Position ' + posOf(bin); }
+  function locShort(item) { return locText(item && item.bin, levelOf(item), false); }
+  function locLong(item) { return locText(item && item.bin, levelOf(item), true); }
+  function locShortParts(bin, level) { return locText(bin, level, false); }
+  function locLongParts(bin, level) { return locText(bin, level, true); }
   function cellKey(bin, level) { return bin + '-L' + level; }
   /* ---------- Angular icon system (Cybertruck clipped geometry) ----------
    * Flat geometric line icons: straight segments, chamfered/clipped shapes,
@@ -101,7 +110,13 @@
     '\u{1F690}': 'truck',
     '\u{1F3ED}': 'factory'
   };
-  var ICON_KEYS = ['box', 'controller', 'plug', 'light', 'bolt', 'battery', 'solar', 'tire', 'axle', 'hub', 'link', 'chain', 'hook', 'kit', 'spring', 'diamond'];
+  /* The Quick Add picker's icon subset — deliberately fewer than
+   * ICON_PATHS (the rest are chrome/legacy keys items can carry but
+   * nobody picks). Filtered against ICON_PATHS so this list can
+   * never name an icon that has no drawing; EMOJI_TO_KEY values get
+   * the same protection from svgIcon's box fallback. */
+  var ICON_KEYS = ['box', 'controller', 'plug', 'light', 'bolt', 'battery', 'solar', 'tire', 'axle', 'hub', 'link', 'chain', 'hook', 'kit', 'spring', 'diamond']
+    .filter(function (k) { return !!ICON_PATHS[k]; });
   function svgIcon(key) {
     var inner = ICON_PATHS[key] || ICON_PATHS.box;
     return '<svg class="icon-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="miter" stroke-linecap="square" aria-hidden="true" focusable="false">' + inner + '</svg>';
@@ -147,9 +162,23 @@
     });
   }
   function money(n) { return '$' + Number(n || 0).toFixed(2); }
+  /* One vibration idiom for the whole file: unsupported platforms
+   * just stay silent. */
+  function buzz(ms) {
+    if (!navigator.vibrate) return;
+    try { navigator.vibrate(ms); } catch (e) { /* unsupported */ }
+  }
+  /* The one "deliberate hold" duration: folder-tab long-press,
+   * tag-chip long-press and the ±5 hold-to-apply all share it, so
+   * the app's hold gestures have one feel by construction. */
+  var HOLD_MS = 450;
   /* SPEC PLATE status scale — always a word, never hue alone:
-   * 0 = OUT, 1–2 = CRITICAL, 3–5 = LOW, 6+ = OK. */
-  function statusOf(q) { return q <= 0 ? 'out' : (q <= 2 ? 'crit' : (q <= 5 ? 'low' : 'ok')); }
+   * 0 = OUT, 1–2 = CRITICAL, 3–5 = LOW, 6+ = OK. The tier rule and
+   * its rank live in ETData (appsheet.js) — the one definition;
+   * these are this file's handles on it. "Low or worse" anywhere
+   * below is statusOf(q) !== 'ok', never a re-typed threshold. */
+  var statusOf = D.statusOf;
+  var STATUS_RANK = D.STATUS_RANK;
   function qtyClass(q) { return 'qty-' + statusOf(q); }
   function qtyLabel(q) {
     var s = statusOf(q);
@@ -186,7 +215,10 @@
     try { return new Date(iso).toLocaleString(); } catch (e) { return iso; }
   }
 
-  /* ---------- appearance / themes ---------- */
+  /* ---------- appearance / themes ----------
+   * Theme roster (see index.html's head script): THEMES here, the
+   * picker cards + valid-name list in index.html, and the
+   * [data-theme] token blocks in styles.css move together. */
   var THEMES = {
     midnight:  { themeColor: '#0f172a' },
     warehouse: { themeColor: '#ffffff' },
@@ -199,11 +231,6 @@
   function savedTheme() {
     var t = 'milwaukee';
     try {
-      // One-time switch to Milwaukee Red (mirrors the index.html head script).
-      if (localStorage.getItem('et-theme-force') !== 'mk1') {
-        localStorage.setItem('et-theme', 'milwaukee');
-        localStorage.setItem('et-theme-force', 'mk1');
-      }
       t = localStorage.getItem('et-theme') || 'milwaukee';
     } catch (e) { /* storage blocked */ }
     return THEMES[t] ? t : 'milwaukee';
@@ -463,7 +490,7 @@
     var q = ($('searchInput').value || '').trim().toLowerCase();
     var items = D.getItems();
     var totalUnits = items.reduce(function (s, i) { return s + i.qty; }, 0);
-    var low = items.filter(function (i) { return i.qty <= 5; }).length;
+    var low = items.filter(function (i) { return statusOf(i.qty) !== 'ok'; }).length;
     $('statItems').textContent = items.length;
     $('statUnits').textContent = totalUnits;
     $('statLow').textContent = low;
@@ -480,7 +507,7 @@
     /* Filing (Auto-sort / Sort mode) lives in Settings only (v39) —
      * Home carries no banner; nothing above the grid but the grid. */
     var filtered = items.filter(function (i) {
-      if (lowFilter && i.qty > 5) return false;
+      if (lowFilter && statusOf(i.qty) === 'ok') return false;
       if (!q) return true;
       var hay = (i.name + ' ' + i.sku + ' ' + i.bin + ' ' + i.supplier + ' ' + locShort(i) + ' ' + locLong(i) + ' ' + customTagsOf(i).join(' ') + ' ' + effectiveTags(i).join(' ')).toLowerCase();
       if (hay.indexOf(q) !== -1) return true;
@@ -566,7 +593,7 @@
    * carousel manners: scroll-snap, the selected tab centers itself,
    * a direction-locked swipe over the grid steps through folders
    * with wrap-around, and a user scroll of the strip itself selects
-   * whichever tab settles at the center. A 450ms long-press on a
+   * whichever tab settles at the center. A HOLD_MS long-press on a
    * folder tab opens its rename/remove sheet. Tapping All while
    * All is already selected toggles the folder jump list (v33):
    * every folder as a row under the strip, tap one to jump
@@ -617,7 +644,7 @@
       attachTabPress(btn, tabKeysCache[parseInt(btn.getAttribute('data-tk'), 10)]);
     });
   }
-  /* Tap selects; a 450ms hold opens the folder's sheet instead (All
+  /* Tap selects; a HOLD_MS hold opens the folder's sheet instead (All
    * and the system folder have no sheet). The press timer + fired
    * flag keep the two from fighting, and a >10px move cancels the
    * hold — the strip scrolls, so a hold that turns into a drag must
@@ -632,9 +659,9 @@
       tabLpTimer = setTimeout(function () {
         tabLpFiredAt = Date.now();
         tabLpFiredKey = key;
-        if (navigator.vibrate) { try { navigator.vibrate(30); } catch (err) { /* unsupported */ } }
+        buzz(30);
         openFolderSheet(key);
-      }, 450);
+      }, HOLD_MS);
     });
     btn.addEventListener('pointermove', function (e) {
       if (Math.abs(e.clientX - startX) > 10 || Math.abs(e.clientY - startY) > 10) clearTimeout(tabLpTimer);
@@ -1368,53 +1395,68 @@
    * nothing → null, and the row asks a human. A suggestion is only
    * offered while its folder exists in the saved list (a renamed
    * folder never resurrects its old name as a guess). */
+  /* The canonical folder names, named once for this file (the seed
+   * list itself lives in ETData's DEFAULT_CATEGORIES). The rule
+   * table and the icon fallback below speak in these constants, so
+   * a rename of a canonical folder is a one-line change here plus
+   * the seed — not a hunt through forty string literals. A rule
+   * whose folder a user renamed away simply never fires (the
+   * known-folder check in suggestCategory), it does not resurrect
+   * the old name. */
+  var F = {
+    wire: 'Wire & Cable', conduit: 'Conduit & Fittings', panels: 'Breakers & Panels',
+    boxes: 'Boxes & Enclosures', devices: 'Devices & Plates', lighting: 'Lighting',
+    fasteners: 'Fasteners & Hardware', tools: 'Tools & Supplies'
+  };
   var SUGGEST_RULES = [
     // Phrases first — they outrank every single word below.
-    ['wire nut', 'Fasteners & Hardware'], ['wirenut', 'Fasteners & Hardware'],
-    ['conduit strap', 'Conduit & Fittings'],
-    ['cable staple', 'Fasteners & Hardware'], ['romex staple', 'Fasteners & Hardware'], ['wire staple', 'Fasteners & Hardware'],
-    ['wall plate', 'Devices & Plates'],
-    ['load center', 'Breakers & Panels'], ['loadcentre', 'Breakers & Panels'],
-    ['smoke detector', 'Lighting'], ['smoke alarm', 'Lighting'],
-    ['fish tape', 'Tools & Supplies'],
+    ['wire nut', F.fasteners], ['wirenut', F.fasteners],
+    ['conduit strap', F.conduit],
+    ['cable staple', F.fasteners], ['romex staple', F.fasteners], ['wire staple', F.fasteners],
+    ['wall plate', F.devices],
+    ['load center', F.panels], ['loadcentre', F.panels],
+    ['smoke detector', F.lighting], ['smoke alarm', F.lighting],
+    ['fish tape', F.tools],
     // Breakers & Panels
-    ['breaker', 'Breakers & Panels'], ['panelboard', 'Breakers & Panels'], ['panel', 'Breakers & Panels'],
-    ['disconnect', 'Breakers & Panels'], ['fuse', 'Breakers & Panels'], ['surge', 'Breakers & Panels'],
+    ['breaker', F.panels], ['panelboard', F.panels], ['panel', F.panels],
+    ['disconnect', F.panels], ['fuse', F.panels], ['surge', F.panels],
     // Devices & Plates
-    ['gfci', 'Devices & Plates'], ['afci', 'Devices & Plates'], ['receptacle', 'Devices & Plates'],
-    ['outlet', 'Devices & Plates'], ['switch', 'Devices & Plates'], ['dimmer', 'Devices & Plates'],
-    ['plate', 'Devices & Plates'], ['thermostat', 'Devices & Plates'], ['doorbell', 'Devices & Plates'],
+    ['gfci', F.devices], ['afci', F.devices], ['receptacle', F.devices],
+    ['outlet', F.devices], ['switch', F.devices], ['dimmer', F.devices],
+    ['plate', F.devices], ['thermostat', F.devices], ['doorbell', F.devices],
     // Conduit & Fittings
-    ['conduit', 'Conduit & Fittings'], ['emt', 'Conduit & Fittings'], ['fitting', 'Conduit & Fittings'],
-    ['elbow', 'Conduit & Fittings'], ['coupling', 'Conduit & Fittings'], ['pvc', 'Conduit & Fittings'],
+    ['conduit', F.conduit], ['emt', F.conduit], ['fitting', F.conduit],
+    ['elbow', F.conduit], ['coupling', F.conduit], ['pvc', F.conduit],
     // Boxes & Enclosures
-    ['box', 'Boxes & Enclosures'], ['enclosure', 'Boxes & Enclosures'], ['junction', 'Boxes & Enclosures'],
-    ['octagon', 'Boxes & Enclosures'], ['cover', 'Boxes & Enclosures'],
+    ['box', F.boxes], ['enclosure', F.boxes], ['junction', F.boxes],
+    ['octagon', F.boxes], ['cover', F.boxes],
     // Lighting
-    ['light', 'Lighting'], ['lamp', 'Lighting'], ['led', 'Lighting'], ['bulb', 'Lighting'],
-    ['fixture', 'Lighting'], ['recessed', 'Lighting'], ['detector', 'Lighting'],
+    ['light', F.lighting], ['lamp', F.lighting], ['led', F.lighting], ['bulb', F.lighting],
+    ['fixture', F.lighting], ['recessed', F.lighting], ['detector', F.lighting],
     // Wire & Cable
-    ['romex', 'Wire & Cable'], ['thhn', 'Wire & Cable'], ['nm-b', 'Wire & Cable'], ['uf-b', 'Wire & Cable'],
-    ['coax', 'Wire & Cable'], ['cat5', 'Wire & Cable'], ['cat6', 'Wire & Cable'],
-    ['cable', 'Wire & Cable'], ['wire', 'Wire & Cable'], ['spool', 'Wire & Cable'],
+    ['romex', F.wire], ['thhn', F.wire], ['nm-b', F.wire], ['uf-b', F.wire],
+    ['coax', F.wire], ['cat5', F.wire], ['cat6', F.wire],
+    ['cable', F.wire], ['wire', F.wire], ['spool', F.wire],
     // Fasteners & Hardware
-    ['tape', 'Fasteners & Hardware'], ['staple', 'Fasteners & Hardware'], ['screw', 'Fasteners & Hardware'],
-    ['anchor', 'Fasteners & Hardware'], ['bolt', 'Fasteners & Hardware'], ['nut', 'Fasteners & Hardware'],
-    ['washer', 'Fasteners & Hardware'], ['zip tie', 'Fasteners & Hardware'], ['strap', 'Fasteners & Hardware'],
-    ['connector', 'Fasteners & Hardware'],
+    ['tape', F.fasteners], ['staple', F.fasteners], ['screw', F.fasteners],
+    ['anchor', F.fasteners], ['bolt', F.fasteners], ['nut', F.fasteners],
+    ['washer', F.fasteners], ['zip tie', F.fasteners], ['strap', F.fasteners],
+    ['connector', F.fasteners],
     // Tools & Supplies
-    ['tool', 'Tools & Supplies'], ['meter', 'Tools & Supplies'], ['tester', 'Tools & Supplies'],
-    ['drill', 'Tools & Supplies'], ['bit', 'Tools & Supplies'], ['gloves', 'Tools & Supplies'],
-    ['knife', 'Tools & Supplies'], ['fish tape', 'Tools & Supplies']
+    ['tool', F.tools], ['meter', F.tools], ['tester', F.tools],
+    ['drill', F.tools], ['bit', F.tools], ['gloves', F.tools],
+    ['knife', F.tools]
   ];
   /* Icon fallback: conservative on purpose. 'box' is deliberately NOT
    * here — it is the default icon for everything, so mapping it would
    * auto-file every unknown item into Boxes & Enclosures. battery and
-   * solar stay unmapped for the same reason. */
+   * solar stay unmapped for the same reason. (Mirrors ETData's
+   * icon→folder fallback for category-less rows — same table, this
+   * file's copy is for suggestions only.) */
   var ICON_FOLDER = {
-    plug: 'Devices & Plates', light: 'Lighting', bolt: 'Fasteners & Hardware',
-    controller: 'Breakers & Panels', kit: 'Tools & Supplies',
-    link: 'Wire & Cable', hex: 'Conduit & Fittings'
+    plug: F.devices, light: F.lighting, bolt: F.fasteners,
+    controller: F.panels, kit: F.tools,
+    link: F.wire, hex: F.conduit
   };
   function suggestCategory(item) {
     if (!item) return null;
@@ -1433,15 +1475,17 @@
     }
     /* The rule table, now matched on TOKENS: a rule word must be a
      * whole token (or a contiguous phrase) in the item's tokens —
-     * 'lamp' no longer matches inside "Clamps". Order and the
-     * first-hit-decides rule are unchanged. */
+     * 'lamp' no longer matches inside "Clamps". Order is the game,
+     * with one correction (v49): a hit whose folder no longer
+     * exists no longer ends the search — later rules still get
+     * their chance, and the icon fallback still applies. */
     var toks = tagTokens((item.name || '') + ' ' + (item.sku || ''));
     var tset = {};
     toks.forEach(function (t) { tset[t] = 1; });
     for (var r = 0; r < SUGGEST_RULES.length; r++) {
       var rk = tagTokens(SUGGEST_RULES[r][0]);
       var hit = rk.length === 1 ? !!tset[rk[0]] : phraseInTokens(toks, rk);
-      if (hit) return known[SUGGEST_RULES[r][1]] ? SUGGEST_RULES[r][1] : null;
+      if (hit && known[SUGGEST_RULES[r][1]]) return SUGGEST_RULES[r][1];
     }
     var byIcon = ICON_FOLDER[iconKeyFor(item)];
     return (byIcon && known[byIcon]) ? byIcon : null;
@@ -1758,7 +1802,7 @@
   }
   /* Item tags (v44 computed, v46 editable, v47 removable):
    * computed families are plain chips; the user's own tags are
-   * filled chips with a × each. A 450ms long-press on ANY chip
+   * filled chips with a × each. A HOLD_MS long-press on ANY chip
    * removes that tag — a custom chip deletes the tag, a computed
    * chip BLOCKS it for this item (it stays gone; adding a tag
    * with the same name clears the block). Removal shows the 6s
@@ -1775,7 +1819,7 @@
    * end of the chip row (v47): tapping it opens the box in
    * place; a commit or a cancel collapses it back to the chip. */
   var tagLpTimer = null, tagLpFiredAt = 0, tagLpFiredKey = null;
-  /* Mirror of the folder-tab long-press: 450ms hold, a >10px
+  /* Mirror of the folder-tab long-press: HOLD_MS hold, a >10px
    * move cancels (the press turned into a scroll), one shared
    * timer (only one press can be in flight). The fired key +
    * timestamp let a trailing click aimed at the chip that just
@@ -1789,9 +1833,9 @@
       tagLpTimer = setTimeout(function () {
         tagLpFiredAt = Date.now();
         tagLpFiredKey = key;
-        if (navigator.vibrate) { try { navigator.vibrate(30); } catch (err) { /* unsupported */ } }
+        buzz(30);
         fn();
-      }, 450);
+      }, HOLD_MS);
     });
     el.addEventListener('pointermove', function (e) {
       if (Math.abs((e.clientX || 0) - startX) > 10 || Math.abs((e.clientY || 0) - startY) > 10) clearTimeout(tagLpTimer);
@@ -1938,7 +1982,7 @@
   function bump(delta) { if (currentItemId) changeQty(currentItemId, delta); }
   $('qtyPlus').addEventListener('click', function () { bump(1); });
   $('qtyMinus').addEventListener('click', function () { bump(-1); });
-  /* ±5 is HOLD-to-apply (400ms): a short press does nothing, so a gloved
+  /* ±5 is HOLD-to-apply (HOLD_MS): a short press does nothing, so a gloved
    * slip can't 5× an edit. Pointer + keyboard holds both work. */
   function attachHold(el, fn) {
     var timer = null, fired = false;
@@ -1946,7 +1990,7 @@
       if (e.type === 'keydown' && e.repeat) return;
       fired = false;
       clearTimeout(timer);
-      timer = setTimeout(function () { fired = true; fn(); }, 400);
+      timer = setTimeout(function () { fired = true; fn(); }, HOLD_MS);
     }
     function cancel() { clearTimeout(timer); }
     el.addEventListener('pointerdown', start);
@@ -2076,7 +2120,7 @@
       try {
         var text = new TextDecoder().decode(rec.data);
         if (rec.recordType === 'url' || rec.recordType === 'text') {
-          var m = text.match(/[?&]item=([^&#\s]+)/);
+          var m = text.match(new RegExp('[?&]' + D.LINK_PARAMS.item + '=([^&#\\s]+)'));
           if (m) ids.push(decodeURIComponent(m[1]));
           if (rec.recordType === 'text' && text.trim()) ids.push(text.trim());
         }
@@ -2107,19 +2151,25 @@
       if (!rec.data || (rec.recordType !== 'url' && rec.recordType !== 'text')) continue;
       try {
         var text = new TextDecoder().decode(rec.data);
-        var m = text.match(/[?&]shelf=([^&#\s]+)/);
+        var m = text.match(new RegExp('[?&]' + D.LINK_PARAMS.shelf + '=([^&#\\s]+)'));
         if (m) return decodeURIComponent(m[1]);
       } catch (e) { /* ignore undecodable record */ }
     }
     return null;
   }
-  function handleShelfTag(loc) {
-    var key = 'shelf:' + loc;
+  /* One de-bounce for both tag entry paths: the same outcome
+   * re-presented within 3 s is ignored. Returns true when this
+   * presentation is a repeat and the caller should stop. */
+  function nfcDebounced(key) {
     var now = Date.now();
-    if (key === nfcLastKey && now - nfcLastAt < 3000) return 'debounced';
+    if (key === nfcLastKey && now - nfcLastAt < 3000) return true;
     nfcLastKey = key; nfcLastAt = now;
+    return false;
+  }
+  function handleShelfTag(loc) {
+    if (nfcDebounced('shelf:' + loc)) return 'debounced';
     if (currentShelf === loc && !$('shelfOverlay').classList.contains('hidden')) return 'open';
-    if (navigator.vibrate) { try { navigator.vibrate(60); } catch (e) { /* unsupported */ } }
+    buzz(60);
     openShelf(loc);
     toast('NFC · ' + loc);
     return 'opened';
@@ -2134,13 +2184,10 @@
     else if (rawPayload != null && rawPayload !== '') ids = [String(rawPayload)];
     if (serialNumber) ids.push(String(serialNumber).replace(/:/g, ''));
     var item = matchTagIds(ids);
-    var key = item ? item.id : '__unlinked__';
-    var now = Date.now();
-    if (key === nfcLastKey && now - nfcLastAt < 3000) return 'debounced';
-    nfcLastKey = key; nfcLastAt = now;
+    if (nfcDebounced(item ? item.id : '__unlinked__')) return 'debounced';
     if (!item) { toast('Tag not linked to an item'); return 'unlinked'; }
     if (currentItemId === item.id) return 'open';
-    if (navigator.vibrate) { try { navigator.vibrate(60); } catch (e) { /* unsupported */ } }
+    buzz(60);
     openItem(item.id, true);
     toast('NFC · ' + item.name);
     return 'opened';
@@ -2352,7 +2399,7 @@
         if (mine !== session) return;   // user cancelled — stay quiet
         setWaiting(false);
         if (res.ok) {
-          if (navigator.vibrate) { try { navigator.vibrate(60); } catch (e) { /* unsupported */ } }
+          buzz(60);
           toast('Sticker written — hold the phone to it to test');
         } else if (res.reason !== 'cancelled') {
           toast(nfcWriteReasonText(res.reason));
@@ -2383,8 +2430,8 @@
   var urlOpenedFor = '';
   function openFromUrl() {
     var params = new URLSearchParams(window.location.search);
-    var id = params.get('item');
-    var shelf = params.get('shelf');
+    var id = params.get(D.LINK_PARAMS.item);
+    var shelf = params.get(D.LINK_PARAMS.shelf);
     var key = id ? 'item:' + id : (shelf ? 'shelf:' + shelf : '');
     if (!key || key === urlOpenedFor) return;
     if (id) {
@@ -2396,7 +2443,6 @@
   }
 
   /* ---------- #03 Warehouse / Bin Map ---------- */
-  var STATUS_RANK = { out: 0, crit: 1, low: 2, ok: 3 };
   function worstStatus(list) {
     var worst = 'ok';
     list.forEach(function (i) { if (STATUS_RANK[statusOf(i.qty)] < STATUS_RANK[worst]) worst = statusOf(i.qty); });
@@ -2408,7 +2454,7 @@
     items.forEach(function (i) { var k = cellKey(i.bin, levelOf(i)); (byCell[k] = byCell[k] || []).push(i); });
     $('binMap').innerHTML = AISLES.map(function (a) {
       var shelfItems = items.filter(function (i) { return shelfOf(i.bin) === a; });
-      var lowOut = shelfItems.filter(function (i) { return i.qty <= 5; }).length;
+      var lowOut = shelfItems.filter(function (i) { return statusOf(i.qty) !== 'ok'; }).length;
       var bands = LEVELS_TOP_DOWN.map(function (lv) {
         var cells = '';
         for (var n = 1; n <= 6; n++) {
@@ -2492,9 +2538,43 @@
       el.scrollIntoView({ block: 'start', behavior: reduced ? 'auto' : 'smooth' });
     });
   });
+  /* One wiring for the stock-list row sets (bin sheet, Shelf view,
+   * supplier drill-in): the open button, the −/+ steppers and the
+   * qty button behave identically in all three; only the attribute
+   * family and an optional close-before-open differ per list. (The
+   * Home grid's cards are a different shape and keep their own
+   * wiring.) */
+  function wireStockRows(box, attrs, beforeOpen) {
+    box.querySelectorAll('[' + attrs.open + ']').forEach(function (el) {
+      el.addEventListener('click', function () {
+        var id = el.getAttribute(attrs.open);
+        if (beforeOpen) beforeOpen();
+        openItem(id);
+      });
+    });
+    box.querySelectorAll('[' + attrs.dec + ']').forEach(function (b) {
+      b.addEventListener('click', function () { changeQty(b.getAttribute(attrs.dec), -1); });
+    });
+    box.querySelectorAll('[' + attrs.inc + ']').forEach(function (b) {
+      b.addEventListener('click', function () { changeQty(b.getAttribute(attrs.inc), 1); });
+    });
+    box.querySelectorAll('[' + attrs.qty + ']').forEach(function (b) {
+      b.addEventListener('click', function () {
+        var id = b.getAttribute(attrs.qty);
+        var item = D.getItem(id);
+        if (!item) return;
+        openQtyEditor({
+          value: item.qty, itemName: item.name,
+          returnAttr: attrs.qty, returnValue: id,
+          onCommit: function (qty) { setQtyWithUndo(id, qty); }
+        });
+      });
+    });
+  }
+
   /* ---------- Bin Sheet: a bin's contents as a sheet over the map ---------- */
   function openBinSheet(bin, level) {
-    currentBin = bin; currentLevel = (level >= 1 && level <= 4) ? level : 2; selectedBin = bin;
+    currentBin = bin; currentLevel = (level >= WH.levelMin && level <= WH.levelMax) ? level : WH.defaultLevel; selectedBin = bin;
     renderMap();
     renderBinSheetItems();
     $('binOverlay').classList.remove('hidden');
@@ -2519,28 +2599,9 @@
           '<button type="button" data-binc="' + esc(i.id) + '" aria-label="Add one to ' + esc(i.name) + '">+</button>' +
         '</span></div>';
     }).join('') : '<p class="muted">Nothing stored in this bin yet.</p>';
-    var box = $('binItems');
-    box.querySelectorAll('[data-open]').forEach(function (el) {
-      el.addEventListener('click', function () { var id = el.getAttribute('data-open'); closeBinSheet(); openItem(id); });
-    });
-    box.querySelectorAll('[data-bdec]').forEach(function (b) {
-      b.addEventListener('click', function () { changeQty(b.getAttribute('data-bdec'), -1); });
-    });
-    box.querySelectorAll('[data-binc]').forEach(function (b) {
-      b.addEventListener('click', function () { changeQty(b.getAttribute('data-binc'), 1); });
-    });
-    box.querySelectorAll('[data-bin-qty-btn]').forEach(function (b) {
-      b.addEventListener('click', function () {
-        var id = b.getAttribute('data-bin-qty-btn');
-        var item = D.getItem(id);
-        if (!item) return;
-        openQtyEditor({
-          value: item.qty, itemName: item.name,
-          returnAttr: 'data-bin-qty-btn', returnValue: id,
-          onCommit: function (qty) { setQtyWithUndo(id, qty); }
-        });
-      });
-    });
+    wireStockRows($('binItems'),
+      { open: 'data-open', dec: 'data-bdec', inc: 'data-binc', qty: 'data-bin-qty-btn' },
+      closeBinSheet);
   }
   $('closeBin').addEventListener('click', closeBinSheet);
   $('binOverlay').addEventListener('click', function (e) { if (e.target === $('binOverlay')) closeBinSheet(); });
@@ -2591,28 +2652,9 @@
           '<button type="button" data-shinc="' + esc(i.id) + '" aria-label="Add one to ' + esc(i.name) + '">+</button>' +
         '</span></div>';
     }).join('');
-    var box = $('shelfItems');
-    box.querySelectorAll('[data-shopen]').forEach(function (el) {
-      el.addEventListener('click', function () { var id = el.getAttribute('data-shopen'); closeShelf(); openItem(id); });
-    });
-    box.querySelectorAll('[data-shdec]').forEach(function (b) {
-      b.addEventListener('click', function () { changeQty(b.getAttribute('data-shdec'), -1); });
-    });
-    box.querySelectorAll('[data-shinc]').forEach(function (b) {
-      b.addEventListener('click', function () { changeQty(b.getAttribute('data-shinc'), 1); });
-    });
-    box.querySelectorAll('[data-sh-qty-btn]').forEach(function (b) {
-      b.addEventListener('click', function () {
-        var id = b.getAttribute('data-sh-qty-btn');
-        var item = D.getItem(id);
-        if (!item) return;
-        openQtyEditor({
-          value: item.qty, itemName: item.name,
-          returnAttr: 'data-sh-qty-btn', returnValue: id,
-          onCommit: function (qty) { setQtyWithUndo(id, qty); }
-        });
-      });
-    });
+    wireStockRows($('shelfItems'),
+      { open: 'data-shopen', dec: 'data-shdec', inc: 'data-shinc', qty: 'data-sh-qty-btn' },
+      closeShelf);
   }
   $('closeShelf').addEventListener('click', closeShelf);
   $('shelfOverlay').addEventListener('click', function (e) { if (e.target === $('shelfOverlay')) closeShelf(); });
@@ -2738,28 +2780,9 @@
           '<button type="button" data-sinc="' + esc(i.id) + '" aria-label="Add one to ' + esc(i.name) + '">+</button>' +
         '</span></div>';
     }).join('');
-    var box = $('supplierItems');
-    box.querySelectorAll('[data-sopen]').forEach(function (el) {
-      el.addEventListener('click', function () { openItem(el.getAttribute('data-sopen')); });
-    });
-    box.querySelectorAll('[data-sdec]').forEach(function (b) {
-      b.addEventListener('click', function () { changeQty(b.getAttribute('data-sdec'), -1); });
-    });
-    box.querySelectorAll('[data-sinc]').forEach(function (b) {
-      b.addEventListener('click', function () { changeQty(b.getAttribute('data-sinc'), 1); });
-    });
-    box.querySelectorAll('[data-sup-qty-btn]').forEach(function (b) {
-      b.addEventListener('click', function () {
-        var id = b.getAttribute('data-sup-qty-btn');
-        var item = D.getItem(id);
-        if (!item) return;
-        openQtyEditor({
-          value: item.qty, itemName: item.name,
-          returnAttr: 'data-sup-qty-btn', returnValue: id,
-          onCommit: function (qty) { setQtyWithUndo(id, qty); }
-        });
-      });
-    });
+    wireStockRows($('supplierItems'),
+      { open: 'data-sopen', dec: 'data-sdec', inc: 'data-sinc', qty: 'data-sup-qty-btn' },
+      null);
   }
   $('supBack').addEventListener('click', function () { selectedSupplier = null; renderSuppliers(); window.scrollTo(0, 0); });
   $('supplierEditBtn').addEventListener('click', function () { supplierEdit = true; renderSuppliers(); });
@@ -3909,13 +3932,19 @@
    * so a pull never clobbers an unsent local change. The Settings
    * Sync button stays as the manual fallback (dead zones, stubborn
    * per-op rejections — failures stay visible there, no noisy toast). */
+  /* The sync engine's timings, named (v49): retry backoff from
+   * SYNC_RETRY_MIN_MS doubling to SYNC_RETRY_MAX_MS, the enqueue
+   * debounce, the sheet-refresh poll, and the focus/visibility
+   * de-dup window for forced refreshes. */
+  var SYNC_RETRY_MIN_MS = 30000, SYNC_RETRY_MAX_MS = 300000;
+  var SYNC_DEBOUNCE_MS = 800, SYNC_POLL_MS = 60000, REFRESH_DEDUP_MS = 4000;
   var syncFlushTimer = null, syncRetryTimer = null, syncRunning = false;
-  var syncRetryDelay = 30000, syncLastRefresh = 0, syncRefreshRunning = false;
+  var syncRetryDelay = SYNC_RETRY_MIN_MS, syncLastRefresh = 0, syncRefreshRunning = false;
   function syncPending() { return D.getQueue().some(function (c) { return !c.synced; }); }
   function scheduleAutoFlush(delay) {
     if (!D.isLive()) return;
     clearTimeout(syncFlushTimer);
-    syncFlushTimer = setTimeout(runAutoFlush, delay == null ? 800 : delay);
+    syncFlushTimer = setTimeout(runAutoFlush, delay == null ? SYNC_DEBOUNCE_MS : delay);
   }
   function armSyncRetry(grow) {
     clearTimeout(syncRetryTimer);
@@ -3923,7 +3952,7 @@
     syncRetryTimer = setTimeout(runAutoFlush, syncRetryDelay);
     /* Only a real failed send grows the backoff — arming from the
      * offline / nothing-to-send path just parks the timer. */
-    if (grow) syncRetryDelay = Math.min(syncRetryDelay * 2, 300000);
+    if (grow) syncRetryDelay = Math.min(syncRetryDelay * 2, SYNC_RETRY_MAX_MS);
   }
   function runAutoFlush() {
     clearTimeout(syncFlushTimer); clearTimeout(syncRetryTimer);
@@ -3936,7 +3965,7 @@
       if (currentItemId && !$('itemOverlay').classList.contains('hidden')) renderOrphanNotice();
       if ($('view-sync').classList.contains('active')) { renderQueue(); renderSync(); }
       if (r.ok) {
-        syncRetryDelay = 30000;
+        syncRetryDelay = SYNC_RETRY_MIN_MS;
         if (syncPending()) scheduleAutoFlush(800);   // ops that arrived mid-flush
       } else {
         armSyncRetry(true);   // stays queued; backed-off retry + next trigger will get it
@@ -3945,7 +3974,13 @@
   }
   D.onQueueChange(function () { scheduleAutoFlush(); });
 
-  var EDIT_OVERLAYS = ['itemOverlay', 'binOverlay', 'countOverlay', 'shelfOverlay', 'orgOverlay', 'orgPickOverlay', 'nfcOverlay', 'qtyEditOverlay', 'autoSortOverlay', 'sortOverlay', 'folderSheetOverlay', 'folderRemoveOverlay', 'supClearOverlay', 'supRenameOverlay', 'supplierOverlay', 'orphanRemoveOverlay', 'photoEditOverlay', 'photoViewOverlay'];
+  /* The editing overlays are DERIVED from the markup (v49): every
+   * element carrying the .overlay class is one. Adding an overlay
+   * to index.html joins this set automatically — the hand-kept id
+   * list that used to mirror the markup is gone. */
+  var EDIT_OVERLAYS = Array.prototype.map.call(
+    document.querySelectorAll('.overlay'),
+    function (el) { return el.id; }).filter(function (id) { return !!id; });
   function editingOpen() {
     for (var i = 0; i < EDIT_OVERLAYS.length; i++) {
       var o = $(EDIT_OVERLAYS[i]);
@@ -3960,8 +3995,12 @@
    * whether the user is busy: any editing sheet open (the same
    * predicate the auto-refresher uses), a live Count Mode session,
    * or the create menu up. A takeover that arrives while busy stays
-   * pending in the bootstrap and is applied once this reports idle. */
+   * pending in the bootstrap and is applied once this reports idle.
+   * THE CONTRACT (both halves, kept in step): window.ETUpdateGate
+   * with protocol === 1 and isBusy() → boolean. The bootstrap
+   * treats a missing or mismatched gate as "not busy". */
   window.ETUpdateGate = {
+    protocol: 1,
     isBusy: function () {
       return editingOpen() || countSession !== null || addMenuOpen;
     }
@@ -4064,8 +4103,8 @@
     if (syncRunning || syncRefreshRunning) return;
     if (editingOpen()) return;
     var now = Date.now();
-    if (!force && now - syncLastRefresh < 60000) return;
-    if (force && now - syncLastRefresh < 4000) return;   // focus + visibility often fire together
+    if (!force && now - syncLastRefresh < SYNC_POLL_MS) return;
+    if (force && now - syncLastRefresh < REFRESH_DEDUP_MS) return;   // focus + visibility often fire together
     syncRefreshRunning = true;
     D.refreshFromBackend().then(function (r) {
       syncRefreshRunning = false; syncLastRefresh = Date.now();
@@ -4077,7 +4116,7 @@
       }
     });
   }
-  setInterval(function () { maybeAutoRefresh(false); }, 60000);
+  setInterval(function () { maybeAutoRefresh(false); }, SYNC_POLL_MS);
 
   window.addEventListener('online', function () { refreshChrome(); renderQueue(); toast('Back online'); scheduleAutoFlush(300); maybeAutoRefresh(true); });
   window.addEventListener('offline', function () { refreshChrome(); renderQueue(); toast('Offline — changes will queue'); });
@@ -4091,11 +4130,9 @@
   /* ---------- Sync Health & Settings ---------- */
   function renderSync() {
     var active = D.activeBackend();
-    if (window.ETSheets) {
-      var sc = window.ETSheets.getConfig();
-      if (document.activeElement !== $('setSheetUrl')) $('setSheetUrl').value = sc.url;
-      if (document.activeElement !== $('setSheetToken')) $('setSheetToken').value = sc.token;
-    }
+    var sc = D.sheetConfig();
+    if (document.activeElement !== $('setSheetUrl')) $('setSheetUrl').value = sc.url;
+    if (document.activeElement !== $('setSheetToken')) $('setSheetToken').value = sc.token;
     $('healthMode').textContent = active === 'sheet' ? 'Live · Google Sheet' : 'Demo (local data)';
     var avEl = $('appVersionVal'); if (avEl) avEl.textContent = 'v' + APP_VERSION;
     $('healthSheetRows').textContent = D.getMeta().sheetRows == null ? '–' : D.getMeta().sheetRows;
@@ -4259,7 +4296,7 @@
       out.className = 'result err';
       return;
     }
-    if (window.ETSheets) window.ETSheets.saveConfig({ url: pasted, token: $('setSheetToken').value });
+    D.saveSheetConfig({ url: pasted, token: $('setSheetToken').value });
     out.textContent = 'Connecting…'; out.className = 'result';
     D.testConnection().then(function (r) {
       out.textContent = r.message; out.className = 'result ' + (r.ok ? 'ok' : 'err');
@@ -4279,7 +4316,7 @@
    * IS the home page (Matthew's ask). A sticker link (?item= /
    * ?shelf=) still wins: it opens its item/shelf instead. */
   var bootParams = new URLSearchParams(window.location.search);
-  if (!bootParams.get('item') && !bootParams.get('shelf')) openFolderJump();
+  if (!bootParams.get(D.LINK_PARAMS.item) && !bootParams.get(D.LINK_PARAMS.shelf)) openFolderJump();
   // Sheet mode: pull the sheet's rows so the app opens on real data.
   D.refreshFromBackend().then(function (r) {
     if (r && r.ok) {
